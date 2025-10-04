@@ -1,0 +1,329 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CheckCircle2, XCircle, Loader2, TrendingUp, AlertTriangle, Info } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useRouter } from "next/navigation";
+
+interface ConnectionResult {
+  success: boolean;
+  message: string;
+  accountInfo?: {
+    balances?: Array<{ asset: string; free: string; locked: string }>;
+    canTrade?: boolean;
+  };
+}
+
+type BybitEnvironment = "mainnet" | "testnet" | "demo";
+
+export default function ExchangeTestPage() {
+  const router = useRouter();
+  const [exchange, setExchange] = useState<"binance" | "bybit">("binance");
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [testnet, setTestnet] = useState(true);
+  const [bybitEnv, setBybitEnv] = useState<BybitEnvironment>("demo");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ConnectionResult | null>(null);
+  const [savedWithoutTest, setSavedWithoutTest] = useState(false);
+
+  const testConnection = async () => {
+    setLoading(true);
+    setResult(null);
+    setSavedWithoutTest(false);
+
+    try {
+      const payload = exchange === "binance" 
+        ? { exchange, apiKey, apiSecret, testnet }
+        : { 
+            exchange, 
+            apiKey, 
+            apiSecret, 
+            testnet: bybitEnv === "testnet",
+            demo: bybitEnv === "demo"
+          };
+
+      const response = await fetch("/api/exchange/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      setResult(data);
+    } catch (error) {
+      setResult({
+        success: false,
+        message: `Błąd: ${error instanceof Error ? error.message : "Nieznany błąd"}`,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveWithoutTesting = () => {
+    setSavedWithoutTest(true);
+    setResult({
+      success: true,
+      message: "✅ Klucze API zostały zapisane bez testowania. Upewnij się, że klucze są poprawne przed rozpoczęciem tradingu.",
+    });
+    
+    // Save keys to localStorage
+    const credentials = {
+      exchange,
+      apiKey,
+      apiSecret,
+      environment: exchange === "binance" ? (testnet ? "testnet" : "mainnet") : bybitEnv,
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem("exchange_credentials", JSON.stringify(credentials));
+    
+    // Redirect to dashboard after 2 seconds
+    setTimeout(() => {
+      router.push("/dashboard");
+    }, 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center gap-3">
+          <TrendingUp className="h-8 w-8" />
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">Test Połączenia z Giełdą</h1>
+            <p className="text-muted-foreground">Sprawdź połączenie z API giełdy przed rozpoczęciem tradingu</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => router.push("/dashboard")}
+          >
+            Przejdź do Dashboard
+          </Button>
+        </div>
+
+        {exchange === "bybit" && bybitEnv === "demo" && (
+          <Alert className="border-yellow-500 bg-yellow-500/10">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            <AlertTitle className="text-yellow-500">Uwaga: Bybit Demo i CloudFlare</AlertTitle>
+            <AlertDescription className="text-sm text-muted-foreground">
+              API Bybit Demo jest chronione przez CloudFlare/WAF, co często powoduje błędy 403 podczas testowania.
+              <strong> To NIE oznacza że Twoje klucze są nieprawidłowe</strong> - CloudFlare blokuje requesty testowe z serwerów.
+              <br /><br />
+              <strong>Rozwiązania:</strong>
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Użyj przycisku <strong>"Zapisz bez testowania"</strong> poniżej - jeśli jesteś pewien że klucze są poprawne</li>
+                <li>Spróbuj ponownie za 5-10 minut (tymczasowa blokada)</li>
+                <li>Dodaj IP serwera do whitelisty w panelu API Bybit (jeśli dostępne)</li>
+                <li>W prawdziwym tradingu (nie testowaniu) CloudFlare może pozwolić na requesty</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Konfiguracja API</CardTitle>
+            <CardDescription>Wprowadź klucze API z wybranej giełdy</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Tabs value={exchange} onValueChange={(v) => setExchange(v as "binance" | "bybit")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="binance">Binance</TabsTrigger>
+                <TabsTrigger value="bybit">Bybit</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">API Key</Label>
+                <Input
+                  id="apiKey"
+                  type="text"
+                  placeholder="Wprowadź swój API Key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="apiSecret">API Secret</Label>
+                <Input
+                  id="apiSecret"
+                  type="password"
+                  placeholder="Wprowadź swój API Secret"
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                />
+              </div>
+
+              {exchange === "binance" ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="testnet"
+                    checked={testnet}
+                    onChange={(e) => setTestnet(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <Label htmlFor="testnet" className="cursor-pointer">
+                    Użyj Testnet (zalecane do testów)
+                  </Label>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Label>Środowisko Bybit</Label>
+                  <RadioGroup value={bybitEnv} onValueChange={(v) => setBybitEnv(v as BybitEnvironment)}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="mainnet" id="mainnet" />
+                      <Label htmlFor="mainnet" className="cursor-pointer font-normal">
+                        <span className="font-semibold">Mainnet</span> - Prawdziwe konto produkcyjne (prawdziwa płynność)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="demo" id="demo" />
+                      <Label htmlFor="demo" className="cursor-pointer font-normal">
+                        <span className="font-semibold">Demo</span> - Konto demo (prawdziwa płynność, może być blokowane przez CloudFlare)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="testnet" id="testnet-radio" />
+                      <Label htmlFor="testnet-radio" className="cursor-pointer font-normal">
+                        <span className="font-semibold">Testnet</span> - Środowisko testowe (mniejsza płynność)
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <Button 
+                  onClick={testConnection} 
+                  disabled={loading || !apiKey || !apiSecret}
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Testowanie...
+                    </>
+                  ) : (
+                    "Testuj Połączenie"
+                  )}
+                </Button>
+                
+                <Button 
+                  onClick={saveWithoutTesting}
+                  disabled={loading || !apiKey || !apiSecret}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Zapisz bez testowania
+                </Button>
+              </div>
+
+              {exchange === "bybit" && bybitEnv === "mainnet" && (
+                <Alert className="border-red-500 bg-red-500/10">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <AlertDescription className="text-sm">
+                    <strong className="text-red-500">UWAGA:</strong> Używasz prawdziwego konta Bybit Mainnet. 
+                    Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {result && (
+          <Card className={result.success ? "border-green-500" : "border-red-500"}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {result.success ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    {savedWithoutTest ? "Klucze Zapisane" : "Połączenie Udane"}
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-5 w-5 text-red-500" />
+                    Błąd Połączenia
+                  </>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm mb-4 whitespace-pre-line">{result.message}</p>
+
+              {!result.success && exchange === "bybit" && bybitEnv === "demo" && (
+                <div className="mt-4 p-4 bg-muted rounded-lg space-y-2">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm">
+                      <strong className="text-blue-500">Sugestia:</strong> Jeśli jesteś pewien że klucze są poprawne 
+                      (stworzone w Demo Trading z wszystkimi uprawnieniami), możesz <strong>zapisać je bez testowania</strong> 
+                      klikając przycisk "Zapisz bez testowania" powyżej. Klucze będą działać w prawdziwym tradingu mimo błędu testowego.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {result.success && result.accountInfo && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Status tradingu:</span>
+                    <span className={result.accountInfo.canTrade ? "text-green-500" : "text-red-500"}>
+                      {result.accountInfo.canTrade ? "Aktywny" : "Nieaktywny"}
+                    </span>
+                  </div>
+
+                  {result.accountInfo.balances && result.accountInfo.balances.length > 0 && (
+                    <div>
+                      <span className="font-semibold">Salda (top 5):</span>
+                      <div className="mt-2 space-y-1">
+                        {result.accountInfo.balances.slice(0, 5).map((balance, idx) => (
+                          <div key={idx} className="text-sm flex justify-between p-2 bg-muted rounded">
+                            <span>{balance.asset}</span>
+                            <span>Wolne: {balance.free} | Zablokowane: {balance.locked}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="bg-muted">
+          <CardHeader>
+            <CardTitle className="text-lg">Jak uzyskać klucze API?</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p><strong>Binance:</strong></p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>Zaloguj się na Binance</li>
+              <li>Przejdź do API Management w ustawieniach</li>
+              <li>Utwórz nowy klucz API</li>
+              <li>Włącz uprawnienia: "Enable Spot & Margin Trading"</li>
+              <li>Dla testów użyj: <a href="https://testnet.binance.vision/" target="_blank" className="text-primary underline">Binance Testnet</a></li>
+            </ol>
+            <p className="mt-4"><strong>Bybit:</strong></p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li><strong>Mainnet (zalecane dla prawdziwej płynności):</strong> Użyj prawdziwego konta Bybit → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
+              <li><strong>Demo Account:</strong> Zaloguj się na Bybit → Przełącz na "Demo Trading" → API Management → Utwórz klucz (może być blokowane przez CloudFlare)</li>
+              <li><strong>Testnet (mniejsza płynność):</strong> Zarejestruj się na <a href="https://testnet.bybit.com/" target="_blank" className="text-primary underline">testnet.bybit.com</a> → API Management</li>
+              <li>Włącz uprawnienia tradingu przy tworzeniu klucza</li>
+            </ol>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
