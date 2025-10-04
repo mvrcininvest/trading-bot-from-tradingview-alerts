@@ -51,6 +51,7 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, buy: 0, sell: 0, avgLatency: 0 });
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   
   // Filtry
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -104,6 +105,7 @@ export default function AlertsPage() {
   };
 
   const deleteAlert = async (id: number) => {
+    setDeletingId(id);
     try {
       const response = await fetch(`/api/alerts/${id}`, { method: "DELETE" });
       const data = await response.json();
@@ -114,6 +116,8 @@ export default function AlertsPage() {
       }
     } catch (error) {
       toast.error("Nie udało się usunąć alertu");
+    } finally {
+      setDeletingId(null);
     }
   };
 
