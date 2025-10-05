@@ -8,11 +8,12 @@ const BYBIT_DEMO_URL = "https://api-demo.bybit.com";
 const BYBIT_MAINNET_URL = "https://api.bybit.com";
 
 function createBybitSignature(
+  apiKey: string,
   apiSecret: string,
   timestamp: number,
   params: Record<string, any>
 ): string {
-  const paramString = timestamp + process.env.BYBIT_API_KEY + "5000" + JSON.stringify(params);
+  const paramString = timestamp + apiKey + "5000" + JSON.stringify(params);
   return crypto.createHmac("sha256", apiSecret).update(paramString).digest("hex");
 }
 
@@ -74,7 +75,7 @@ async function getBybitBalance(
     accountType: "UNIFIED",
   };
 
-  const signature = createBybitSignature(apiSecret, timestamp, params);
+  const signature = createBybitSignature(apiKey, apiSecret, timestamp, params);
   const queryParams = new URLSearchParams({
     accountType: "UNIFIED",
   });
