@@ -82,7 +82,7 @@ export default function AlertsPage() {
         setStats({ total, buy, sell, avgLatency: Math.round(avgLatency) });
         
         // Wyciągnij unikalne symbole
-        const uniqueSymbols = Array.from(new Set(data.alerts.map((a: AlertData) => a.symbol)));
+        const uniqueSymbols = Array.from(new Set(data.alerts.map((a: AlertData) => a.symbol))) as string[];
         setSymbols(uniqueSymbols.sort());
       }
     } catch (error) {
