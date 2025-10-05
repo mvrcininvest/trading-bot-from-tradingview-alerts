@@ -81,9 +81,10 @@ export default function AlertsPage() {
         
         setStats({ total, buy, sell, avgLatency: Math.round(avgLatency) });
         
-        // Wyciągnij unikalne symbole
-        const uniqueSymbols = Array.from(new Set(data.alerts.map((a: AlertData) => a.symbol))) as string[];
-        setSymbols(uniqueSymbols.sort());
+        // Wyciągnij unikalne symbole z explicit typing
+        const symbolSet = new Set<string>(data.alerts.map((a: AlertData) => a.symbol));
+        const uniqueSymbols: string[] = Array.from(symbolSet).sort();
+        setSymbols(uniqueSymbols);
       }
     } catch (error) {
       console.error("Błąd pobierania alertów:", error);
