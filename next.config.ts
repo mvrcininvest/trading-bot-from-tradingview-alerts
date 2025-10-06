@@ -17,8 +17,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Turbopack custom loader wyłączony - nie działa na Vercel production
-  // Używany tylko lokalnie do visual editing, nie wpływa na funkcjonalność bota,
   turbopack: {
     rules: {
       "*.{jsx,tsx}": {
@@ -29,4 +27,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-// Orchids restart: 1759779356331
+// Orchids restart: 1759780550511
