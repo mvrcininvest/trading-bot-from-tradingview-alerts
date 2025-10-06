@@ -123,6 +123,7 @@ interface ChartTooltipContentProps
   color?: string
   nameKey?: string
   labelKey?: string
+  labelClassName?: string
 }
 
 function ChartTooltipContent({
