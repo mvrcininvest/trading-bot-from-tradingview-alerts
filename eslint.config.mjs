@@ -11,6 +11,9 @@ const eslintConfig = [
     plugins: ['import'],
   }),
   {
+    ignores: ['src/visual-edits/**/*'],
+  },
+  {
     rules: {
       'react/no-unescaped-entities': 'off',
       '@next/next/no-img-element': 'off',
