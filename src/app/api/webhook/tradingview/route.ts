@@ -9,9 +9,16 @@ export async function POST(request: NextRequest) {
     // Store the raw JSON for the database
     const rawJson = JSON.stringify(requestBody);
     
+    // Extract timestamp from multiple possible locations
+    let timestamp = requestBody.timestamp || requestBody.tv_ts || requestBody.diagnostics?.timestamp;
+    
+    // If timestamp is in milliseconds (>10000000000), convert to seconds
+    if (timestamp && timestamp > 10000000000) {
+      timestamp = Math.floor(timestamp / 1000);
+    }
+    
     // Extract and validate required fields
     const {
-      timestamp,
       symbol,
       side,
       tier,
@@ -39,9 +46,17 @@ export async function POST(request: NextRequest) {
       volume_climax
     } = requestBody;
 
+    // Validate timestamp first
+    if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) {
+      return NextResponse.json({
+        error: "Required field 'timestamp' is missing or invalid (tried: timestamp, tv_ts, diagnostics.timestamp)",
+        code: "MISSING_REQUIRED_FIELD"
+      }, { status: 400 });
+    }
+
     // Validate required fields presence
     const requiredFields = [
-      'timestamp', 'symbol', 'side', 'tier', 'tier_numeric', 'strength',
+      'symbol', 'side', 'tier', 'tier_numeric', 'strength',
       'entry_price', 'sl', 'tp1', 'tp2', 'tp3', 'main_tp', 'atr',
       'volume_ratio', 'session', 'regime', 'regime_confidence', 'mtf_agreement',
       'leverage', 'in_ob', 'in_fvg', 'ob_score', 'fvg_score'
@@ -80,9 +95,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate numeric fields
+    // Validate numeric fields (excluding timestamp which is already validated)
     const numericFields = [
-      'timestamp', 'entry_price', 'sl', 'tp1', 'tp2', 'tp3', 'main_tp', 
+      'entry_price', 'sl', 'tp1', 'tp2', 'tp3', 'main_tp', 
       'atr', 'volume_ratio', 'regime_confidence', 'mtf_agreement', 
       'leverage', 'ob_score', 'fvg_score'
     ];
@@ -133,10 +148,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Calculate latency: current timestamp - (TradingView timestamp in milliseconds)
-    const currentTime = Date.now();
-    const tvTimeMs = timestamp * 1000; // Convert Unix timestamp to milliseconds
-    const latency = currentTime - tvTimeMs;
+    // Calculate latency: current timestamp - (TradingView timestamp in seconds)
+    const currentTime = Math.floor(Date.now() / 1000);
+    const latency = currentTime - timestamp;
 
     // Prepare data for insertion
     const alertData = {
@@ -179,7 +193,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       message: "TradingView alert received and saved successfully",
       alert: newAlert[0],
-      latency: `${latency}ms`
+      latency: `${latency}s`
     }, { status: 201 });
 
   } catch (error) {
