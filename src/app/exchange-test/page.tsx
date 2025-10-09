@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,27 @@ export default function ExchangeTestPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [savedWithoutTest, setSavedWithoutTest] = useState(false);
+
+  // Auto-load saved credentials on mount
+  useEffect(() => {
+    const stored = localStorage.getItem("exchange_credentials");
+    if (stored) {
+      try {
+        const creds = JSON.parse(stored);
+        setExchange(creds.exchange || "binance");
+        setApiKey(creds.apiKey || "");
+        setApiSecret(creds.apiSecret || "");
+        
+        if (creds.exchange === "binance") {
+          setTestnet(creds.environment === "testnet");
+        } else {
+          setBybitEnv(creds.environment || "demo");
+        }
+      } catch (error) {
+        console.error("Failed to load saved credentials:", error);
+      }
+    }
+  }, []);
 
   const testConnection = async () => {
     setLoading(true);
