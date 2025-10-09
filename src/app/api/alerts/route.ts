@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
       .offset(offset);
 
     return NextResponse.json({
+      success: true,
       alerts: alertsResult,
       total,
       limit,
