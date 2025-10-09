@@ -149,6 +149,10 @@ export default function AlertsPage() {
     return new Date(timestamp * 1000).toLocaleString('pl-PL');
   };
 
+  const formatReceivedTime = (createdAt: string) => {
+    return new Date(createdAt).toLocaleString('pl-PL');
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -331,7 +335,7 @@ export default function AlertsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left p-3 font-semibold">Czas</th>
+                      <th className="text-left p-3 font-semibold">Czas otrzymania</th>
                       <th className="text-left p-3 font-semibold">Symbol</th>
                       <th className="text-left p-3 font-semibold">Strona</th>
                       <th className="text-left p-3 font-semibold">Tier</th>
@@ -348,8 +352,11 @@ export default function AlertsPage() {
                       <tr key={alert.id} className="border-b hover:bg-muted/50 transition-colors">
                         {/* Czas */}
                         <td className="p-3 text-sm">
-                          <div className="font-mono text-xs">
-                            {formatTimestamp(alert.timestamp)}
+                          <div className="font-mono text-xs font-semibold">
+                            {formatReceivedTime(alert.createdAt)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            TV: {formatTimestamp(alert.timestamp)}
                           </div>
                         </td>
 
