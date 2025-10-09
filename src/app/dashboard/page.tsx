@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [loadingPositions, setLoadingPositions] = useState(false);
   const [loadingBotPositions, setLoadingBotPositions] = useState(false);
+  const [loadingSync, setLoadingSync] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [botPositionsError, setBotPositionsError] = useState<string | null>(null);
@@ -356,6 +357,29 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSyncPositions = async () => {
+    setLoadingSync(true);
+    try {
+      const response = await fetch("/api/bot/sync-positions", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh bot positions after sync
+        await fetchBotPositions();
+        await fetchPositions(credentials);
+        alert(`Synchronizacja ukończona!\n\nSprawdzono: ${data.results.checked}\nZamknięto: ${data.results.closed}\nNadal otwarte: ${data.results.stillOpen}`);
+      } else {
+        alert(`Błąd synchronizacji: ${data.message}`);
+      }
+    } catch (err) {
+      alert(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setLoadingSync(false);
+    }
+  };
+
   if (!credentials) {
     return (
       <div className="min-h-screen bg-background p-6 flex items-center justify-center">
@@ -533,6 +557,16 @@ export default function DashboardPage() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleSyncPositions}
+                  disabled={loadingSync}
+                  size="sm"
+                  variant="secondary"
+                  title="Synchronizuj pozycje z giełdą"
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? "animate-spin" : ""}`} />
+                  Sync
+                </Button>
                 <Button
                   onClick={() => fetchBotPositions()}
                   disabled={loadingBotPositions}
