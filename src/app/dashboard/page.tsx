@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 
 interface Balance {
   asset: string;
@@ -35,15 +36,44 @@ interface ExchangeCredentials {
   savedAt: string;
 }
 
+interface BotPosition {
+  id: number;
+  symbol: string;
+  side: string;
+  tier: string;
+  entryPrice: number;
+  quantity: number;
+  leverage: number;
+  stopLoss: number;
+  tp1Price: number | null;
+  tp2Price: number | null;
+  tp3Price: number | null;
+  mainTpPrice: number;
+  tp1Hit: boolean;
+  tp2Hit: boolean;
+  tp3Hit: boolean;
+  currentSl: number;
+  positionValue: number;
+  initialMargin: number;
+  unrealisedPnl: number;
+  confirmationCount: number;
+  confidenceScore: number;
+  openedAt: string;
+  status: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [botPositions, setBotPositions] = useState<BotPosition[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPositions, setLoadingPositions] = useState(false);
+  const [loadingBotPositions, setLoadingBotPositions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [botPositionsError, setBotPositionsError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [lastPositionsUpdate, setLastPositionsUpdate] = useState<string | null>(null);
 
@@ -56,8 +86,20 @@ export default function DashboardPage() {
       // Auto-fetch balance and positions on mount
       fetchBalance(creds);
       fetchPositions(creds);
+      fetchBotPositions();
     }
   }, []);
+
+  // Auto-refresh bot positions every 2 seconds
+  useEffect(() => {
+    if (!credentials) return;
+
+    const interval = setInterval(() => {
+      fetchBotPositions(true); // silent mode
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [credentials]);
 
   // Auto-refresh positions every 0.5 seconds (always on)
   useEffect(() => {
@@ -95,6 +137,32 @@ export default function DashboardPage() {
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
     
     return hashHex;
+  };
+
+  const fetchBotPositions = async (silent = false) => {
+    if (!silent) {
+      setLoadingBotPositions(true);
+    }
+    setBotPositionsError(null);
+
+    try {
+      const response = await fetch("/api/bot/positions");
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.positions)) {
+        // Filter only open positions
+        const openPositions = data.positions.filter((p: BotPosition) => p.status === 'open');
+        setBotPositions(openPositions);
+      } else {
+        setBotPositionsError("Nie udało się pobrać pozycji bota");
+      }
+    } catch (err) {
+      setBotPositionsError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      if (!silent) {
+        setLoadingBotPositions(false);
+      }
+    }
   };
 
   const fetchPositions = async (creds?: ExchangeCredentials, silent = false) => {
@@ -442,14 +510,197 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Open Positions Card */}
+        {/* Bot Positions Card */}
+        <Card className="border-primary/50 bg-primary/5">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-primary" />
+                  Pozycje Bota
+                  <Badge variant="default" className="ml-2">
+                    BOT
+                  </Badge>
+                  {botPositions.length > 0 && (
+                    <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      Aktywne: {botPositions.length}
+                    </span>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  Pozycje otwarte automatycznie przez bota tradingowego • Auto-odświeżanie co 2s
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => fetchBotPositions()}
+                  disabled={loadingBotPositions}
+                  size="sm"
+                  variant="outline"
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingBotPositions ? "animate-spin" : ""}`} />
+                  Odśwież
+                </Button>
+                <Button
+                  onClick={() => router.push("/bot-history")}
+                  size="sm"
+                  variant="outline"
+                >
+                  <History className="mr-2 h-4 w-4" />
+                  Historia
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {botPositionsError && (
+              <Alert className="mb-4 border-yellow-500 bg-yellow-500/10">
+                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                <AlertDescription className="text-sm">
+                  <strong>Nie można pobrać pozycji bota:</strong> {botPositionsError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {loadingBotPositions && (
+              <div className="text-center py-8">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Pobieranie pozycji bota...</p>
+              </div>
+            )}
+
+            {!loadingBotPositions && botPositions.length === 0 && !botPositionsError && (
+              <div className="text-center py-8">
+                <Bot className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Brak aktywnych pozycji bota. Bot otworzy pozycje automatycznie po otrzymaniu alertów z TradingView.
+                </p>
+              </div>
+            )}
+
+            {!loadingBotPositions && botPositions.length > 0 && (
+              <div className="space-y-3">
+                {botPositions.map((position) => {
+                  const pnl = position.unrealisedPnl;
+                  const pnlPercent = position.initialMargin !== 0 ? (pnl / position.initialMargin) * 100 : 0;
+                  const isProfitable = pnl >= 0;
+                  
+                  // Tier colors
+                  const tierColors: Record<string, string> = {
+                    'Platinum': 'bg-purple-500/10 text-purple-500 border-purple-500/50',
+                    'Premium': 'bg-blue-500/10 text-blue-500 border-blue-500/50',
+                    'Standard': 'bg-green-500/10 text-green-500 border-green-500/50',
+                    'Quick': 'bg-orange-500/10 text-orange-500 border-orange-500/50',
+                    'Emergency': 'bg-red-500/10 text-red-500 border-red-500/50',
+                  };
+                  
+                  return (
+                    <div
+                      key={position.id}
+                      className="p-4 rounded-lg border-2 border-primary/20 bg-card hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                            position.side === "BUY" ? "bg-green-500/10" : "bg-red-500/10"
+                          }`}>
+                            {position.side === "BUY" ? (
+                              <ArrowUpRight className="h-5 w-5 text-green-500" />
+                            ) : (
+                              <ArrowDownRight className="h-5 w-5 text-red-500" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-lg">{position.symbol}</span>
+                              <Badge variant="outline" className={tierColors[position.tier] || ''}>
+                                {position.tier}
+                              </Badge>
+                              <Badge variant="default" className="text-xs">BOT</Badge>
+                            </div>
+                            <div className={`text-sm font-semibold ${
+                              position.side === "BUY" ? "text-green-500" : "text-red-500"
+                            }`}>
+                              {position.side === "BUY" ? "LONG" : "SHORT"} {position.leverage}x
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-lg font-bold ${isProfitable ? "text-green-500" : "text-red-500"}`}>
+                            {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
+                          </div>
+                          <div className={`text-sm font-semibold ${isProfitable ? "text-green-500" : "text-red-500"}`}>
+                            ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Potwierdzenia: {position.confirmationCount}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                        <div>
+                          <div className="text-muted-foreground">Rozmiar</div>
+                          <div className="font-semibold">{position.quantity.toFixed(4)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Wartość</div>
+                          <div className="font-semibold">{position.positionValue.toFixed(2)} USDT</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Cena Wejścia</div>
+                          <div className="font-semibold">{position.entryPrice.toFixed(4)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Stop Loss</div>
+                          <div className="font-semibold text-red-500">{position.currentSl.toFixed(4)}</div>
+                        </div>
+                      </div>
+
+                      {/* TP Status */}
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">Take Profit:</span>
+                        {position.tp1Price && (
+                          <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-500" : ""}>
+                            TP1: {position.tp1Price.toFixed(4)} {position.tp1Hit ? "✓" : ""}
+                          </Badge>
+                        )}
+                        {position.tp2Price && (
+                          <Badge variant={position.tp2Hit ? "default" : "outline"} className={position.tp2Hit ? "bg-green-500" : ""}>
+                            TP2: {position.tp2Price.toFixed(4)} {position.tp2Hit ? "✓" : ""}
+                          </Badge>
+                        )}
+                        {position.tp3Price && (
+                          <Badge variant={position.tp3Hit ? "default" : "outline"} className={position.tp3Hit ? "bg-green-500" : ""}>
+                            TP3: {position.tp3Price.toFixed(4)} {position.tp3Hit ? "✓" : ""}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Confidence: {(position.confidenceScore * 100).toFixed(0)}%</span>
+                        <span>Otwarcie: {new Date(position.openedAt).toLocaleString("pl-PL")}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Open Positions Card (Manual) */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="h-5 w-5" />
-                  Otwarte Pozycje
+                  Wszystkie Pozycje
+                  <Badge variant="secondary" className="ml-2">
+                    WSZYSTKIE
+                  </Badge>
                   <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                     Live
@@ -504,15 +755,23 @@ export default function DashboardPage() {
                   const positionVal = parseFloat(position.positionValue);
                   const leverage = parseFloat(position.leverage);
                   
-                  // Calculate ROI% based on initial margin, not position value
                   const initialMargin = leverage !== 0 ? positionVal / leverage : positionVal;
                   const pnlPercent = initialMargin !== 0 ? (pnl / initialMargin) * 100 : 0;
                   const isProfitable = pnl >= 0;
                   
+                  // Check if this position is a bot position
+                  const isBotPosition = botPositions.some(bp => 
+                    bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "BUY" : "SELL")
+                  );
+                  
                   return (
                     <div
                       key={idx}
-                      className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                      className={`p-4 rounded-lg border transition-colors ${
+                        isBotPosition 
+                          ? "border-primary/50 bg-primary/5 hover:bg-primary/10" 
+                          : "bg-card hover:bg-muted/50"
+                      }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3">
@@ -526,7 +785,12 @@ export default function DashboardPage() {
                             )}
                           </div>
                           <div>
-                            <div className="font-bold text-lg">{position.symbol}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-lg">{position.symbol}</span>
+                              {isBotPosition && (
+                                <Badge variant="default" className="text-xs">BOT</Badge>
+                              )}
+                            </div>
                             <div className={`text-sm font-semibold ${
                               position.side === "Buy" ? "text-green-500" : "text-red-500"
                             }`}>
