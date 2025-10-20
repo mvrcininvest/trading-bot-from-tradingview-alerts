@@ -52,6 +52,11 @@ export const botSettings = sqliteTable('bot_settings', {
   emergencyCanReverse: integer('emergency_can_reverse', { mode: 'boolean' }).notNull().default(true),
   emergencyOverrideMode: text('emergency_override_mode').notNull().default('only_profit'),
   emergencyMinProfitPercent: real('emergency_min_profit_percent').notNull().default(0.0),
+  useDefaultSlTp: integer('use_default_sl_tp', { mode: 'boolean' }).notNull().default(false),
+  defaultSlPercent: real('default_sl_percent').notNull().default(2.0),
+  defaultTp1Percent: real('default_tp1_percent').notNull().default(2.0),
+  defaultTp2Percent: real('default_tp2_percent').notNull().default(4.0),
+  defaultTp3Percent: real('default_tp3_percent').notNull().default(6.0),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
