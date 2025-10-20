@@ -95,25 +95,32 @@ export async function GET(request: NextRequest) {
       conditions.push(lte(botActions.createdAt, endDate));
     }
     
-    // Build query with filters
-    let query = db.select().from(botActions);
-    let countQuery = db.select({ count: sql<number>`count(*)` }).from(botActions);
-    
-    if (conditions.length > 0) {
-      const whereCondition = and(...conditions);
-      query = query.where(whereCondition);
-      countQuery = countQuery.where(whereCondition);
-    }
+    // Build queries conditionally to avoid TypeScript reassignment issues
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
     
     // Get total count
-    const totalResult = await countQuery;
+    const totalResult = whereCondition
+      ? await db.select({ count: sql<number>`count(*)` })
+          .from(botActions)
+          .where(whereCondition)
+      : await db.select({ count: sql<number>`count(*)` })
+          .from(botActions);
+    
     const total = totalResult[0]?.count || 0;
     
     // Get paginated results ordered by createdAt DESC
-    const actions = await query
-      .orderBy(desc(botActions.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const actions = whereCondition
+      ? await db.select()
+          .from(botActions)
+          .where(whereCondition)
+          .orderBy(desc(botActions.createdAt))
+          .limit(limit)
+          .offset(offset)
+      : await db.select()
+          .from(botActions)
+          .orderBy(desc(botActions.createdAt))
+          .limit(limit)
+          .offset(offset);
     
     return NextResponse.json({
       success: true,
