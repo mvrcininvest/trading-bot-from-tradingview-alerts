@@ -3,598 +3,390 @@ import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const requestBody = await request.json();
-    
-    // Store the raw JSON for the database
-    const rawJson = JSON.stringify(requestBody);
-    
-    // Extract timestamp from multiple possible locations
-    let timestamp = requestBody.timestamp || requestBody.tv_ts || requestBody.diagnostics?.timestamp;
-    
-    // If timestamp is in milliseconds (>10000000000), convert to seconds
-    if (timestamp && timestamp > 10000000000) {
-      timestamp = Math.floor(timestamp / 1000);
-    }
-    
-    // Extract and validate required fields
-    const {
-      symbol,
-      side,
-      tier,
-      tier_numeric,
-      strength,
-      entry_price,
-      sl,
-      tp1,
-      tp2,
-      tp3,
-      main_tp,
-      atr,
-      volume_ratio,
-      session,
-      regime,
-      regime_confidence,
-      mtf_agreement,
-      leverage,
-      in_ob,
-      in_fvg,
-      ob_score,
-      fvg_score,
-      institutional_flow,
-      accumulation,
-      volume_climax
-    } = requestBody;
+    const data = await request.json();
+    console.log("📨 Received TradingView alert:", JSON.stringify(data, null, 2));
 
-    // Validate timestamp first
-    if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) {
-      return NextResponse.json({
-        error: "Required field 'timestamp' is missing or invalid",
-        code: "MISSING_REQUIRED_FIELD"
-      }, { status: 400 });
-    }
-
-    // Validate required fields
+    // Validate basic required fields
     const requiredFields = [
-      'symbol', 'side', 'tier', 'tier_numeric', 'strength',
-      'entry_price', 'sl', 'tp1', 'tp2', 'tp3', 'main_tp', 'atr',
-      'volume_ratio', 'session', 'regime', 'regime_confidence', 'mtf_agreement',
-      'leverage', 'in_ob', 'in_fvg', 'ob_score', 'fvg_score'
+      "ticker",
+      "action",
+      "tier",
+      "direction",
+      "entry",
+      "confidence",
+      "confirmations",
     ];
 
+    // Check basic required fields
     for (const field of requiredFields) {
-      if (requestBody[field] === undefined || requestBody[field] === null) {
-        return NextResponse.json({
-          error: `Required field '${field}' is missing`,
-          code: "MISSING_REQUIRED_FIELD"
-        }, { status: 400 });
+      if (!(field in data)) {
+        return NextResponse.json(
+          { error: `Missing required field: ${field}` },
+          { status: 400 }
+        );
       }
     }
 
-    // Validate side
-    if (side !== 'BUY' && side !== 'SELL') {
-      return NextResponse.json({
-        error: "Side must be either 'BUY' or 'SELL'",
-        code: "INVALID_SIDE"
-      }, { status: 400 });
-    }
+    // Save alert to database
+    const [alert] = await db.insert(alerts).values({
+      ticker: data.ticker,
+      action: data.action,
+      tier: data.tier,
+      direction: data.direction,
+      entry: data.entry?.toString() || "0",
+      sl: data.sl?.toString() || null,
+      tp1: data.tp1?.toString() || null,
+      tp2: data.tp2?.toString() || null,
+      tp3: data.tp3?.toString() || null,
+      main_tp: data.main_tp?.toString() || null,
+      confidence: data.confidence,
+      confirmations: data.confirmations,
+      rawData: JSON.stringify(data),
+    }).returning();
 
-    // Validate tier_numeric
-    if (!Number.isInteger(tier_numeric) || tier_numeric < 1 || tier_numeric > 5) {
-      return NextResponse.json({
-        error: "tier_numeric must be an integer between 1 and 5",
-        code: "INVALID_TIER_NUMERIC"
-      }, { status: 400 });
-    }
+    console.log("✅ Alert saved to database:", alert.id);
 
-    // Validate strength
-    if (typeof strength !== 'number' || strength < 0.000 || strength > 1.000) {
-      return NextResponse.json({
-        error: "Strength must be a number between 0.000 and 1.000",
-        code: "INVALID_STRENGTH"
-      }, { status: 400 });
-    }
+    // ============================================
+    // 🤖 BOT LOGIC - Automatic Trading
+    // ============================================
 
-    // Calculate latency
-    const currentTime = Math.floor(Date.now() / 1000);
-    const latency = currentTime - timestamp;
-
-    // Prepare alert data
-    const alertData = {
-      timestamp,
-      symbol: symbol.toString().trim(),
-      side: side.toString().trim(),
-      tier: tier.toString().trim(),
-      tierNumeric: tier_numeric,
-      strength,
-      entryPrice: entry_price,
-      sl,
-      tp1,
-      tp2,
-      tp3,
-      mainTp: main_tp,
-      atr,
-      volumeRatio: volume_ratio,
-      session: session.toString().trim(),
-      regime: regime.toString().trim(),
-      regimeConfidence: regime_confidence,
-      mtfAgreement: mtf_agreement,
-      leverage,
-      inOb: in_ob,
-      inFvg: in_fvg,
-      obScore: ob_score,
-      fvgScore: fvg_score,
-      institutionalFlow: institutional_flow,
-      accumulation: accumulation,
-      volumeClimax: volume_climax,
-      latency,
-      rawJson,
-      createdAt: new Date().toISOString()
-    };
-
-    // Insert alert into database
-    const newAlert = await db.insert(alerts)
-      .values(alertData)
-      .returning();
-
-    const savedAlert = newAlert[0];
-
-    // ==================== BOT LOGIC START ====================
-    
     // Get bot settings
     const settings = await db.select().from(botSettings).limit(1);
-    
-    if (!settings.length) {
-      return NextResponse.json({
-        message: "Alert saved, but bot settings not configured",
-        alert: savedAlert,
-        bot_action: "skipped"
-      }, { status: 201 });
+    if (settings.length === 0) {
+      console.log("⚠️ No bot settings found, skipping trade");
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id,
+        message: "Alert saved, but bot settings not configured"
+      });
     }
 
     const botConfig = settings[0];
 
     // Check if bot is enabled
-    if (!botConfig.botEnabled) {
-      await db.insert(botActions).values({
-        actionType: 'alert_ignored',
-        symbol: alertData.symbol,
-        side: alertData.side,
-        tier: alertData.tier,
-        alertId: savedAlert.id,
-        reason: 'Bot disabled',
-        details: 'Bot is currently disabled in settings',
-        success: true,
-        createdAt: new Date().toISOString()
+    if (!botConfig.enabled) {
+      console.log("🛑 Bot is disabled");
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id,
+        message: "Alert saved, but bot is disabled"
       });
-
-      return NextResponse.json({
-        message: "Alert saved, but bot is disabled",
-        alert: savedAlert,
-        bot_action: "ignored_bot_disabled"
-      }, { status: 201 });
     }
 
-    // Check tier filtering
-    const disabledTiers = JSON.parse(botConfig.disabledTiers);
-    if (botConfig.tierFilteringMode === 'custom' && disabledTiers.includes(alertData.tier)) {
-      await db.insert(botActions).values({
-        actionType: 'alert_ignored',
-        symbol: alertData.symbol,
-        side: alertData.side,
-        tier: alertData.tier,
-        alertId: savedAlert.id,
-        reason: 'Tier filtered',
-        details: `Tier ${alertData.tier} is disabled in settings`,
-        success: true,
-        createdAt: new Date().toISOString()
-      });
+    // Tier filtering
+    const allowedTiers = [
+      botConfig.tier1Enabled && "1",
+      botConfig.tier2Enabled && "2",
+      botConfig.tier3Enabled && "3",
+    ].filter(Boolean) as string[];
 
-      return NextResponse.json({
-        message: "Alert saved, but tier is filtered",
-        alert: savedAlert,
-        bot_action: "ignored_tier_filtered"
-      }, { status: 201 });
+    if (!allowedTiers.includes(data.tier)) {
+      console.log(`⚠️ Alert tier ${data.tier} not enabled`);
+      await db.insert(botActions).values({
+        actionType: "alert_filtered",
+        symbol: data.ticker,
+        details: JSON.stringify({ reason: "tier_not_enabled", tier: data.tier }),
+      });
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id,
+        message: `Alert tier ${data.tier} not enabled`
+      });
     }
 
-    // Check for existing position on same symbol
-    const existingPositions = await db.select()
+    // Check for existing positions on same symbol
+    const existingPositions = await db
+      .select()
       .from(botPositions)
-      .where(and(
-        eq(botPositions.symbol, alertData.symbol),
-        eq(botPositions.status, 'open')
-      ));
+      .where(
+        and(
+          eq(botPositions.symbol, data.ticker),
+          eq(botPositions.status, "open")
+        )
+      );
 
+    // Same Symbol Logic
     if (existingPositions.length > 0) {
       const existingPosition = existingPositions[0];
       
-      // Same direction as existing position
-      if (existingPosition.side === alertData.side) {
-        if (botConfig.sameSymbolBehavior === 'ignore') {
-          await db.insert(botActions).values({
-            actionType: 'alert_ignored',
-            symbol: alertData.symbol,
-            side: alertData.side,
-            tier: alertData.tier,
-            alertId: savedAlert.id,
-            positionId: existingPosition.id,
-            reason: 'Same symbol position exists',
-            details: `Already have ${existingPosition.side} position on ${alertData.symbol}`,
-            success: true,
-            createdAt: new Date().toISOString()
-          });
+      if (botConfig.sameSymbolAction === "ignore") {
+        console.log(`⚠️ Position already exists on ${data.ticker}, ignoring`);
+        await db.insert(botActions).values({
+          actionType: "alert_ignored",
+          symbol: data.ticker,
+          details: JSON.stringify({ reason: "same_symbol_ignore" }),
+        });
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id,
+          message: "Same symbol position exists, ignoring alert"
+        });
+      }
 
-          return NextResponse.json({
-            message: "Alert saved, but position already exists",
-            alert: savedAlert,
-            bot_action: "ignored_same_symbol"
-          }, { status: 201 });
-        }
+      // Check if opposite direction
+      const isOpposite = 
+        (existingPosition.direction === "long" && data.direction === "short") ||
+        (existingPosition.direction === "short" && data.direction === "long");
 
-        if (botConfig.sameSymbolBehavior === 'track_confirmations') {
-          // Increment confirmation count
-          await db.update(botPositions)
-            .set({ 
-              confirmationCount: existingPosition.confirmationCount + 1,
-              lastUpdated: new Date().toISOString()
-            })
-            .where(eq(botPositions.id, existingPosition.id));
-
-          await db.insert(botActions).values({
-            actionType: 'confirmation_tracked',
-            symbol: alertData.symbol,
-            side: alertData.side,
-            tier: alertData.tier,
-            alertId: savedAlert.id,
-            positionId: existingPosition.id,
-            reason: 'Same direction signal',
-            details: `Confirmation count: ${existingPosition.confirmationCount + 1}`,
-            success: true,
-            createdAt: new Date().toISOString()
-          });
-
-          return NextResponse.json({
-            message: "Alert saved and confirmation tracked",
-            alert: savedAlert,
-            bot_action: "confirmation_tracked"
-          }, { status: 201 });
-        }
-
-        if (botConfig.sameSymbolBehavior === 'upgrade_tp') {
-          // Check if new tier is higher
-          const existingTierNumeric = getTierNumeric(existingPosition.tier);
-          if (alertData.tierNumeric > existingTierNumeric) {
-            // Upgrade TP logic - will implement in modify-tpsl API
-            await db.insert(botActions).values({
-              actionType: 'tp_upgrade_pending',
-              symbol: alertData.symbol,
-              side: alertData.side,
-              tier: alertData.tier,
-              alertId: savedAlert.id,
-              positionId: existingPosition.id,
-              reason: 'Higher tier alert received',
-              details: `Upgrade from ${existingPosition.tier} to ${alertData.tier}`,
-              success: true,
-              createdAt: new Date().toISOString()
-            });
-
-            return NextResponse.json({
-              message: "Alert saved, TP upgrade pending",
-              alert: savedAlert,
-              bot_action: "tp_upgrade_pending"
-            }, { status: 201 });
-          }
-        }
-
-        if (botConfig.sameSymbolBehavior === 'emergency_override' && alertData.tier === 'Emergency') {
-          // Check emergency override conditions
-          const canOverride = checkEmergencyOverride(existingPosition, botConfig);
+      if (isOpposite) {
+        if (botConfig.oppositeDirectionAction === "close_and_reverse") {
+          console.log(`🔄 Closing opposite position and reversing on ${data.ticker}`);
           
-          if (!canOverride.allowed) {
-            await db.insert(botActions).values({
-              actionType: 'emergency_override_denied',
-              symbol: alertData.symbol,
-              side: alertData.side,
-              tier: alertData.tier,
-              alertId: savedAlert.id,
-              positionId: existingPosition.id,
-              reason: 'Emergency override conditions not met',
-              details: canOverride.reason,
-              success: true,
-              createdAt: new Date().toISOString()
+          // Close existing position
+          try {
+            const closeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/exchange/close-position`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                symbol: data.ticker,
+                positionIdx: existingPosition.direction === "long" ? 1 : 2,
+              }),
             });
 
-            return NextResponse.json({
-              message: "Emergency override denied",
-              alert: savedAlert,
-              bot_action: "emergency_override_denied"
-            }, { status: 201 });
-          }
+            if (!closeResponse.ok) {
+              throw new Error("Failed to close position");
+            }
 
-          // Close existing position and open new one
-          // This will be handled by position management logic
-        }
-      } else {
-        // Opposite direction
-        const strategy = botConfig.oppositeDirectionStrategy;
-        
-        if (strategy === 'ignore_opposite') {
+            // Update database
+            await db
+              .update(botPositions)
+              .set({ 
+                status: "closed",
+                closeReason: "opposite_signal",
+                closedAt: new Date(),
+              })
+              .where(eq(botPositions.id, existingPosition.id));
+
+            await db.insert(botActions).values({
+              actionType: "position_closed",
+              symbol: data.ticker,
+              positionId: existingPosition.id,
+              details: JSON.stringify({ reason: "opposite_signal" }),
+            });
+
+            console.log("✅ Opposite position closed, proceeding with new trade");
+          } catch (error) {
+            console.error("❌ Failed to close opposite position:", error);
+            return NextResponse.json({ 
+              success: false, 
+              alert_id: alert.id,
+              error: "Failed to close opposite position"
+            }, { status: 500 });
+          }
+        } else if (botConfig.oppositeDirectionAction === "ignore") {
+          console.log(`⚠️ Opposite direction signal on ${data.ticker}, ignoring`);
           await db.insert(botActions).values({
-            actionType: 'alert_ignored',
-            symbol: alertData.symbol,
-            side: alertData.side,
-            tier: alertData.tier,
-            alertId: savedAlert.id,
-            positionId: existingPosition.id,
-            reason: 'Opposite direction ignored',
-            details: `Have ${existingPosition.side}, received ${alertData.side}`,
-            success: true,
-            createdAt: new Date().toISOString()
+            actionType: "alert_ignored",
+            symbol: data.ticker,
+            details: JSON.stringify({ reason: "opposite_direction_ignore" }),
           });
-
-          return NextResponse.json({
-            message: "Opposite direction signal ignored",
-            alert: savedAlert,
-            bot_action: "ignored_opposite_direction"
-          }, { status: 201 });
+          return NextResponse.json({ 
+            success: true, 
+            alert_id: alert.id,
+            message: "Opposite direction signal, ignoring alert"
+          });
         }
-
-        if (strategy === 'tier_based') {
-          const existingTierNumeric = getTierNumeric(existingPosition.tier);
-          if (alertData.tierNumeric <= existingTierNumeric) {
-            await db.insert(botActions).values({
-              actionType: 'alert_ignored',
-              symbol: alertData.symbol,
-              side: alertData.side,
-              tier: alertData.tier,
-              alertId: savedAlert.id,
-              positionId: existingPosition.id,
-              reason: 'Tier not strong enough',
-              details: `Existing: ${existingPosition.tier}, New: ${alertData.tier}`,
-              success: true,
-              createdAt: new Date().toISOString()
-            });
-
-            return NextResponse.json({
-              message: "Opposite signal not strong enough",
-              alert: savedAlert,
-              bot_action: "ignored_weak_tier"
-            }, { status: 201 });
-          }
-        }
-
-        // For market_reversal, defensive_close, immediate_reverse - will be handled below
-      }
-    }
-
-    // Check max concurrent positions
-    const activePositions = await db.select()
-      .from(botPositions)
-      .where(eq(botPositions.status, 'open'));
-
-    if (activePositions.length >= botConfig.maxConcurrentPositions) {
-      await db.insert(botActions).values({
-        actionType: 'alert_ignored',
-        symbol: alertData.symbol,
-        side: alertData.side,
-        tier: alertData.tier,
-        alertId: savedAlert.id,
-        reason: 'Max positions reached',
-        details: `Already have ${activePositions.length} open positions`,
-        success: true,
-        createdAt: new Date().toISOString()
-      });
-
-      return NextResponse.json({
-        message: "Max concurrent positions reached",
-        alert: savedAlert,
-        bot_action: "ignored_max_positions"
-      }, { status: 201 });
-    }
-
-    // Calculate position size
-    let positionSizeUSDT = 0;
-    if (botConfig.positionSizeMode === 'percent') {
-      // Get balance from exchange (will need credentials from env)
-      // For now, use fixed amount
-      positionSizeUSDT = botConfig.positionSizeFixed;
-    } else {
-      positionSizeUSDT = botConfig.positionSizeFixed;
-    }
-
-    // Calculate leverage
-    const finalLeverage = botConfig.leverageMode === 'from_alert' 
-      ? alertData.leverage 
-      : botConfig.leverageFixed;
-
-    // Calculate quantity based on entry price
-    const quantity = positionSizeUSDT / entry_price;
-
-    // Prepare exchange API request
-    const exchangePayload = {
-      exchange: 'bybit',
-      apiKey: process.env.BYBIT_API_KEY,
-      apiSecret: process.env.BYBIT_API_SECRET,
-      environment: process.env.BYBIT_ENVIRONMENT || 'demo',
-      symbol: alertData.symbol,
-      side: alertData.side === 'BUY' ? 'Buy' : 'Sell',
-      quantity: quantity.toFixed(4),
-      leverage: finalLeverage,
-      stopLoss: alertData.sl.toString(),
-      takeProfit: botConfig.tpStrategy === 'multiple' ? undefined : alertData.mainTp.toString(),
-      tp1: botConfig.tpStrategy === 'multiple' ? alertData.tp1.toString() : undefined,
-      tp2: botConfig.tpStrategy === 'multiple' ? alertData.tp2.toString() : undefined,
-      tp3: botConfig.tpStrategy === 'multiple' ? alertData.tp3.toString() : undefined,
-      tpMode: botConfig.tpStrategy
-    };
-
-    // Check if exchange credentials are configured
-    if (!exchangePayload.apiKey || !exchangePayload.apiSecret) {
-      await db.insert(botActions).values({
-        actionType: 'position_open_failed',
-        symbol: alertData.symbol,
-        side: alertData.side,
-        tier: alertData.tier,
-        alertId: savedAlert.id,
-        reason: 'Exchange credentials not configured',
-        details: 'BYBIT_API_KEY or BYBIT_API_SECRET not found in environment variables',
-        success: false,
-        errorMessage: 'Missing exchange credentials',
-        createdAt: new Date().toISOString()
-      });
-
-      return NextResponse.json({
-        message: "Alert saved, but exchange credentials not configured",
-        alert: savedAlert,
-        bot_action: "failed_no_credentials"
-      }, { status: 201 });
-    }
-
-    // Open position via exchange API
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/exchange/open-position`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(exchangePayload)
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Save position to database
-        const newPosition = await db.insert(botPositions).values({
-          alertId: savedAlert.id,
-          symbol: alertData.symbol,
-          side: alertData.side,
-          tier: alertData.tier,
-          entryPrice: entry_price,
-          quantity,
-          leverage: finalLeverage,
-          stopLoss: alertData.sl,
-          tp1Price: botConfig.tpStrategy === 'multiple' ? alertData.tp1 : null,
-          tp2Price: botConfig.tpStrategy === 'multiple' ? alertData.tp2 : null,
-          tp3Price: botConfig.tpStrategy === 'multiple' ? alertData.tp3 : null,
-          mainTpPrice: alertData.mainTp,
-          currentSl: alertData.sl,
-          positionValue: positionSizeUSDT * finalLeverage,
-          initialMargin: positionSizeUSDT,
-          confirmationCount: 1,
-          confidenceScore: strength,
-          openedAt: new Date().toISOString(),
-          lastUpdated: new Date().toISOString(),
-          bybitOrderId: result.orderId || null,
-          status: 'open'
-        }).returning();
-
-        // Log action
-        await db.insert(botActions).values({
-          actionType: 'position_opened',
-          symbol: alertData.symbol,
-          side: alertData.side,
-          tier: alertData.tier,
-          alertId: savedAlert.id,
-          positionId: newPosition[0].id,
-          reason: 'New signal',
-          details: JSON.stringify({
-            quantity,
-            leverage: finalLeverage,
-            positionSize: positionSizeUSDT
-          }),
-          success: true,
-          createdAt: new Date().toISOString()
-        });
-
-        return NextResponse.json({
-          message: "Alert saved and position opened successfully",
-          alert: savedAlert,
-          position: newPosition[0],
-          bot_action: "position_opened"
-        }, { status: 201 });
       } else {
-        // Position open failed
-        await db.insert(botActions).values({
-          actionType: 'position_open_failed',
-          symbol: alertData.symbol,
-          side: alertData.side,
-          tier: alertData.tier,
-          alertId: savedAlert.id,
-          reason: 'Exchange API error',
-          details: result.message || 'Unknown error',
-          success: false,
-          errorMessage: result.message,
-          createdAt: new Date().toISOString()
-        });
-
-        return NextResponse.json({
-          message: "Alert saved, but position open failed",
-          alert: savedAlert,
-          error: result.message,
-          bot_action: "failed_exchange_error"
-        }, { status: 201 });
+        // Same direction - add to position or ignore based on sameSymbolAction
+        if (botConfig.sameSymbolAction === "add_to_position") {
+          console.log(`➕ Adding to existing position on ${data.ticker}`);
+          // Continue with opening new position
+        }
       }
-    } catch (error) {
+    }
+
+    // ============================================
+    // 🎯 CALCULATE SL/TP VALUES
+    // ============================================
+    
+    const entryPrice = parseFloat(data.entry);
+    let slPrice: number | null = null;
+    let tp1Price: number | null = null;
+    let tp2Price: number | null = null;
+    let tp3Price: number | null = null;
+
+    // Check if alert contains SL/TP values
+    const hasSlTpInAlert = data.sl && data.tp1 && data.tp2 && data.tp3;
+
+    if (hasSlTpInAlert) {
+      // Use values from alert (priority)
+      console.log("✅ Using SL/TP from alert");
+      slPrice = parseFloat(data.sl);
+      tp1Price = parseFloat(data.tp1);
+      tp2Price = parseFloat(data.tp2);
+      tp3Price = parseFloat(data.tp3);
+    } else if (botConfig.useDefaultSlTp) {
+      // Calculate default SL/TP based on entry price
+      console.log("🛡️ Using default SL/TP from settings");
+      
+      const slPercent = botConfig.defaultSlPercent / 100;
+      const tp1Percent = botConfig.defaultTp1Percent / 100;
+      const tp2Percent = botConfig.defaultTp2Percent / 100;
+      const tp3Percent = botConfig.defaultTp3Percent / 100;
+
+      if (data.direction === "long") {
+        slPrice = entryPrice * (1 - slPercent);
+        tp1Price = entryPrice * (1 + tp1Percent);
+        tp2Price = entryPrice * (1 + tp2Percent);
+        tp3Price = entryPrice * (1 + tp3Percent);
+      } else {
+        slPrice = entryPrice * (1 + slPercent);
+        tp1Price = entryPrice * (1 - tp1Percent);
+        tp2Price = entryPrice * (1 - tp2Percent);
+        tp3Price = entryPrice * (1 - tp3Percent);
+      }
+
+      console.log(`📊 Calculated SL/TP: SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`);
+    } else {
+      // No SL/TP in alert and default SL/TP not enabled
+      console.log("❌ No SL/TP provided and default SL/TP not enabled");
       await db.insert(botActions).values({
-        actionType: 'position_open_failed',
-        symbol: alertData.symbol,
-        side: alertData.side,
-        tier: alertData.tier,
-        alertId: savedAlert.id,
-        reason: 'API request failed',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        success: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        createdAt: new Date().toISOString()
+        actionType: "alert_ignored",
+        symbol: data.ticker,
+        details: JSON.stringify({ reason: "no_sl_tp_provided" }),
+      });
+      return NextResponse.json({ 
+        success: false, 
+        alert_id: alert.id,
+        error: "No SL/TP provided and default SL/TP not enabled"
+      }, { status: 400 });
+    }
+
+    // ============================================
+    // 💰 CALCULATE POSITION SIZE
+    // ============================================
+
+    let positionSizeUsd = botConfig.positionSizeUsd;
+
+    if (botConfig.tierBasedSize) {
+      if (data.tier === "1") positionSizeUsd = botConfig.tier1SizeUsd;
+      else if (data.tier === "2") positionSizeUsd = botConfig.tier2SizeUsd;
+      else if (data.tier === "3") positionSizeUsd = botConfig.tier3SizeUsd;
+    }
+
+    // Calculate quantity
+    const quantity = positionSizeUsd / entryPrice;
+
+    // Get leverage
+    const leverage = botConfig.leverage;
+
+    console.log(`💰 Position size: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
+
+    // ============================================
+    // 🚀 OPEN POSITION ON EXCHANGE
+    // ============================================
+
+    try {
+      const openPositionResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/exchange/open-position`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: data.ticker,
+            side: data.direction === "long" ? "Buy" : "Sell",
+            qty: quantity.toFixed(8),
+            leverage: leverage,
+            sl: slPrice?.toFixed(2),
+            tp1: tp1Price?.toFixed(2),
+            tp2: tp2Price?.toFixed(2),
+            tp3: tp3Price?.toFixed(2),
+            mainTp: data.main_tp,
+          }),
+        }
+      );
+
+      if (!openPositionResponse.ok) {
+        const errorData = await openPositionResponse.json();
+        throw new Error(errorData.error || "Failed to open position");
+      }
+
+      const positionData = await openPositionResponse.json();
+      console.log("✅ Position opened on exchange:", positionData);
+
+      // ============================================
+      // 💾 SAVE POSITION TO DATABASE
+      // ============================================
+
+      const [botPosition] = await db.insert(botPositions).values({
+        symbol: data.ticker,
+        direction: data.direction,
+        entryPrice: entryPrice.toString(),
+        quantity: quantity.toString(),
+        leverage: leverage,
+        sl: slPrice?.toString() || null,
+        tp1: tp1Price?.toString() || null,
+        tp2: tp2Price?.toString() || null,
+        tp3: tp3?.toString() || null,
+        mainTp: data.main_tp,
+        tier: data.tier,
+        confidence: data.confidence,
+        confirmations: data.confirmations,
+        tp1Hit: false,
+        tp2Hit: false,
+        tp3Hit: false,
+        status: "open",
+        alertId: alert.id,
+      }).returning();
+
+      console.log("✅ Position saved to database:", botPosition.id);
+
+      // Save action
+      await db.insert(botActions).values({
+        actionType: "position_opened",
+        symbol: data.ticker,
+        positionId: botPosition.id,
+        details: JSON.stringify({
+          tier: data.tier,
+          confidence: data.confidence,
+          entry: entryPrice,
+          quantity: quantity,
+          leverage: leverage,
+        }),
       });
 
       return NextResponse.json({
-        message: "Alert saved, but position open failed",
-        alert: savedAlert,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        bot_action: "failed_api_error"
-      }, { status: 201 });
+        success: true,
+        alert_id: alert.id,
+        position_id: botPosition.id,
+        message: "Alert received and position opened successfully",
+        position: {
+          symbol: data.ticker,
+          direction: data.direction,
+          entry: entryPrice,
+          quantity: quantity,
+          sl: slPrice,
+          tp1: tp1Price,
+          tp2: tp2Price,
+          tp3: tp3Price,
+        },
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to open position:", error);
+
+      // Save failed action
+      await db.insert(botActions).values({
+        actionType: "position_failed",
+        symbol: data.ticker,
+        details: JSON.stringify({ error: error.message }),
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          alert_id: alert.id,
+          error: error.message,
+        },
+        { status: 500 }
+      );
     }
-
-  } catch (error) {
-    console.error('POST error:', error);
-    return NextResponse.json({
-      error: 'Internal server error: ' + error,
-      code: "INTERNAL_SERVER_ERROR"
-    }, { status: 500 });
+  } catch (error: any) {
+    console.error("❌ Webhook error:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
   }
-}
-
-// Helper functions
-function getTierNumeric(tier: string): number {
-  const tierMap: Record<string, number> = {
-    'Platinum': 5,
-    'Premium': 4,
-    'Standard': 3,
-    'Quick': 2,
-    'Emergency': 1
-  };
-  return tierMap[tier] || 0;
-}
-
-function checkEmergencyOverride(existingPosition: any, config: any): { allowed: boolean; reason: string } {
-  if (config.emergencyOverrideMode === 'never') {
-    return { allowed: false, reason: 'Emergency override disabled' };
-  }
-
-  if (config.emergencyOverrideMode === 'always') {
-    return { allowed: true, reason: 'Always override enabled' };
-  }
-
-  // Calculate current profit
-  const pnlPercent = (existingPosition.unrealisedPnl / existingPosition.initialMargin) * 100;
-
-  if (config.emergencyOverrideMode === 'only_profit' && pnlPercent <= 0) {
-    return { allowed: false, reason: `Position in loss (${pnlPercent.toFixed(2)}%)` };
-  }
-
-  if (config.emergencyOverrideMode === 'profit_above_x' && pnlPercent < config.emergencyMinProfitPercent) {
-    return { allowed: false, reason: `Profit ${pnlPercent.toFixed(2)}% below minimum ${config.emergencyMinProfitPercent}%` };
-  }
-
-  return { allowed: true, reason: 'Override conditions met' };
 }
