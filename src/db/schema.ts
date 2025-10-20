@@ -126,3 +126,15 @@ export const positionHistory = sqliteTable('position_history', {
   closedAt: text('closed_at').notNull(),
   durationMinutes: integer('duration_minutes'),
 });
+
+export const botLogs = sqliteTable('bot_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  timestamp: integer('timestamp').notNull(),
+  level: text('level', { length: 20 }).notNull(), // error, warning, info, success
+  action: text('action', { length: 100 }).notNull(), // webhook_received, position_opened, etc.
+  message: text('message').notNull(),
+  details: text('details'), // JSON string with additional data
+  alertId: integer('alert_id').references(() => alerts.id),
+  positionId: integer('position_id').references(() => botPositions.id),
+  createdAt: integer('created_at').notNull(),
+});
