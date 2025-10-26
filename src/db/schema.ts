@@ -2,12 +2,12 @@ import { sqliteTable, integer, text, real } from 'drizzle-orm/sqlite-core';
 
 export const alerts = sqliteTable('alerts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  timestamp: integer('timestamp').notNull(), // Unix timestamp from TradingView
+  timestamp: integer('timestamp').notNull(),
   symbol: text('symbol', { length: 50 }).notNull(),
-  side: text('side', { length: 10 }).notNull(), // BUY/SELL
-  tier: text('tier', { length: 20 }).notNull(), // Platinum/Premium/Standard/Quick/Emergency
-  tierNumeric: integer('tier_numeric').notNull(), // 1-5
-  strength: real('strength').notNull(), // 0.000-1.000
+  side: text('side', { length: 10 }).notNull(),
+  tier: text('tier', { length: 20 }).notNull(),
+  tierNumeric: integer('tier_numeric').notNull(),
+  strength: real('strength').notNull(),
   entryPrice: real('entry_price').notNull(),
   sl: real('sl').notNull(),
   tp1: real('tp1').notNull(),
@@ -25,11 +25,13 @@ export const alerts = sqliteTable('alerts', {
   inFvg: integer('in_fvg', { mode: 'boolean' }).notNull(),
   obScore: real('ob_score').notNull(),
   fvgScore: real('fvg_score').notNull(),
-  institutionalFlow: real('institutional_flow'), // nullable
-  accumulation: real('accumulation'), // nullable
-  volumeClimax: integer('volume_climax', { mode: 'boolean' }), // nullable
-  latency: integer('latency').notNull(), // milliseconds from tv_ts to received
-  rawJson: text('raw_json').notNull(), // full JSON alert
+  institutionalFlow: real('institutional_flow'),
+  accumulation: real('accumulation'),
+  volumeClimax: integer('volume_climax', { mode: 'boolean' }),
+  latency: integer('latency').notNull(),
+  rawJson: text('raw_json').notNull(),
+  executionStatus: text('execution_status').notNull().default('pending'),
+  rejectionReason: text('rejection_reason'),
   createdAt: text('created_at').notNull(),
 });
 

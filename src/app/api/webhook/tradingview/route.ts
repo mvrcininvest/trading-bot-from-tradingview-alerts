@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Save alert to database
+    // Save alert to database with pending status
     const [alert] = await db.insert(alerts).values({
       timestamp: data.timestamp || Date.now(),
       symbol: data.symbol,
@@ -56,6 +56,8 @@ export async function POST(request: Request) {
       volumeClimax: data.volumeClimax || null,
       latency: data.latency || 0,
       rawJson: JSON.stringify(data),
+      executionStatus: 'pending',
+      rejectionReason: null,
       createdAt: new Date().toISOString(),
     }).returning();
 
@@ -69,6 +71,15 @@ export async function POST(request: Request) {
     const settings = await db.select().from(botSettings).limit(1);
     if (settings.length === 0) {
       console.log("⚠️ No bot settings found, skipping trade");
+      
+      // Update alert status to rejected
+      await db.update(alerts)
+        .set({ 
+          executionStatus: 'rejected',
+          rejectionReason: 'bot_settings_not_configured'
+        })
+        .where(eq(alerts.id, alert.id));
+      
       return NextResponse.json({ 
         success: true, 
         alert_id: alert.id,
@@ -81,6 +92,15 @@ export async function POST(request: Request) {
     // Check if bot is enabled
     if (!botConfig.botEnabled) {
       console.log("🛑 Bot is disabled");
+      
+      // Update alert status to rejected
+      await db.update(alerts)
+        .set({ 
+          executionStatus: 'rejected',
+          rejectionReason: 'bot_disabled'
+        })
+        .where(eq(alerts.id, alert.id));
+      
       return NextResponse.json({ 
         success: true, 
         alert_id: alert.id,
@@ -92,6 +112,15 @@ export async function POST(request: Request) {
     const disabledTiers = JSON.parse(botConfig.disabledTiers || '[]');
     if (disabledTiers.includes(data.tier)) {
       console.log(`⚠️ Alert tier ${data.tier} is disabled`);
+      
+      // Update alert status to rejected
+      await db.update(alerts)
+        .set({ 
+          executionStatus: 'rejected',
+          rejectionReason: 'tier_disabled'
+        })
+        .where(eq(alerts.id, alert.id));
+      
       await db.insert(botActions).values({
         actionType: "alert_filtered",
         symbol: data.symbol,
@@ -103,6 +132,7 @@ export async function POST(request: Request) {
         success: false,
         createdAt: new Date().toISOString(),
       });
+      
       return NextResponse.json({ 
         success: true, 
         alert_id: alert.id,
@@ -127,6 +157,15 @@ export async function POST(request: Request) {
       
       if (botConfig.sameSymbolBehavior === "ignore") {
         console.log(`⚠️ Position already exists on ${data.symbol}, ignoring`);
+        
+        // Update alert status to rejected
+        await db.update(alerts)
+          .set({ 
+            executionStatus: 'rejected',
+            rejectionReason: 'same_symbol_position_exists'
+          })
+          .where(eq(alerts.id, alert.id));
+        
         await db.insert(botActions).values({
           actionType: "alert_ignored",
           symbol: data.symbol,
@@ -138,6 +177,7 @@ export async function POST(request: Request) {
           success: false,
           createdAt: new Date().toISOString(),
         });
+        
         return NextResponse.json({ 
           success: true, 
           alert_id: alert.id,
@@ -194,6 +234,15 @@ export async function POST(request: Request) {
             console.log("✅ Opposite position closed, proceeding with new trade");
           } catch (error) {
             console.error("❌ Failed to close opposite position:", error);
+            
+            // Update alert status to rejected
+            await db.update(alerts)
+              .set({ 
+                executionStatus: 'rejected',
+                rejectionReason: 'failed_to_close_opposite_position'
+              })
+              .where(eq(alerts.id, alert.id));
+            
             return NextResponse.json({ 
               success: false, 
               alert_id: alert.id,
@@ -202,6 +251,15 @@ export async function POST(request: Request) {
           }
         } else {
           console.log(`⚠️ Opposite direction signal on ${data.symbol}, ignoring`);
+          
+          // Update alert status to rejected
+          await db.update(alerts)
+            .set({ 
+              executionStatus: 'rejected',
+              rejectionReason: 'opposite_direction_ignored'
+            })
+            .where(eq(alerts.id, alert.id));
+          
           await db.insert(botActions).values({
             actionType: "alert_ignored",
             symbol: data.symbol,
@@ -213,6 +271,7 @@ export async function POST(request: Request) {
             success: false,
             createdAt: new Date().toISOString(),
           });
+          
           return NextResponse.json({ 
             success: true, 
             alert_id: alert.id,
@@ -230,6 +289,11 @@ export async function POST(request: Request) {
               lastUpdated: new Date().toISOString(),
             })
             .where(eq(botPositions.id, existingPosition.id));
+          
+          // Update alert status to executed (confirmation tracked)
+          await db.update(alerts)
+            .set({ executionStatus: 'executed' })
+            .where(eq(alerts.id, alert.id));
           
           return NextResponse.json({ 
             success: true, 
@@ -285,6 +349,15 @@ export async function POST(request: Request) {
     } else {
       // No SL/TP in alert and default SL/TP not enabled
       console.log("❌ No SL/TP provided and default SL/TP not enabled");
+      
+      // Update alert status to rejected
+      await db.update(alerts)
+        .set({ 
+          executionStatus: 'rejected',
+          rejectionReason: 'no_sl_tp_provided'
+        })
+        .where(eq(alerts.id, alert.id));
+      
       await db.insert(botActions).values({
         actionType: "alert_ignored",
         symbol: data.symbol,
@@ -296,6 +369,7 @@ export async function POST(request: Request) {
         success: false,
         createdAt: new Date().toISOString(),
       });
+      
       return NextResponse.json({ 
         success: false, 
         alert_id: alert.id,
@@ -400,6 +474,11 @@ export async function POST(request: Request) {
 
       console.log("✅ Position saved to database:", botPosition.id);
 
+      // Update alert status to executed
+      await db.update(alerts)
+        .set({ executionStatus: 'executed' })
+        .where(eq(alerts.id, alert.id));
+
       // Save action
       await db.insert(botActions).values({
         actionType: "position_opened",
@@ -438,6 +517,14 @@ export async function POST(request: Request) {
       });
     } catch (error: any) {
       console.error("❌ Failed to open position:", error);
+
+      // Update alert status to rejected
+      await db.update(alerts)
+        .set({ 
+          executionStatus: 'rejected',
+          rejectionReason: 'exchange_error'
+        })
+        .where(eq(alerts.id, alert.id));
 
       // Save failed action
       await db.insert(botActions).values({

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter } from "lucide-react";
+import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -44,6 +44,8 @@ interface AlertData {
   volumeClimax: boolean | null;
   latency: number;
   rawJson: string;
+  executionStatus: string;
+  rejectionReason: string | null;
   createdAt: string;
 }
 
@@ -52,11 +54,13 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, buy: 0, sell: 0, avgLatency: 0 });
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [cleaningOld, setCleaningOld] = useState(false);
   
   // Filtry
   const [tierFilter, setTierFilter] = useState<string>("all");
   const [symbolFilter, setSymbolFilter] = useState<string>("all");
   const [sideFilter, setSideFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [symbols, setSymbols] = useState<string[]>([]);
 
   const webhookUrl = typeof window !== "undefined" 
@@ -122,11 +126,31 @@ export default function AlertsPage() {
     }
   };
 
+  const cleanOldAlerts = async () => {
+    setCleaningOld(true);
+    try {
+      const response = await fetch("/api/alerts/cleanup", { method: "DELETE" });
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success(data.message);
+        fetchAlerts();
+      } else {
+        toast.error("Nie udało się wyczyścić alertów");
+      }
+    } catch (error) {
+      toast.error("Błąd czyszczenia alertów");
+    } finally {
+      setCleaningOld(false);
+    }
+  };
+
   // Filtrowanie alertów
   const filteredAlerts = alerts.filter(alert => {
     if (tierFilter !== "all" && alert.tier !== tierFilter) return false;
     if (symbolFilter !== "all" && alert.symbol !== symbolFilter) return false;
     if (sideFilter !== "all" && alert.side !== sideFilter) return false;
+    if (statusFilter !== "all" && alert.executionStatus !== statusFilter) return false;
     return true;
   });
 
@@ -139,6 +163,41 @@ export default function AlertsPage() {
       case 'emergency': return 'bg-red-500';
       default: return 'bg-gray-500';
     }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'executed': return 'bg-green-500/20 text-green-400 border-green-500/40';
+      case 'rejected': return 'bg-red-500/20 text-red-400 border-red-500/40';
+      case 'pending': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40';
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/40';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'executed': return '✓ Wykonany';
+      case 'rejected': return '✗ Odrzucony';
+      case 'pending': return '⏳ Oczekuje';
+      default: return status;
+    }
+  };
+
+  const getRejectionReasonLabel = (reason: string | null) => {
+    if (!reason) return null;
+    
+    const reasons: Record<string, string> = {
+      'bot_settings_not_configured': 'Brak konfiguracji bota',
+      'bot_disabled': 'Bot wyłączony',
+      'tier_disabled': 'Tier wyłączony',
+      'same_symbol_position_exists': 'Pozycja już istnieje',
+      'opposite_direction_ignored': 'Przeciwny kierunek zignorowany',
+      'failed_to_close_opposite_position': 'Błąd zamykania pozycji',
+      'no_sl_tp_provided': 'Brak SL/TP',
+      'exchange_error': 'Błąd giełdy',
+    };
+    
+    return reasons[reason] || reason;
   };
 
   const formatPrice = (price: number) => {
@@ -169,10 +228,22 @@ export default function AlertsPage() {
               <p className="text-gray-400">Odbieraj i zarządzaj sygnałami z wskaźnika ICT/SMC</p>
             </div>
           </div>
-          <Button onClick={fetchAlerts} disabled={loading} size="sm" variant="outline" className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300">
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Odśwież
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={cleanOldAlerts} 
+              disabled={cleaningOld}
+              size="sm" 
+              variant="outline" 
+              className="border-red-700 bg-red-900/20 hover:bg-red-900/40 text-red-300"
+            >
+              <Trash className={`mr-2 h-4 w-4 ${cleaningOld ? "animate-spin" : ""}`} />
+              Wyczyść stare
+            </Button>
+            <Button onClick={fetchAlerts} disabled={loading} size="sm" variant="outline" className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300">
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Odśwież
+            </Button>
+          </div>
         </div>
 
         {/* Webhook URL Card */}
@@ -242,7 +313,7 @@ export default function AlertsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300">Tier</label>
                 <Select value={tierFilter} onValueChange={setTierFilter}>
@@ -288,14 +359,30 @@ export default function AlertsPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Status</label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
+                    <SelectValue placeholder="Wszystkie statusy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Wszystkie</SelectItem>
+                    <SelectItem value="executed">Wykonane</SelectItem>
+                    <SelectItem value="rejected">Odrzucone</SelectItem>
+                    <SelectItem value="pending">Oczekujące</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             
-            {(tierFilter !== "all" || symbolFilter !== "all" || sideFilter !== "all") && (
+            {(tierFilter !== "all" || symbolFilter !== "all" || sideFilter !== "all" || statusFilter !== "all") && (
               <Button 
                 onClick={() => {
                   setTierFilter("all");
                   setSymbolFilter("all");
                   setSideFilter("all");
+                  setStatusFilter("all");
                 }}
                 variant="ghost"
                 size="sm"
@@ -346,7 +433,7 @@ export default function AlertsPage() {
                       <th className="text-left p-3 font-semibold text-gray-400">Siła</th>
                       <th className="text-left p-3 font-semibold text-gray-400">Ceny</th>
                       <th className="text-left p-3 font-semibold text-gray-400">SL/TP</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Status</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Status wykonania</th>
                       <th className="text-left p-3 font-semibold text-gray-400">Latencja</th>
                       <th className="text-left p-3 font-semibold text-gray-400">Akcje</th>
                     </tr>
@@ -424,25 +511,16 @@ export default function AlertsPage() {
                           </div>
                         </td>
 
-                        {/* Status */}
+                        {/* Status wykonania */}
                         <td className="p-3">
-                          <div className="space-y-1">
-                            {alert.inOb && (
-                              <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/40">
-                                OB {alert.obScore.toFixed(1)}
-                              </Badge>
-                            )}
-                            {alert.inFvg && (
-                              <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-400 border-purple-500/40">
-                                FVG {alert.fvgScore.toFixed(1)}
-                              </Badge>
-                            )}
-                            {alert.institutionalFlow && alert.institutionalFlow > 0.4 && (
-                              <Badge variant="outline" className="text-xs border-amber-500 text-amber-400">
-                                INST
-                              </Badge>
-                            )}
-                          </div>
+                          <Badge variant="outline" className={getStatusColor(alert.executionStatus)}>
+                            {getStatusLabel(alert.executionStatus)}
+                          </Badge>
+                          {alert.rejectionReason && (
+                            <div className="text-xs text-red-400 mt-1">
+                              {getRejectionReasonLabel(alert.rejectionReason)}
+                            </div>
+                          )}
                         </td>
 
                         {/* Latencja */}
