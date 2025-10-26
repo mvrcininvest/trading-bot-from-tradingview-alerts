@@ -330,8 +330,12 @@ export async function POST(request: Request) {
     // ============================================
 
     try {
+      // Determine base URL for API calls
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
       const openPositionResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/exchange/open-position`,
+        `${baseUrl}/api/exchange/open-position`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
