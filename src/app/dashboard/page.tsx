@@ -387,7 +387,10 @@ export default function DashboardPage() {
     unrealisedPnl: bp.unrealisedPnl.toString()
   }))].reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0);
   const botPnL = botPositions.reduce((sum, bp) => sum + bp.unrealisedPnl, 0);
-  const winningPositions = [...positions, ...botPositions].filter(p => parseFloat(p.unrealisedPnl || "0") > 0).length;
+  const winningPositions = [...positions, ...botPositions].filter(p => {
+    const pnl = typeof p.unrealisedPnl === 'number' ? p.unrealisedPnl : parseFloat(p.unrealisedPnl || "0");
+    return pnl > 0;
+  }).length;
   const totalPositionsCount = positions.length;
 
   if (!credentials) {
