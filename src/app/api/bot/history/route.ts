@@ -117,46 +117,51 @@ export async function GET(request: NextRequest) {
       conditions.push(lt(positionHistory.pnl, 0));
     }
 
-    // Build query with filters
-    let query = db.select().from(positionHistory);
-    
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
+    // Build WHERE condition
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
 
-    // Get paginated results
-    const history = await query
-      .orderBy(desc(positionHistory.closedAt))
-      .limit(limit)
-      .offset(offset);
+    // Get paginated results with conditional where clause
+    const history = whereCondition
+      ? await db.select()
+          .from(positionHistory)
+          .where(whereCondition)
+          .orderBy(desc(positionHistory.closedAt))
+          .limit(limit)
+          .offset(offset)
+      : await db.select()
+          .from(positionHistory)
+          .orderBy(desc(positionHistory.closedAt))
+          .limit(limit)
+          .offset(offset);
 
     // Get total count for filtered results
-    let countQuery = db
-      .select({ count: sql<number>`count(*)` })
-      .from(positionHistory);
+    const countResult = whereCondition
+      ? await db.select({ count: sql<number>`count(*)` })
+          .from(positionHistory)
+          .where(whereCondition)
+      : await db.select({ count: sql<number>`count(*)` })
+          .from(positionHistory);
 
-    if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions));
-    }
-
-    const countResult = await countQuery;
     const total = countResult[0]?.count || 0;
 
     // Calculate statistics for filtered results
-    let statsQuery = db
-      .select({
-        totalPnl: sql<number>`COALESCE(SUM(${positionHistory.pnl}), 0)`,
-        avgPnl: sql<number>`COALESCE(AVG(${positionHistory.pnl}), 0)`,
-        profitableCount: sql<number>`SUM(CASE WHEN ${positionHistory.pnl} > 0 THEN 1 ELSE 0 END)`,
-        totalCount: sql<number>`COUNT(*)`
-      })
-      .from(positionHistory);
+    const statsResult = whereCondition
+      ? await db.select({
+          totalPnl: sql<number>`COALESCE(SUM(${positionHistory.pnl}), 0)`,
+          avgPnl: sql<number>`COALESCE(AVG(${positionHistory.pnl}), 0)`,
+          profitableCount: sql<number>`SUM(CASE WHEN ${positionHistory.pnl} > 0 THEN 1 ELSE 0 END)`,
+          totalCount: sql<number>`COUNT(*)`
+        })
+        .from(positionHistory)
+        .where(whereCondition)
+      : await db.select({
+          totalPnl: sql<number>`COALESCE(SUM(${positionHistory.pnl}), 0)`,
+          avgPnl: sql<number>`COALESCE(AVG(${positionHistory.pnl}), 0)`,
+          profitableCount: sql<number>`SUM(CASE WHEN ${positionHistory.pnl} > 0 THEN 1 ELSE 0 END)`,
+          totalCount: sql<number>`COUNT(*)`
+        })
+        .from(positionHistory);
 
-    if (conditions.length > 0) {
-      statsQuery = statsQuery.where(and(...conditions));
-    }
-
-    const statsResult = await statsQuery;
     const stats = statsResult[0];
 
     const winRate = stats.totalCount > 0 

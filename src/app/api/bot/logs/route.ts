@@ -115,23 +115,32 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(botLogs.positionId, positionId));
     }
 
-    // Build query with conditions
-    let logsQuery = db.select().from(botLogs);
-    let countQuery = db.select({ count: sql<number>`count(*)` }).from(botLogs);
+    // Build WHERE condition
+    const whereCondition = conditions.length > 0 
+      ? (conditions.length === 1 ? conditions[0] : and(...conditions))
+      : undefined;
 
-    if (conditions.length > 0) {
-      const whereCondition = conditions.length === 1 ? conditions[0] : and(...conditions);
-      logsQuery = logsQuery.where(whereCondition);
-      countQuery = countQuery.where(whereCondition);
-    }
+    // Execute queries with conditional where clause
+    const logs = whereCondition
+      ? await db.select()
+          .from(botLogs)
+          .where(whereCondition)
+          .orderBy(desc(botLogs.timestamp))
+          .limit(limit)
+          .offset(offset)
+      : await db.select()
+          .from(botLogs)
+          .orderBy(desc(botLogs.timestamp))
+          .limit(limit)
+          .offset(offset);
 
-    // Execute queries
-    const logs = await logsQuery
-      .orderBy(desc(botLogs.timestamp))
-      .limit(limit)
-      .offset(offset);
+    const totalResult = whereCondition
+      ? await db.select({ count: sql<number>`count(*)` })
+          .from(botLogs)
+          .where(whereCondition)
+      : await db.select({ count: sql<number>`count(*)` })
+          .from(botLogs);
 
-    const totalResult = await countQuery;
     const total = totalResult[0]?.count || 0;
 
     return NextResponse.json({
