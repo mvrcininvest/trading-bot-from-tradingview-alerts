@@ -16,31 +16,24 @@ import {
 
 interface HistoryPosition {
   id: number;
+  positionId: number;
   symbol: string;
   side: string;
   tier: string;
   entryPrice: number;
-  exitPrice: number;
+  closePrice: number;
   quantity: number;
   leverage: number;
-  stopLoss: number;
-  tp1Price: number | null;
-  tp2Price: number | null;
-  tp3Price: number | null;
-  mainTpPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  closeReason: string;
   tp1Hit: boolean;
   tp2Hit: boolean;
   tp3Hit: boolean;
-  currentSl: number;
-  positionValue: number;
-  initialMargin: number;
-  realisedPnl: number;
   confirmationCount: number;
-  confidenceScore: number;
   openedAt: string;
   closedAt: string;
   durationMinutes: number;
-  closeReason: string;
 }
 
 interface BotAction {
@@ -72,8 +65,8 @@ export default function BotHistoryPage() {
       const positionsResponse = await fetch("/api/bot/history");
       const positionsData = await positionsResponse.json();
 
-      if (positionsData.success && Array.isArray(positionsData.positions)) {
-        setPositions(positionsData.positions);
+      if (positionsData.success && Array.isArray(positionsData.history)) {
+        setPositions(positionsData.history);
       }
 
       // Fetch bot actions
@@ -93,19 +86,19 @@ export default function BotHistoryPage() {
   // Calculate statistics
   const stats = {
     totalTrades: positions.length,
-    profitable: positions.filter((p) => p.realisedPnl > 0).length,
-    losses: positions.filter((p) => p.realisedPnl < 0).length,
-    totalPnl: positions.reduce((sum, p) => sum + p.realisedPnl, 0),
+    profitable: positions.filter((p) => p.pnl > 0).length,
+    losses: positions.filter((p) => p.pnl < 0).length,
+    totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0),
     winRate:
       positions.length > 0
-        ? (positions.filter((p) => p.realisedPnl > 0).length / positions.length) * 100
+        ? (positions.filter((p) => p.pnl > 0).length / positions.length) * 100
         : 0,
   };
 
   // Filter positions
   const filteredPositions = positions.filter((p) => {
-    if (filter === "profitable" && p.realisedPnl <= 0) return false;
-    if (filter === "loss" && p.realisedPnl >= 0) return false;
+    if (filter === "profitable" && p.pnl <= 0) return false;
+    if (filter === "loss" && p.pnl >= 0) return false;
     if (closeReasonFilter !== "all" && p.closeReason !== closeReasonFilter) return false;
     return true;
   });
@@ -286,11 +279,8 @@ export default function BotHistoryPage() {
             {!loading && filteredPositions.length > 0 && (
               <div className="space-y-3">
                 {filteredPositions.map((position) => {
-                  const isProfitable = position.realisedPnl > 0;
-                  const pnlPercent =
-                    position.initialMargin !== 0
-                      ? (position.realisedPnl / position.initialMargin) * 100
-                      : 0;
+                  const isProfitable = position.pnl > 0;
+                  const pnlPercent = position.pnlPercent;
 
                   // Tier colors
                   const tierColors: Record<string, string> = {
@@ -340,7 +330,7 @@ export default function BotHistoryPage() {
                             }`}
                           >
                             {isProfitable ? "+" : ""}
-                            {position.realisedPnl.toFixed(4)} USDT
+                            {position.pnl.toFixed(4)} USDT
                           </div>
                           <div
                             className={`text-sm font-semibold ${
@@ -360,7 +350,7 @@ export default function BotHistoryPage() {
                         </div>
                         <div>
                           <div className="text-muted-foreground">Wyjście</div>
-                          <div className="font-semibold">{position.exitPrice.toFixed(4)}</div>
+                          <div className="font-semibold">{position.closePrice.toFixed(4)}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Rozmiar</div>
@@ -381,34 +371,28 @@ export default function BotHistoryPage() {
                       {/* TP Status */}
                       <div className="flex items-center gap-2 text-xs mb-2">
                         <span className="text-muted-foreground">Take Profit:</span>
-                        {position.tp1Price && (
-                          <Badge
-                            variant={position.tp1Hit ? "default" : "outline"}
-                            className={position.tp1Hit ? "bg-green-500" : ""}
-                          >
-                            TP1 {position.tp1Hit ? "✓" : "✗"}
-                          </Badge>
-                        )}
-                        {position.tp2Price && (
-                          <Badge
-                            variant={position.tp2Hit ? "default" : "outline"}
-                            className={position.tp2Hit ? "bg-green-500" : ""}
-                          >
-                            TP2 {position.tp2Hit ? "✓" : "✗"}
-                          </Badge>
-                        )}
-                        {position.tp3Price && (
-                          <Badge
-                            variant={position.tp3Hit ? "default" : "outline"}
-                            className={position.tp3Hit ? "bg-green-500" : ""}
-                          >
-                            TP3 {position.tp3Hit ? "✓" : "✗"}
-                          </Badge>
-                        )}
+                        <Badge
+                          variant={position.tp1Hit ? "default" : "outline"}
+                          className={position.tp1Hit ? "bg-green-500" : ""}
+                        >
+                          TP1 {position.tp1Hit ? "✓" : "✗"}
+                        </Badge>
+                        <Badge
+                          variant={position.tp2Hit ? "default" : "outline"}
+                          className={position.tp2Hit ? "bg-green-500" : ""}
+                        >
+                          TP2 {position.tp2Hit ? "✓" : "✗"}
+                        </Badge>
+                        <Badge
+                          variant={position.tp3Hit ? "default" : "outline"}
+                          className={position.tp3Hit ? "bg-green-500" : ""}
+                        >
+                          TP3 {position.tp3Hit ? "✓" : "✗"}
+                        </Badge>
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>Confidence: {(position.confidenceScore * 100).toFixed(0)}%</span>
+                        <span>Confirmations: {position.confirmationCount}</span>
                         <span>
                           {new Date(position.openedAt).toLocaleString("pl-PL")} →{" "}
                           {new Date(position.closedAt).toLocaleString("pl-PL")}

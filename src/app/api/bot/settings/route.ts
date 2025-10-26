@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       }, { status: 404 });
     }
 
-    return NextResponse.json(settings[0], { status: 200 });
+    return NextResponse.json({ success: true, settings: settings[0] }, { status: 200 });
   } catch (error) {
     console.error('GET error:', error);
     return NextResponse.json({ 
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function updateSettings(request: NextRequest) {
   try {
     const body = await request.json();
 
@@ -172,6 +172,9 @@ export async function PUT(request: NextRequest) {
     if (body.emergencyCanReverse !== undefined) {
       updates.emergencyCanReverse = body.emergencyCanReverse;
     }
+    if (body.useDefaultSlTp !== undefined) {
+      updates.useDefaultSlTp = body.useDefaultSlTp;
+    }
 
     // Map other fields
     if (body.positionSizeMode !== undefined) updates.positionSizeMode = body.positionSizeMode;
@@ -189,6 +192,10 @@ export async function PUT(request: NextRequest) {
     if (body.reversalMinStrength !== undefined) updates.reversalMinStrength = parseFloat(body.reversalMinStrength);
     if (body.emergencyOverrideMode !== undefined) updates.emergencyOverrideMode = body.emergencyOverrideMode;
     if (body.emergencyMinProfitPercent !== undefined) updates.emergencyMinProfitPercent = parseFloat(body.emergencyMinProfitPercent);
+    if (body.defaultSlPercent !== undefined) updates.defaultSlPercent = parseFloat(body.defaultSlPercent);
+    if (body.defaultTp1Percent !== undefined) updates.defaultTp1Percent = parseFloat(body.defaultTp1Percent);
+    if (body.defaultTp2Percent !== undefined) updates.defaultTp2Percent = parseFloat(body.defaultTp2Percent);
+    if (body.defaultTp3Percent !== undefined) updates.defaultTp3Percent = parseFloat(body.defaultTp3Percent);
 
     const settingsId = existingSettings[0].id;
     const updated = await db.update(botSettings)
@@ -203,11 +210,19 @@ export async function PUT(request: NextRequest) {
       }, { status: 500 });
     }
 
-    return NextResponse.json(updated[0], { status: 200 });
+    return NextResponse.json({ success: true, settings: updated[0] }, { status: 200 });
   } catch (error) {
-    console.error('PUT error:', error);
+    console.error('Update error:', error);
     return NextResponse.json({ 
       error: 'Internal server error: ' + error 
     }, { status: 500 });
   }
+}
+
+export async function PUT(request: NextRequest) {
+  return updateSettings(request);
+}
+
+export async function POST(request: NextRequest) {
+  return updateSettings(request);
 }
