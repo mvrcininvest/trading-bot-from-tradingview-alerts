@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Balance {
   asset: string;
@@ -455,17 +456,28 @@ export default function DashboardPage() {
                     {credentials.exchange.toUpperCase()} · {credentials.environment}
                   </p>
                   {botEnabled !== null && (
-                    <Badge 
-                      variant={botEnabled ? "default" : "secondary"}
-                      className={`flex items-center gap-1.5 ${
-                        botEnabled 
-                          ? "bg-green-600/20 text-green-400 border-green-500/30 hover:bg-green-600/30" 
-                          : "bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/30"
-                      }`}
-                    >
-                      <Power className="h-3 w-3" />
-                      BOT {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
-                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge 
+                          variant={botEnabled ? "default" : "secondary"}
+                          className={`flex items-center gap-1.5 cursor-help ${
+                            botEnabled 
+                              ? "bg-green-600/20 text-green-400 border-green-500/30 hover:bg-green-600/30" 
+                              : "bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/30"
+                          }`}
+                        >
+                          <Power className="h-3 w-3" />
+                          BOT {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          {botEnabled 
+                            ? "Bot aktywnie monitoruje alerty z TradingView i automatycznie otwiera pozycje zgodne z ustawieniami" 
+                            : "Bot jest nieaktywny i nie będzie otwierał nowych pozycji. Przejdź do Ustawień Bota aby go włączyć"}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               </div>
@@ -474,71 +486,99 @@ export default function DashboardPage() {
 
           {/* Quick Stats - Dark Theme */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Saldo Konta</p>
-                    <p className="text-2xl font-bold text-white">{totalBalance.toFixed(2)}</p>
-                    <p className="text-xs text-gray-500">USDT</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
-                    <Wallet className="h-6 w-6 text-blue-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Saldo Konta</p>
+                        <p className="text-2xl font-bold text-white">{totalBalance.toFixed(2)}</p>
+                        <p className="text-xs text-gray-500">USDT</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
+                        <Wallet className="h-6 w-6 text-blue-400" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Całkowite saldo dostępne na koncie giełdowym (wolne + zablokowane w pozycjach)</p>
+              </TooltipContent>
+            </Tooltip>
 
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Całkowity PnL</p>
-                    <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
-                    </p>
-                    <p className="text-xs text-gray-500">USDT</p>
-                  </div>
-                  <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'}`}>
-                    <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Całkowity PnL</p>
+                        <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-gray-500">USDT</p>
+                      </div>
+                      <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'}`}>
+                        <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Łączny nierealizowany zysk/strata ze wszystkich otwartych pozycji (bot + manualne)</p>
+              </TooltipContent>
+            </Tooltip>
 
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Pozycje Bota</p>
-                    <p className="text-2xl font-bold text-white">{botPositions.length}</p>
-                    <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
-                    <Bot className="h-6 w-6 text-purple-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Pozycje Bota</p>
+                        <p className="text-2xl font-bold text-white">{botPositions.length}</p>
+                        <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
+                        <Bot className="h-6 w-6 text-purple-400" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Liczba aktywnych pozycji otwartych automatycznie przez bota i ich całkowity PnL</p>
+              </TooltipContent>
+            </Tooltip>
 
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Wszystkie Pozycje</p>
-                    <p className="text-2xl font-bold text-white">{totalPositionsCount}</p>
-                    <p className="text-xs text-gray-500">
-                      {winningPositions} wygrywa
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-amber-500/20 border border-amber-500/30">
-                    <Activity className="h-6 w-6 text-amber-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Wszystkie Pozycje</p>
+                        <p className="text-2xl font-bold text-white">{totalPositionsCount}</p>
+                        <p className="text-xs text-gray-500">
+                          {winningPositions} wygrywa
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-amber-500/20 border border-amber-500/30">
+                        <Activity className="h-6 w-6 text-amber-400" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Wszystkie otwarte pozycje na giełdzie (bot + manualne) z liczbą zyskownych tradów</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
@@ -582,15 +622,22 @@ export default function DashboardPage() {
                       {lastUpdate && <span className="text-xs">Zaktualizowano: {lastUpdate}</span>}
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={() => fetchBalance()}
-                    disabled={loading}
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
-                  >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                    Odśwież
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => fetchBalance()}
+                        disabled={loading}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
+                      >
+                        <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                        Odśwież
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Odśwież saldo konta z giełdy - pobiera aktualne dane o wolnych i zablokowanych środkach</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </CardHeader>
               <CardContent>
@@ -667,13 +714,20 @@ export default function DashboardPage() {
                         {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
                       </span>
                     </div>
-                    <Button 
-                      onClick={() => document.querySelector('[value="bot-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
-                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-                      variant="secondary"
-                    >
-                      Zobacz Pozycje
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          onClick={() => document.querySelector('[value="bot-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
+                          className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                          variant="secondary"
+                        >
+                          Zobacz Pozycje
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Przejdź do szczegółowego widoku pozycji otwartych przez bota z informacjami o TP/SL</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </CardContent>
               </Card>
@@ -695,13 +749,20 @@ export default function DashboardPage() {
                         {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
                       </span>
                     </div>
-                    <Button 
-                      onClick={() => document.querySelector('[value="all-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
-                      className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white"
-                      variant="secondary"
-                    >
-                      Zobacz Wszystkie
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          onClick={() => document.querySelector('[value="all-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
+                          className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white"
+                          variant="secondary"
+                        >
+                          Zobacz Wszystkie
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Zobacz wszystkie otwarte pozycje na giełdzie (bot + manualne) z czasem rzeczywistym</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </CardContent>
               </Card>
@@ -728,26 +789,40 @@ export default function DashboardPage() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      onClick={handleSyncPositions}
-                      disabled={loadingSync}
-                      size="sm"
-                      variant="secondary"
-                      className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:scale-105 transition-transform"
-                    >
-                      <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? "animate-spin" : ""}`} />
-                      Sync
-                    </Button>
-                    <Button
-                      onClick={() => fetchBotPositions()}
-                      disabled={loadingBotPositions}
-                      size="sm"
-                      variant="outline"
-                      className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
-                    >
-                      <RefreshCw className={`mr-2 h-4 w-4 ${loadingBotPositions ? "animate-spin" : ""}`} />
-                      Odśwież
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={handleSyncPositions}
+                          disabled={loadingSync}
+                          size="sm"
+                          variant="secondary"
+                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:scale-105 transition-transform"
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? "animate-spin" : ""}`} />
+                          Sync
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">Synchronizuj pozycje bota z rzeczywistymi pozycjami na giełdzie - zamyka pozycje w bazie danych jeśli zostały zamknięte na giełdzie</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={() => fetchBotPositions()}
+                          disabled={loadingBotPositions}
+                          size="sm"
+                          variant="outline"
+                          className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${loadingBotPositions ? "animate-spin" : ""}`} />
+                          Odśwież
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Odśwież listę pozycji bota z bazy danych (automatyczne odświeżanie co 2s)</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
               </CardHeader>
@@ -900,16 +975,23 @@ export default function DashboardPage() {
                       Wszystkie otwarte pozycje na giełdzie
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={() => fetchPositions()}
-                    disabled={loadingPositions}
-                    size="sm"
-                    variant="outline"
-                    className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
-                  >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
-                    Odśwież
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => fetchPositions()}
+                        disabled={loadingPositions}
+                        size="sm"
+                        variant="outline"
+                        className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
+                      >
+                        <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
+                        Odśwież
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Odśwież pozycje bezpośrednio z giełdy (automatyczne odświeżanie co 0.5s)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1073,54 +1155,89 @@ export default function DashboardPage() {
                             </p>
                           </div>
                         </div>
-                        <Button
-                          onClick={() => router.push("/ustawienia-bota")}
-                          variant="outline"
-                          className="border-gray-700 hover:bg-gray-800 text-gray-300"
-                        >
-                          Zmień Status
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              onClick={() => router.push("/ustawienia-bota")}
+                              variant="outline"
+                              className="border-gray-700 hover:bg-gray-800 text-gray-300"
+                            >
+                              Zmień Status
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Przejdź do ustawień bota aby włączyć/wyłączyć automatyczny trading</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </CardContent>
                   </Card>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button
-                    onClick={() => router.push("/ustawienia-bota")}
-                    className="h-28 flex-col gap-3 bg-gradient-to-br from-blue-600/20 to-gray-900/80 border-gray-700 hover:from-blue-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                    variant="outline"
-                  >
-                    <Bot className="h-10 w-10 text-blue-400" />
-                    <span className="font-semibold">Ustawienia Bota</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => router.push("/ustawienia-bota")}
+                        className="h-28 flex-col gap-3 bg-gradient-to-br from-blue-600/20 to-gray-900/80 border-gray-700 hover:from-blue-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
+                        variant="outline"
+                      >
+                        <Bot className="h-10 w-10 text-blue-400" />
+                        <span className="font-semibold">Ustawienia Bota</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Konfiguruj parametry bota: wielkość pozycji, dźwignia, filtry tierów, zarządzanie ryzykiem</p>
+                    </TooltipContent>
+                  </Tooltip>
                   
-                  <Button
-                    onClick={() => router.push("/exchange-test")}
-                    className="h-28 flex-col gap-3 bg-gradient-to-br from-purple-600/20 to-gray-900/80 border-gray-700 hover:from-purple-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                    variant="outline"
-                  >
-                    <Settings className="h-10 w-10 text-purple-400" />
-                    <span className="font-semibold">Konfiguracja API</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => router.push("/exchange-test")}
+                        className="h-28 flex-col gap-3 bg-gradient-to-br from-purple-600/20 to-gray-900/80 border-gray-700 hover:from-purple-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
+                        variant="outline"
+                      >
+                        <Settings className="h-10 w-10 text-purple-400" />
+                        <span className="font-semibold">Konfiguracja API</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Zarządzaj kluczami API giełdy - testuj połączenie, zmieniaj środowisko (demo/testnet/produkcja)</p>
+                    </TooltipContent>
+                  </Tooltip>
                   
-                  <Button
-                    onClick={() => router.push("/logi-bota")}
-                    className="h-28 flex-col gap-3 bg-gradient-to-br from-green-600/20 to-gray-900/80 border-gray-700 hover:from-green-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                    variant="outline"
-                  >
-                    <FileText className="h-10 w-10 text-green-400" />
-                    <span className="font-semibold">Logi Bota</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => router.push("/logi-bota")}
+                        className="h-28 flex-col gap-3 bg-gradient-to-br from-green-600/20 to-gray-900/80 border-gray-700 hover:from-green-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
+                        variant="outline"
+                      >
+                        <FileText className="h-10 w-10 text-green-400" />
+                        <span className="font-semibold">Logi Bota</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Przeglądaj szczegółowe logi działania bota - alerty, otwarte pozycje, błędy, synchronizacje</p>
+                    </TooltipContent>
+                  </Tooltip>
                   
-                  <Button
-                    onClick={() => router.push("/bot-history")}
-                    className="h-28 flex-col gap-3 bg-gradient-to-br from-amber-600/20 to-gray-900/80 border-gray-700 hover:from-amber-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                    variant="outline"
-                  >
-                    <History className="h-10 w-10 text-amber-400" />
-                    <span className="font-semibold">Historia Pozycji</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => router.push("/bot-history")}
+                        className="h-28 flex-col gap-3 bg-gradient-to-br from-amber-600/20 to-gray-900/80 border-gray-700 hover:from-amber-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
+                        variant="outline"
+                      >
+                        <History className="h-10 w-10 text-amber-400" />
+                        <span className="font-semibold">Historia Pozycji</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Kompletna historia zamkniętych pozycji z analizą wyników, statystykami win/loss ratio</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
 
                 <Card className="bg-gray-900/70 border-gray-700 shadow-xl backdrop-blur-sm">
@@ -1169,37 +1286,58 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Button
-                    onClick={handleSyncPositions}
-                    disabled={loadingSync}
-                    className="h-24 flex-col gap-2 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                    variant="default"
-                  >
-                    <RefreshCw className={`h-8 w-8 ${loadingSync ? "animate-spin" : ""}`} />
-                    <span className="font-semibold">Synchronizuj Pozycje</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={handleSyncPositions}
+                        disabled={loadingSync}
+                        className="h-24 flex-col gap-2 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:scale-105 transition-all shadow-xl border-0"
+                        variant="default"
+                      >
+                        <RefreshCw className={`h-8 w-8 ${loadingSync ? "animate-spin" : ""}`} />
+                        <span className="font-semibold">Synchronizuj Pozycje</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">Zsynchronizuj bazę danych pozycji bota z rzeczywistymi pozycjami na giełdzie - zamyka automatycznie pozycje które już nie istnieją</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                  <Button
-                    onClick={() => {
-                      fetchBalance();
-                      fetchPositions();
-                      fetchBotPositions();
-                    }}
-                    className="h-24 flex-col gap-2 bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                    variant="default"
-                  >
-                    <RefreshCw className="h-8 w-8" />
-                    <span className="font-semibold">Odśwież Wszystko</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => {
+                          fetchBalance();
+                          fetchPositions();
+                          fetchBotPositions();
+                        }}
+                        className="h-24 flex-col gap-2 bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white hover:scale-105 transition-all shadow-xl border-0"
+                        variant="default"
+                      >
+                        <RefreshCw className="h-8 w-8" />
+                        <span className="font-semibold">Odśwież Wszystko</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Odśwież jednocześnie saldo konta, pozycje giełdowe i pozycje bota</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                  <Button
-                    onClick={() => router.push("/alerts")}
-                    className="h-24 flex-col gap-2 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                    variant="default"
-                  >
-                    <Bell className="h-8 w-8" />
-                    <span className="font-semibold">Zobacz Alerty</span>
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => router.push("/alerts")}
+                        className="h-24 flex-col gap-2 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white hover:scale-105 transition-all shadow-xl border-0"
+                        variant="default"
+                      >
+                        <Bell className="h-8 w-8" />
+                        <span className="font-semibold">Zobacz Alerty</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Przeglądaj wszystkie alerty otrzymane z TradingView z filtrowaniem i szczegółami</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
 
                 <Card className="bg-gradient-to-r from-blue-600/20 to-gray-900/80 border-blue-700/30 shadow-xl">
