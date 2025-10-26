@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force Edge Runtime for crypto.subtle support
+export const runtime = 'edge';
+
 // Bybit API Signing Helper
 async function signBybitRequest(
   apiKey: string,
