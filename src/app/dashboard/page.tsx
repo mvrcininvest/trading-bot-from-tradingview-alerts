@@ -566,7 +566,7 @@ export default function DashboardPage() {
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
             {/* Balance Card - Dark Theme */}
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -646,7 +646,7 @@ export default function DashboardPage() {
 
             {/* Quick Summary - Dark Theme */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/60 to-gray-900/60 backdrop-blur-sm">
+              <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle className="text-lg text-white">Pozycje Bota</CardTitle>
                   <CardDescription className="text-gray-500">Aktywne pozycje automatyczne</CardDescription>
@@ -674,7 +674,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-gray-800 bg-gradient-to-br from-purple-600/20 via-gray-900/60 to-gray-900/60 backdrop-blur-sm">
+              <Card className="border-gray-800 bg-gradient-to-br from-purple-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle className="text-lg text-white">Wszystkie Pozycje</CardTitle>
                   <CardDescription className="text-gray-500">Łączne informacje</CardDescription>
@@ -706,7 +706,7 @@ export default function DashboardPage() {
 
           {/* Bot Positions Tab - Dark Theme */}
           <TabsContent value="bot-positions" className="space-y-6">
-            <Card className="border-blue-700 bg-gradient-to-br from-blue-600/10 via-gray-900/60 to-gray-900/60 backdrop-blur-sm">
+            <Card className="border-blue-700 bg-gradient-to-br from-blue-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -879,7 +879,7 @@ export default function DashboardPage() {
 
           {/* All Positions Tab */}
           <TabsContent value="all-positions" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -1032,7 +1032,7 @@ export default function DashboardPage() {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
                   <Settings className="h-5 w-5" />
@@ -1044,62 +1044,65 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Button
                     onClick={() => router.push("/ustawienia-bota")}
-                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
+                    className="h-28 flex-col gap-3 bg-gradient-to-br from-blue-600/20 to-gray-900/80 border-gray-700 hover:from-blue-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
                     variant="outline"
                   >
-                    <Bot className="h-8 w-8" />
-                    <span>Ustawienia Bota</span>
+                    <Bot className="h-10 w-10 text-blue-400" />
+                    <span className="font-semibold">Ustawienia Bota</span>
                   </Button>
                   
                   <Button
                     onClick={() => router.push("/exchange-test")}
-                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
+                    className="h-28 flex-col gap-3 bg-gradient-to-br from-purple-600/20 to-gray-900/80 border-gray-700 hover:from-purple-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
                     variant="outline"
                   >
-                    <Settings className="h-8 w-8" />
-                    <span>Konfiguracja API</span>
+                    <Settings className="h-10 w-10 text-purple-400" />
+                    <span className="font-semibold">Konfiguracja API</span>
                   </Button>
                   
                   <Button
                     onClick={() => router.push("/logi-bota")}
-                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
+                    className="h-28 flex-col gap-3 bg-gradient-to-br from-green-600/20 to-gray-900/80 border-gray-700 hover:from-green-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
                     variant="outline"
                   >
-                    <FileText className="h-8 w-8" />
-                    <span>Logi Bota</span>
+                    <FileText className="h-10 w-10 text-green-400" />
+                    <span className="font-semibold">Logi Bota</span>
                   </Button>
                   
                   <Button
                     onClick={() => router.push("/bot-history")}
-                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
+                    className="h-28 flex-col gap-3 bg-gradient-to-br from-amber-600/20 to-gray-900/80 border-gray-700 hover:from-amber-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
                     variant="outline"
                   >
-                    <History className="h-8 w-8" />
-                    <span>Historia Pozycji</span>
+                    <History className="h-10 w-10 text-amber-400" />
+                    <span className="font-semibold">Historia Pozycji</span>
                   </Button>
                 </div>
 
-                <Card className="bg-gray-800/50 border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-base text-white">Informacje o konfiguracji</CardTitle>
+                <Card className="bg-gray-900/70 border-gray-700 shadow-xl backdrop-blur-sm">
+                  <CardHeader className="border-b border-gray-800">
+                    <CardTitle className="text-base text-white flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-blue-400" />
+                      Informacje o konfiguracji
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
-                      <span className="text-gray-400">Giełda:</span>
-                      <span className="font-semibold text-gray-200">{credentials.exchange.toUpperCase()}</span>
+                  <CardContent className="space-y-2 text-sm pt-4">
+                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
+                      <span className="text-gray-400 font-medium">Giełda:</span>
+                      <span className="font-bold text-white">{credentials.exchange.toUpperCase()}</span>
                     </div>
-                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
-                      <span className="text-gray-400">Środowisko:</span>
-                      <span className="font-semibold capitalize text-gray-200">{credentials.environment}</span>
+                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
+                      <span className="text-gray-400 font-medium">Środowisko:</span>
+                      <span className="font-bold capitalize text-white">{credentials.environment}</span>
                     </div>
-                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
-                      <span className="text-gray-400">API Key:</span>
-                      <span className="font-mono text-xs text-gray-300">
+                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
+                      <span className="text-gray-400 font-medium">API Key:</span>
+                      <span className="font-mono text-xs text-gray-300 bg-gray-900/50 px-2 py-1 rounded">
                         {credentials.apiKey.substring(0, 8)}...{credentials.apiKey.slice(-4)}
                       </span>
                     </div>
-                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
-                      <span className="text-gray-400">Zapisano:</span>
+                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
+                      <span className="text-gray-400 font-medium">Zapisano:</span>
                       <span className="text-xs text-gray-300">
                         {new Date(credentials.savedAt).toLocaleString("pl-PL")}
                       </span>
@@ -1112,10 +1115,10 @@ export default function DashboardPage() {
 
           {/* Quick Actions Tab */}
           <TabsContent value="info" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
-                  <Zap className="h-5 w-5" />
+                  <Zap className="h-5 w-5 text-yellow-400" />
                   Szybkie Akcje
                 </CardTitle>
                 <CardDescription className="text-gray-500">Najczęściej używane funkcje</CardDescription>
@@ -1125,11 +1128,11 @@ export default function DashboardPage() {
                   <Button
                     onClick={handleSyncPositions}
                     disabled={loadingSync}
-                    className="h-20 flex-col gap-2 bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:scale-105 transition-all shadow-xl border-0"
                     variant="default"
                   >
-                    <RefreshCw className={`h-6 w-6 ${loadingSync ? "animate-spin" : ""}`} />
-                    <span>Synchronizuj Pozycje</span>
+                    <RefreshCw className={`h-8 w-8 ${loadingSync ? "animate-spin" : ""}`} />
+                    <span className="font-semibold">Synchronizuj Pozycje</span>
                   </Button>
 
                   <Button
@@ -1138,32 +1141,44 @@ export default function DashboardPage() {
                       fetchPositions();
                       fetchBotPositions();
                     }}
-                    className="h-20 flex-col gap-2 bg-purple-600 hover:bg-purple-700 text-white hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white hover:scale-105 transition-all shadow-xl border-0"
                     variant="default"
                   >
-                    <RefreshCw className="h-6 w-6" />
-                    <span>Odśwież Wszystko</span>
+                    <RefreshCw className="h-8 w-8" />
+                    <span className="font-semibold">Odśwież Wszystko</span>
                   </Button>
 
                   <Button
                     onClick={() => router.push("/alerts")}
-                    className="h-20 flex-col gap-2 bg-amber-600 hover:bg-amber-700 text-white hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white hover:scale-105 transition-all shadow-xl border-0"
                     variant="default"
                   >
-                    <Bell className="h-6 w-6" />
-                    <span>Zobacz Alerty</span>
+                    <Bell className="h-8 w-8" />
+                    <span className="font-semibold">Zobacz Alerty</span>
                   </Button>
                 </div>
 
-                <Card className="bg-gradient-to-r from-blue-600/20 to-gray-900 border-blue-700/30">
-                  <CardHeader>
-                    <CardTitle className="text-base text-white">💡 Porady</CardTitle>
+                <Card className="bg-gradient-to-r from-blue-600/20 to-gray-900/80 border-blue-700/30 shadow-xl">
+                  <CardHeader className="border-b border-blue-700/20">
+                    <CardTitle className="text-base text-white">💡 Profesjonalne Porady</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2 text-sm text-gray-400">
-                    <p>• Pozycje odświeżają się automatycznie co 0.5s</p>
-                    <p>• Użyj "Sync" aby zsynchronizować pozycje z giełdą</p>
-                    <p>• Sprawdzaj logi bota regularnie aby monitorować błędy</p>
-                    <p>• Historia pozycji zawiera szczegółowe informacje o zamkniętych tradach</p>
+                  <CardContent className="space-y-3 text-sm text-gray-300 pt-4">
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
+                      <div className="h-2 w-2 rounded-full bg-blue-400 mt-1.5 flex-shrink-0" />
+                      <p>Pozycje odświeżają się automatycznie co 0.5s dla danych w czasie rzeczywistym</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
+                      <div className="h-2 w-2 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
+                      <p>Użyj "Sync" aby zsynchronizować pozycje bota z rzeczywistymi pozycjami na giełdzie</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
+                      <div className="h-2 w-2 rounded-full bg-green-400 mt-1.5 flex-shrink-0" />
+                      <p>Sprawdzaj logi bota regularnie aby monitorować błędy i optymalizować strategię</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
+                      <div className="h-2 w-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                      <p>Historia pozycji zawiera szczegółowe informacje o wszystkich zamkniętych tradach i ich wynikach</p>
+                    </div>
                   </CardContent>
                 </Card>
               </CardContent>
