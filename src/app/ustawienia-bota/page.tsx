@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
+import { Bot } from "lucide-react"
 
 export default function BotSettingsPage() {
   const [loading, setLoading] = useState(true)
@@ -150,32 +151,39 @@ export default function BotSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Ustawienia Bota</h1>
-            <p className="text-muted-foreground">Konfiguracja automatycznego tradingu</p>
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 border border-blue-500/30">
+              <Bot className="h-8 w-8 text-blue-400" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                Ustawienia Bota
+              </h1>
+              <p className="text-gray-400">Konfiguracja automatycznego tradingu</p>
+            </div>
           </div>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
             {saving ? "Zapisywanie..." : "Zapisz Ustawienia"}
           </Button>
         </div>
 
         {/* Bot Enable/Disable */}
-        <Card className="p-6">
+        <Card className="p-6 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold">Status Bota</h3>
-              <p className="text-sm text-muted-foreground">Włącz lub wyłącz automatyczny trading</p>
+              <h3 className="text-lg font-semibold text-white">Status Bota</h3>
+              <p className="text-sm text-gray-500">Włącz lub wyłącz automatyczny trading</p>
             </div>
             <Switch checked={botEnabled} onCheckedChange={setBotEnabled} />
           </div>
         </Card>
 
         {/* Position Size */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Wielkość Pozycji</h3>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Wielkość Pozycji</h3>
           
           <div className="space-y-2">
             <Label>Tryb</Label>
@@ -215,8 +223,8 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* Leverage */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Dźwignia (Leverage)</h3>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Dźwignia (Leverage)</h3>
           
           <div className="space-y-2">
             <Label>Tryb</Label>
@@ -246,8 +254,8 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* Tier Filtering */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Filtrowanie Tier</h3>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Filtrowanie Tier</h3>
           
           <div className="space-y-2">
             <Label>Tryb</Label>
@@ -282,8 +290,8 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* TP Strategy */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Strategia Take Profit</h3>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Strategia Take Profit</h3>
           
           <div className="space-y-2">
             <Label>Tryb TP</Label>
@@ -298,7 +306,7 @@ export default function BotSettingsPage() {
             </Select>
           </div>
           
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-gray-500">
             {tpStrategy === "single" 
               ? "Zamyka całą pozycję gdy main_tp zostanie osiągnięty"
               : "Zamyka pozycję częściowo: 50% na TP1, 30% na TP2, 20% na TP3"}
@@ -306,11 +314,11 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* UPDATED: SL/TP Safety - Changed from % to RR */}
-        <Card className="p-6 space-y-4">
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold">Zabezpieczenie SL/TP</h3>
-              <p className="text-sm text-muted-foreground">Automatyczne ustawienie gdy alert nie zawiera wartości (Risk:Reward)</p>
+              <h3 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h3>
+              <p className="text-sm text-gray-500">Automatyczne ustawienie gdy alert nie zawiera wartości (Risk:Reward)</p>
             </div>
             <Switch checked={useDefaultSlTp} onCheckedChange={setUseDefaultSlTp} />
           </div>
@@ -328,7 +336,7 @@ export default function BotSettingsPage() {
                     step="0.1"
                     min="0.1"
                   />
-                  <p className="text-xs text-muted-foreground">Risk ratio dla Stop Loss</p>
+                  <p className="text-xs text-gray-500">Risk ratio dla Stop Loss</p>
                 </div>
 
                 <div className="space-y-2">
@@ -340,7 +348,7 @@ export default function BotSettingsPage() {
                     step="0.1"
                     min="0.1"
                   />
-                  <p className="text-xs text-muted-foreground">Reward ratio dla TP1</p>
+                  <p className="text-xs text-gray-500">Reward ratio dla TP1</p>
                 </div>
 
                 <div className="space-y-2">
@@ -352,7 +360,7 @@ export default function BotSettingsPage() {
                     step="0.1"
                     min="0.1"
                   />
-                  <p className="text-xs text-muted-foreground">Reward ratio dla TP2</p>
+                  <p className="text-xs text-gray-500">Reward ratio dla TP2</p>
                 </div>
 
                 <div className="space-y-2">
@@ -364,7 +372,7 @@ export default function BotSettingsPage() {
                     step="0.1"
                     min="0.1"
                   />
-                  <p className="text-xs text-muted-foreground">Reward ratio dla TP3</p>
+                  <p className="text-xs text-gray-500">Reward ratio dla TP3</p>
                 </div>
               </div>
 
@@ -381,8 +389,8 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* Max Concurrent Positions */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Maksymalna Liczba Pozycji</h3>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Maksymalna Liczba Pozycji</h3>
           <div className="space-y-2">
             <Label>Max otwartych pozycji jednocześnie</Label>
             <Input 
@@ -395,9 +403,9 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* Same Symbol Behavior */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Zachowanie dla Tego Samego Symbolu</h3>
-          <p className="text-sm text-muted-foreground">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Zachowanie dla Tego Samego Symbolu</h3>
+          <p className="text-sm text-gray-500">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
           
           <div className="space-y-2">
             <Label>Strategia</Label>
@@ -416,9 +424,9 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* Opposite Direction Strategy */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Strategia dla Przeciwnego Kierunku</h3>
-          <p className="text-sm text-muted-foreground">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Strategia dla Przeciwnego Kierunku</h3>
+          <p className="text-sm text-gray-500">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
           
           <div className="space-y-2">
             <Label>Strategia</Label>
@@ -469,9 +477,9 @@ export default function BotSettingsPage() {
         </Card>
 
         {/* Emergency Override */}
-        <Card className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold">Emergency Override</h3>
-          <p className="text-sm text-muted-foreground">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
+        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <h3 className="text-lg font-semibold text-white">Emergency Override</h3>
+          <p className="text-sm text-gray-500">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
           
           <div className="space-y-2">
             <Label>Tryb</Label>
@@ -502,7 +510,7 @@ export default function BotSettingsPage() {
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving} size="lg">
+          <Button onClick={handleSave} disabled={saving} size="lg" className="bg-blue-600 hover:bg-blue-700">
             {saving ? "Zapisywanie..." : "Zapisz Wszystkie Ustawienia"}
           </Button>
         </div>

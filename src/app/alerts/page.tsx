@@ -154,85 +154,89 @@ export default function AlertsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Bell className="h-8 w-8" />
+            <div className="p-3 rounded-xl bg-gradient-to-br from-amber-600/30 to-amber-900/20 border border-amber-500/30">
+              <Bell className="h-8 w-8 text-amber-400" />
+            </div>
             <div>
-              <h1 className="text-3xl font-bold">Alerty TradingView</h1>
-              <p className="text-muted-foreground">Odbieraj i zarządzaj sygnałami z wskaźnika ICT/SMC</p>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                Alerty TradingView
+              </h1>
+              <p className="text-gray-400">Odbieraj i zarządzaj sygnałami z wskaźnika ICT/SMC</p>
             </div>
           </div>
-          <Button onClick={fetchAlerts} disabled={loading} size="sm" variant="outline">
+          <Button onClick={fetchAlerts} disabled={loading} size="sm" variant="outline" className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300">
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Odśwież
           </Button>
         </div>
 
         {/* Webhook URL Card */}
-        <Card>
+        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>URL Webhook</CardTitle>
-            <CardDescription>Wklej ten URL w alertach TradingView</CardDescription>
+            <CardTitle className="text-white">URL Webhook</CardTitle>
+            <CardDescription className="text-gray-500">Wklej ten URL w alertach TradingView</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <code className="flex-1 p-3 bg-muted rounded-md text-sm font-mono overflow-x-auto">
+              <code className="flex-1 p-3 bg-gray-800/60 border border-gray-700 rounded-md text-sm font-mono overflow-x-auto text-gray-300">
                 {webhookUrl}
               </code>
-              <Button onClick={copyWebhookUrl} size="sm">
+              <Button onClick={copyWebhookUrl} size="sm" className="bg-blue-600 hover:bg-blue-700">
                 <Copy className="h-4 w-4 mr-2" />
                 Kopiuj
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              ⚠️ Ważne: TradingView wymaga portu 80. Użyj ngrok lub wdróż aplikację na serwer.
+            <p className="text-xs text-gray-500 mt-2">
+              ⚠️ Ważne: TradingView wymaga portu 80 lub 443. Użyj ngrok lub wdróż aplikację na serwer.
             </p>
           </CardContent>
         </Card>
 
         {/* Statystyki */}
         <div className="grid grid-cols-4 gap-4">
-          <Card>
+          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription>Łącznie alertów</CardDescription>
+              <CardDescription className="text-gray-500">Łącznie alertów</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stats.total}</div>
+              <div className="text-3xl font-bold text-white">{stats.total}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription>Sygnały BUY</CardDescription>
+              <CardDescription className="text-gray-500">Sygnały BUY</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-green-500">{stats.buy}</div>
+              <div className="text-3xl font-bold text-green-400">{stats.buy}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription>Sygnały SELL</CardDescription>
+              <CardDescription className="text-gray-500">Sygnały SELL</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-red-500">{stats.sell}</div>
+              <div className="text-3xl font-bold text-red-400">{stats.sell}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription>Śr. Latencja</CardDescription>
+              <CardDescription className="text-gray-500">Śr. Latencja</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stats.avgLatency}ms</div>
+              <div className="text-3xl font-bold text-white">{stats.avgLatency}ms</div>
             </CardContent>
           </Card>
         </div>
 
         {/* Filtry */}
-        <Card>
+        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-white">
               <Filter className="h-5 w-5" />
               Filtry
             </CardTitle>
@@ -240,9 +244,9 @@ export default function AlertsPage() {
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Tier</label>
+                <label className="text-sm font-medium text-gray-300">Tier</label>
                 <Select value={tierFilter} onValueChange={setTierFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
                     <SelectValue placeholder="Wszystkie tiery" />
                   </SelectTrigger>
                   <SelectContent>
@@ -257,9 +261,9 @@ export default function AlertsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Symbol</label>
+                <label className="text-sm font-medium text-gray-300">Symbol</label>
                 <Select value={symbolFilter} onValueChange={setSymbolFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
                     <SelectValue placeholder="Wszystkie symbole" />
                   </SelectTrigger>
                   <SelectContent>
@@ -272,9 +276,9 @@ export default function AlertsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Strona</label>
+                <label className="text-sm font-medium text-gray-300">Strona</label>
                 <Select value={sideFilter} onValueChange={setSideFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
                     <SelectValue placeholder="Wszystkie strony" />
                   </SelectTrigger>
                   <SelectContent>
@@ -295,7 +299,7 @@ export default function AlertsPage() {
                 }}
                 variant="ghost"
                 size="sm"
-                className="mt-4"
+                className="mt-4 text-gray-400 hover:text-white"
               >
                 Wyczyść filtry
               </Button>
@@ -304,12 +308,12 @@ export default function AlertsPage() {
         </Card>
 
         {/* Tabela Alertów */}
-        <Card>
+        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>
+            <CardTitle className="text-white">
               Lista Alertów 
               {filteredAlerts.length !== stats.total && (
-                <span className="text-sm font-normal text-muted-foreground ml-2">
+                <span className="text-sm font-normal text-gray-500 ml-2">
                   (pokazuje {filteredAlerts.length} z {stats.total})
                 </span>
               )}
@@ -318,13 +322,13 @@ export default function AlertsPage() {
           <CardContent>
             {loading ? (
               <div className="text-center py-12">
-                <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Ładowanie alertów...</p>
+                <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-gray-600" />
+                <p className="text-gray-500">Ładowanie alertów...</p>
               </div>
             ) : filteredAlerts.length === 0 ? (
               <div className="text-center py-12">
-                <Bell className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">
+                <Bell className="h-12 w-12 mx-auto mb-4 text-gray-600" />
+                <p className="text-gray-500">
                   {alerts.length === 0 
                     ? "Brak alertów. Skonfiguruj webhook w TradingView aby zacząć odbierać sygnały."
                     : "Brak alertów pasujących do filtrów."}
@@ -334,43 +338,43 @@ export default function AlertsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-3 font-semibold">Czas otrzymania</th>
-                      <th className="text-left p-3 font-semibold">Symbol</th>
-                      <th className="text-left p-3 font-semibold">Strona</th>
-                      <th className="text-left p-3 font-semibold">Tier</th>
-                      <th className="text-left p-3 font-semibold">Siła</th>
-                      <th className="text-left p-3 font-semibold">Ceny</th>
-                      <th className="text-left p-3 font-semibold">SL/TP</th>
-                      <th className="text-left p-3 font-semibold">Status</th>
-                      <th className="text-left p-3 font-semibold">Latencja</th>
-                      <th className="text-left p-3 font-semibold">Akcje</th>
+                    <tr className="border-b border-gray-800">
+                      <th className="text-left p-3 font-semibold text-gray-400">Czas otrzymania</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Symbol</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Strona</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Tier</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Siła</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Ceny</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">SL/TP</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Status</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Latencja</th>
+                      <th className="text-left p-3 font-semibold text-gray-400">Akcje</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredAlerts.map((alert) => (
-                      <tr key={alert.id} className="border-b hover:bg-muted/50 transition-colors">
+                      <tr key={alert.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
                         {/* Czas */}
                         <td className="p-3 text-sm">
-                          <div className="font-mono text-xs font-semibold">
+                          <div className="font-mono text-xs font-semibold text-gray-300">
                             {formatReceivedTime(alert.createdAt)}
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-gray-600">
                             TV: {formatTimestamp(alert.timestamp)}
                           </div>
                         </td>
 
                         {/* Symbol */}
                         <td className="p-3">
-                          <div className="font-bold">{alert.symbol}</div>
-                          <div className="text-xs text-muted-foreground">{alert.session}</div>
+                          <div className="font-bold text-white">{alert.symbol}</div>
+                          <div className="text-xs text-gray-500">{alert.session}</div>
                         </td>
 
                         {/* Strona */}
                         <td className="p-3">
                           <Badge
                             variant="outline"
-                            className={alert.side === 'BUY' ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}
+                            className={alert.side === 'BUY' ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-red-500 text-red-400 bg-red-500/10'}
                           >
                             {alert.side === 'BUY' ? (
                               <ArrowUpRight className="mr-1 h-3 w-3" />
@@ -386,36 +390,36 @@ export default function AlertsPage() {
                           <Badge className={getTierColor(alert.tier)}>
                             {alert.tier}
                           </Badge>
-                          <div className="text-xs text-muted-foreground mt-1">
+                          <div className="text-xs text-gray-500 mt-1">
                             Leverage: {alert.leverage}x
                           </div>
                         </td>
 
                         {/* Siła */}
                         <td className="p-3">
-                          <div className="font-semibold">
+                          <div className="font-semibold text-white">
                             {(alert.strength * 100).toFixed(1)}%
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-gray-500">
                             {alert.regime}
                           </div>
                         </td>
 
                         {/* Ceny */}
                         <td className="p-3 text-sm">
-                          <div>Entry: <span className="font-semibold">{formatPrice(alert.entryPrice)}</span></div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-gray-300">Entry: <span className="font-semibold text-white">{formatPrice(alert.entryPrice)}</span></div>
+                          <div className="text-xs text-gray-500">
                             ATR: {alert.atr.toFixed(2)}
                           </div>
                         </td>
 
                         {/* SL/TP */}
                         <td className="p-3 text-sm">
-                          <div className="text-red-500">SL: {formatPrice(alert.sl)}</div>
-                          <div className="text-green-500">
+                          <div className="text-red-400">SL: {formatPrice(alert.sl)}</div>
+                          <div className="text-green-400">
                             TP1: {formatPrice(alert.tp1)}
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-gray-500">
                             TP3: {formatPrice(alert.tp3)}
                           </div>
                         </td>
@@ -424,17 +428,17 @@ export default function AlertsPage() {
                         <td className="p-3">
                           <div className="space-y-1">
                             {alert.inOb && (
-                              <Badge variant="secondary" className="text-xs">
+                              <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/40">
                                 OB {alert.obScore.toFixed(1)}
                               </Badge>
                             )}
                             {alert.inFvg && (
-                              <Badge variant="secondary" className="text-xs">
+                              <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-400 border-purple-500/40">
                                 FVG {alert.fvgScore.toFixed(1)}
                               </Badge>
                             )}
                             {alert.institutionalFlow && alert.institutionalFlow > 0.4 && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs border-amber-500 text-amber-400">
                                 INST
                               </Badge>
                             )}
@@ -445,7 +449,7 @@ export default function AlertsPage() {
                         <td className="p-3">
                           <Badge
                             variant="outline"
-                            className={alert.latency < 1000 ? 'border-green-500' : alert.latency < 3000 ? 'border-yellow-500' : 'border-red-500'}
+                            className={alert.latency < 1000 ? 'border-green-500 text-green-400' : alert.latency < 3000 ? 'border-yellow-500 text-yellow-400' : 'border-red-500 text-red-400'}
                           >
                             {alert.latency}ms
                           </Badge>
@@ -458,9 +462,9 @@ export default function AlertsPage() {
                             disabled={deletingId === alert.id}
                             size="sm"
                             variant="ghost"
-                            className="h-8 w-8 p-0"
+                            className="h-8 w-8 p-0 hover:bg-red-500/20"
                           >
-                            <Trash2 className={`h-4 w-4 text-red-500 ${deletingId === alert.id ? 'animate-spin' : ''}`} />
+                            <Trash2 className={`h-4 w-4 text-red-400 ${deletingId === alert.id ? 'animate-spin' : ''}`} />
                           </Button>
                         </td>
                       </tr>

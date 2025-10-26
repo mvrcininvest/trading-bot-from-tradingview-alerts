@@ -112,20 +112,18 @@ export default function ExchangeTestPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
-          <TrendingUp className="h-8 w-8" />
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">Test Połączenia z Giełdą</h1>
-            <p className="text-muted-foreground">Sprawdź połączenie z API giełdy przed rozpoczęciem tradingu</p>
+          <div className="p-3 rounded-xl bg-gradient-to-br from-purple-600/30 to-purple-900/20 border border-purple-500/30">
+            <TrendingUp className="h-8 w-8 text-purple-400" />
           </div>
-          <Button
-            variant="outline"
-            onClick={() => router.push("/dashboard")}
-          >
-            Przejdź do Dashboard
-          </Button>
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              Test Połączenia z Giełdą
+            </h1>
+            <p className="text-gray-400">Sprawdź połączenie z API giełdy przed rozpoczęciem tradingu</p>
+          </div>
         </div>
 
         {exchange === "bybit" && bybitEnv === "demo" && (
@@ -147,39 +145,41 @@ export default function ExchangeTestPage() {
           </Alert>
         )}
 
-        <Card>
+        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>Konfiguracja API</CardTitle>
-            <CardDescription>Wprowadź klucze API z wybranej giełdy</CardDescription>
+            <CardTitle className="text-white">Konfiguracja API</CardTitle>
+            <CardDescription className="text-gray-400">Wprowadź klucze API z wybranej giełdy</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <Tabs value={exchange} onValueChange={(v) => setExchange(v as "binance" | "bybit")}>
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="binance">Binance</TabsTrigger>
-                <TabsTrigger value="bybit">Bybit</TabsTrigger>
+                <TabsTrigger value="binance" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Binance</TabsTrigger>
+                <TabsTrigger value="bybit" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Bybit</TabsTrigger>
               </TabsList>
             </Tabs>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="apiKey">API Key</Label>
+                <Label htmlFor="apiKey" className="text-gray-300">API Key</Label>
                 <Input
                   id="apiKey"
                   type="text"
                   placeholder="Wprowadź swój API Key"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
+                  className="bg-gray-800 border-gray-700 text-gray-300"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="apiSecret">API Secret</Label>
+                <Label htmlFor="apiSecret" className="text-gray-300">API Secret</Label>
                 <Input
                   id="apiSecret"
                   type="password"
                   placeholder="Wprowadź swój API Secret"
                   value={apiSecret}
                   onChange={(e) => setApiSecret(e.target.value)}
+                  className="bg-gray-800 border-gray-700 text-gray-300"
                 />
               </div>
 
@@ -190,32 +190,32 @@ export default function ExchangeTestPage() {
                     id="testnet"
                     checked={testnet}
                     onChange={(e) => setTestnet(e.target.checked)}
-                    className="h-4 w-4"
+                    className="h-4 w-4 bg-gray-800 border-gray-700 text-purple-500 rounded focus:ring-purple-500"
                   />
-                  <Label htmlFor="testnet" className="cursor-pointer">
+                  <Label htmlFor="testnet" className="text-gray-300 cursor-pointer">
                     Użyj Testnet (zalecane do testów)
                   </Label>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <Label>Środowisko Bybit</Label>
+                  <Label className="text-gray-300">Środowisko Bybit</Label>
                   <RadioGroup value={bybitEnv} onValueChange={(v) => setBybitEnv(v as BybitEnvironment)}>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mainnet" id="mainnet" />
-                      <Label htmlFor="mainnet" className="cursor-pointer font-normal">
-                        <span className="font-semibold">Mainnet</span> - Prawdziwe konto produkcyjne (prawdziwa płynność)
+                      <RadioGroupItem value="mainnet" id="mainnet" className="bg-gray-800 border-gray-700 text-gray-300" />
+                      <Label htmlFor="mainnet" className="text-gray-300 cursor-pointer font-normal">
+                        <span className="font-semibold text-gray-200">Mainnet</span> - Prawdziwe konto produkcyjne (prawdziwa płynność)
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="demo" id="demo" />
-                      <Label htmlFor="demo" className="cursor-pointer font-normal">
-                        <span className="font-semibold">Demo</span> - Konto demo (prawdziwa płynność, może być blokowane przez CloudFlare)
+                      <RadioGroupItem value="demo" id="demo" className="bg-gray-800 border-gray-700 text-gray-300" />
+                      <Label htmlFor="demo" className="text-gray-300 cursor-pointer font-normal">
+                        <span className="font-semibold text-gray-200">Demo</span> - Konto demo (prawdziwa płynność, może być blokowane przez CloudFlare)
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="testnet" id="testnet-radio" />
-                      <Label htmlFor="testnet-radio" className="cursor-pointer font-normal">
-                        <span className="font-semibold">Testnet</span> - Środowisko testowe (mniejsza płynność)
+                      <RadioGroupItem value="testnet" id="testnet-radio" className="bg-gray-800 border-gray-700 text-gray-300" />
+                      <Label htmlFor="testnet-radio" className="text-gray-300 cursor-pointer font-normal">
+                        <span className="font-semibold text-gray-200">Testnet</span> - Środowisko testowe (mniejsza płynność)
                       </Label>
                     </div>
                   </RadioGroup>
@@ -226,7 +226,7 @@ export default function ExchangeTestPage() {
                 <Button 
                   onClick={testConnection} 
                   disabled={loading || !apiKey || !apiSecret}
-                  className="flex-1"
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white"
                 >
                   {loading ? (
                     <>
@@ -242,7 +242,7 @@ export default function ExchangeTestPage() {
                   onClick={saveWithoutTesting}
                   disabled={loading || !apiKey || !apiSecret}
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
                 >
                   Zapisz bez testowania
                 </Button>
@@ -251,7 +251,7 @@ export default function ExchangeTestPage() {
               {exchange === "bybit" && bybitEnv === "mainnet" && (
                 <Alert className="border-red-500 bg-red-500/10">
                   <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <AlertDescription className="text-sm">
+                  <AlertDescription className="text-sm text-gray-300">
                     <strong className="text-red-500">UWAGA:</strong> Używasz prawdziwego konta Bybit Mainnet. 
                     Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
                   </AlertDescription>
@@ -262,7 +262,7 @@ export default function ExchangeTestPage() {
         </Card>
 
         {result && (
-          <Card className={result.success ? "border-green-500" : "border-red-500"}>
+          <Card className={`border-${result.success ? "green-500" : "red-500"} bg-gray-900/80 backdrop-blur-sm`}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 {result.success ? (
@@ -279,13 +279,13 @@ export default function ExchangeTestPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm mb-4 whitespace-pre-line">{result.message}</p>
+              <p className="text-sm text-gray-300 mb-4 whitespace-pre-line">{result.message}</p>
 
               {!result.success && exchange === "bybit" && bybitEnv === "demo" && (
-                <div className="mt-4 p-4 bg-muted rounded-lg space-y-2">
+                <div className="mt-4 p-4 bg-gray-800/50 rounded-lg space-y-2">
                   <div className="flex items-start gap-2">
                     <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm">
+                    <div className="text-sm text-gray-300">
                       <strong className="text-blue-500">Sugestia:</strong> Jeśli jesteś pewien że klucze są poprawne 
                       (stworzone w Demo Trading z wszystkimi uprawnieniami), możesz <strong>zapisać je bez testowania</strong> 
                       klikając przycisk "Zapisz bez testowania" powyżej. Klucze będą działać w prawdziwym tradingu mimo błędu testowego.
@@ -297,7 +297,7 @@ export default function ExchangeTestPage() {
               {result.success && result.accountInfo && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold">Status tradingu:</span>
+                    <span className="font-semibold text-gray-200">Status tradingu:</span>
                     <span className={result.accountInfo.canTrade ? "text-green-500" : "text-red-500"}>
                       {result.accountInfo.canTrade ? "Aktywny" : "Nieaktywny"}
                     </span>
@@ -305,10 +305,10 @@ export default function ExchangeTestPage() {
 
                   {result.accountInfo.balances && result.accountInfo.balances.length > 0 && (
                     <div>
-                      <span className="font-semibold">Salda (top 5):</span>
+                      <span className="font-semibold text-gray-200">Salda (top 5):</span>
                       <div className="mt-2 space-y-1">
                         {result.accountInfo.balances.slice(0, 5).map((balance, idx) => (
-                          <div key={idx} className="text-sm flex justify-between p-2 bg-muted rounded">
+                          <div key={idx} className="text-sm flex justify-between p-2 bg-gray-800/50 rounded">
                             <span>{balance.asset}</span>
                             <span>Wolne: {balance.free} | Zablokowane: {balance.locked}</span>
                           </div>
@@ -322,11 +322,11 @@ export default function ExchangeTestPage() {
           </Card>
         )}
 
-        <Card className="bg-muted">
+        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Jak uzyskać klucze API?</CardTitle>
+            <CardTitle className="text-lg text-white">Jak uzyskać klucze API?</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-2 text-sm text-gray-300">
             <p><strong>Binance:</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
               <li>Zaloguj się na Binance</li>

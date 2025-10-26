@@ -437,35 +437,6 @@ export default function DashboardPage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push("/logi-bota")}
-                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 transition-all"
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                Logi
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push("/bot-history")}
-                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 transition-all"
-              >
-                <History className="mr-2 h-4 w-4" />
-                Historia
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push("/alerts")}
-                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 transition-all"
-              >
-                <Bell className="mr-2 h-4 w-4" />
-                Alerty
-              </Button>
-            </div>
           </div>
 
           {/* Quick Stats - Dark Theme */}
