@@ -33,12 +33,12 @@ export default function BotSettingsPage() {
   const [emergencyOverrideMode, setEmergencyOverrideMode] = useState("only_profit")
   const [emergencyMinProfitPercent, setEmergencyMinProfitPercent] = useState(0.0)
   
-  // New SL/TP safety fields
+  // Updated SL/TP safety fields - changed from % to RR (Risk:Reward)
   const [useDefaultSlTp, setUseDefaultSlTp] = useState(false)
-  const [defaultSlPercent, setDefaultSlPercent] = useState(2.0)
-  const [defaultTp1Percent, setDefaultTp1Percent] = useState(2.0)
-  const [defaultTp2Percent, setDefaultTp2Percent] = useState(4.0)
-  const [defaultTp3Percent, setDefaultTp3Percent] = useState(6.0)
+  const [defaultSlRR, setDefaultSlRR] = useState(1.0) // RR ratio for SL
+  const [defaultTp1RR, setDefaultTp1RR] = useState(1.0) // RR ratio for TP1
+  const [defaultTp2RR, setDefaultTp2RR] = useState(2.0) // RR ratio for TP2
+  const [defaultTp3RR, setDefaultTp3RR] = useState(3.0) // RR ratio for TP3
 
   useEffect(() => {
     fetchSettings()
@@ -69,10 +69,11 @@ export default function BotSettingsPage() {
         setEmergencyOverrideMode(s.emergencyOverrideMode)
         setEmergencyMinProfitPercent(s.emergencyMinProfitPercent)
         setUseDefaultSlTp(s.useDefaultSlTp || false)
-        setDefaultSlPercent(s.defaultSlPercent || 2.0)
-        setDefaultTp1Percent(s.defaultTp1Percent || 2.0)
-        setDefaultTp2Percent(s.defaultTp2Percent || 4.0)
-        setDefaultTp3Percent(s.defaultTp3Percent || 6.0)
+        // Changed from percent to RR
+        setDefaultSlRR(s.defaultSlRR || 1.0)
+        setDefaultTp1RR(s.defaultTp1RR || 1.0)
+        setDefaultTp2RR(s.defaultTp2RR || 2.0)
+        setDefaultTp3RR(s.defaultTp3RR || 3.0)
       }
     } catch (error) {
       toast.error("Błąd ładowania ustawień")
@@ -107,10 +108,11 @@ export default function BotSettingsPage() {
           emergencyOverrideMode,
           emergencyMinProfitPercent,
           useDefaultSlTp,
-          defaultSlPercent,
-          defaultTp1Percent,
-          defaultTp2Percent,
-          defaultTp3Percent,
+          // Changed from percent to RR
+          defaultSlRR,
+          defaultTp1RR,
+          defaultTp2RR,
+          defaultTp3RR,
         })
       })
 
@@ -303,12 +305,12 @@ export default function BotSettingsPage() {
           </p>
         </Card>
 
-        {/* NEW: SL/TP Safety */}
+        {/* UPDATED: SL/TP Safety - Changed from % to RR */}
         <Card className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold">Zabezpieczenie SL/TP</h3>
-              <p className="text-sm text-muted-foreground">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
+              <p className="text-sm text-muted-foreground">Automatyczne ustawienie gdy alert nie zawiera wartości (Risk:Reward)</p>
             </div>
             <Switch checked={useDefaultSlTp} onCheckedChange={setUseDefaultSlTp} />
           </div>
@@ -318,54 +320,60 @@ export default function BotSettingsPage() {
               <Separator />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Domyślny SL (%)</Label>
+                  <Label>Domyślny SL (RR)</Label>
                   <Input 
                     type="number" 
-                    value={defaultSlPercent} 
-                    onChange={(e) => setDefaultSlPercent(parseFloat(e.target.value))}
+                    value={defaultSlRR} 
+                    onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
                     step="0.1"
+                    min="0.1"
                   />
-                  <p className="text-xs text-muted-foreground">Odległość od ceny wejścia</p>
+                  <p className="text-xs text-muted-foreground">Risk ratio dla Stop Loss</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Domyślny TP1 (%)</Label>
+                  <Label>Domyślny TP1 (RR)</Label>
                   <Input 
                     type="number" 
-                    value={defaultTp1Percent} 
-                    onChange={(e) => setDefaultTp1Percent(parseFloat(e.target.value))}
+                    value={defaultTp1RR} 
+                    onChange={(e) => setDefaultTp1RR(parseFloat(e.target.value))}
                     step="0.1"
+                    min="0.1"
                   />
+                  <p className="text-xs text-muted-foreground">Reward ratio dla TP1</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Domyślny TP2 (%)</Label>
+                  <Label>Domyślny TP2 (RR)</Label>
                   <Input 
                     type="number" 
-                    value={defaultTp2Percent} 
-                    onChange={(e) => setDefaultTp2Percent(parseFloat(e.target.value))}
+                    value={defaultTp2RR} 
+                    onChange={(e) => setDefaultTp2RR(parseFloat(e.target.value))}
                     step="0.1"
+                    min="0.1"
                   />
+                  <p className="text-xs text-muted-foreground">Reward ratio dla TP2</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Domyślny TP3 (%)</Label>
+                  <Label>Domyślny TP3 (RR)</Label>
                   <Input 
                     type="number" 
-                    value={defaultTp3Percent} 
-                    onChange={(e) => setDefaultTp3Percent(parseFloat(e.target.value))}
+                    value={defaultTp3RR} 
+                    onChange={(e) => setDefaultTp3RR(parseFloat(e.target.value))}
                     step="0.1"
+                    min="0.1"
                   />
+                  <p className="text-xs text-muted-foreground">Reward ratio dla TP3</p>
                 </div>
               </div>
 
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                 <p className="text-sm text-blue-400">
                   <strong>Przykład dla pozycji BUY @ $100:</strong><br/>
-                  SL: ${(100 * (1 - defaultSlPercent / 100)).toFixed(2)} | 
-                  TP1: ${(100 * (1 + defaultTp1Percent / 100)).toFixed(2)} | 
-                  TP2: ${(100 * (1 + defaultTp2Percent / 100)).toFixed(2)} | 
-                  TP3: ${(100 * (1 + defaultTp3Percent / 100)).toFixed(2)}
+                  Jeśli SL = 1.0 RR, to ryzyko = $1 od ceny wejścia<br/>
+                  SL: $99 | TP1 (1.0 RR): $101 | TP2 (2.0 RR): $102 | TP3 (3.0 RR): $103<br/>
+                  <span className="text-xs opacity-70">RR = Risk:Reward - stosunek zysku do ryzyka</span>
                 </p>
               </div>
             </>

@@ -395,8 +395,8 @@ export default function DashboardPage() {
 
   if (!credentials) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-6 flex items-center justify-center">
-        <Card className="max-w-md border-border/50 bg-card/80 backdrop-blur-sm">
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
+        <Card className="max-w-md border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-500" />
@@ -404,7 +404,7 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-gray-400">
               Nie znaleziono zapisanych kluczy API. Najpierw skonfiguruj połączenie z giełdą.
             </p>
             <Button onClick={() => router.push("/exchange-test")} className="w-full">
@@ -418,20 +418,20 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* Header with Quick Stats */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
-                <TrendingUp className="h-8 w-8 text-primary" />
+              <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 border border-blue-500/30">
+                <TrendingUp className="h-8 w-8 text-blue-400" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                   Dashboard Tradingowy
                 </h1>
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <p className="text-sm text-gray-400 flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                   {credentials.exchange.toUpperCase()} · {credentials.environment}
                 </p>
@@ -442,7 +442,7 @@ export default function DashboardPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => router.push("/logi-bota")}
-                className="border-border/50 hover:bg-accent/50 transition-all"
+                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 transition-all"
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Logi
@@ -451,7 +451,7 @@ export default function DashboardPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => router.push("/bot-history")}
-                className="border-border/50 hover:bg-accent/50 transition-all"
+                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 transition-all"
               >
                 <History className="mr-2 h-4 w-4" />
                 Historia
@@ -460,7 +460,7 @@ export default function DashboardPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => router.push("/alerts")}
-                className="border-border/50 hover:bg-accent/50 transition-all"
+                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 transition-all"
               >
                 <Bell className="mr-2 h-4 w-4" />
                 Alerty
@@ -468,69 +468,69 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Quick Stats */}
+          {/* Quick Stats - Dark Theme */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card/90 transition-all">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Saldo Konta</p>
-                    <p className="text-2xl font-bold">{totalBalance.toFixed(2)}</p>
-                    <p className="text-xs text-muted-foreground">USDT</p>
+                    <p className="text-xs text-gray-500 mb-1">Saldo Konta</p>
+                    <p className="text-2xl font-bold text-white">{totalBalance.toFixed(2)}</p>
+                    <p className="text-xs text-gray-500">USDT</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-blue-500/10">
-                    <Wallet className="h-6 w-6 text-blue-500" />
+                  <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
+                    <Wallet className="h-6 w-6 text-blue-400" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card/90 transition-all">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Całkowity PnL</p>
-                    <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    <p className="text-xs text-gray-500 mb-1">Całkowity PnL</p>
+                    <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
                     </p>
-                    <p className="text-xs text-muted-foreground">USDT</p>
+                    <p className="text-xs text-gray-500">USDT</p>
                   </div>
-                  <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-                    <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+                  <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'}`}>
+                    <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card/90 transition-all">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Pozycje Bota</p>
-                    <p className="text-2xl font-bold">{botPositions.length}</p>
-                    <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    <p className="text-xs text-gray-500 mb-1">Pozycje Bota</p>
+                    <p className="text-2xl font-bold text-white">{botPositions.length}</p>
+                    <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
                     </p>
                   </div>
-                  <div className="p-3 rounded-lg bg-primary/10">
-                    <Bot className="h-6 w-6 text-primary" />
+                  <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
+                    <Bot className="h-6 w-6 text-purple-400" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card/90 transition-all">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Wszystkie Pozycje</p>
-                    <p className="text-2xl font-bold">{totalPositionsCount}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-gray-500 mb-1">Wszystkie Pozycje</p>
+                    <p className="text-2xl font-bold text-white">{totalPositionsCount}</p>
+                    <p className="text-xs text-gray-500">
                       {winningPositions} wygrywa
                     </p>
                   </div>
-                  <div className="p-3 rounded-lg bg-purple-500/10">
-                    <Activity className="h-6 w-6 text-purple-500" />
+                  <div className="p-3 rounded-lg bg-amber-500/20 border border-amber-500/30">
+                    <Activity className="h-6 w-6 text-amber-400" />
                   </div>
                 </div>
               </CardContent>
@@ -538,26 +538,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Main Content with Tabs */}
+        {/* Main Content with Tabs - Dark Theme */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-card/50 backdrop-blur-sm border border-border/50">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-primary/20">
+          <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
               <BarChart3 className="mr-2 h-4 w-4" />
               Przegląd
             </TabsTrigger>
-            <TabsTrigger value="bot-positions" className="data-[state=active]:bg-primary/20">
+            <TabsTrigger value="bot-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
               <Bot className="mr-2 h-4 w-4" />
               Pozycje Bota
             </TabsTrigger>
-            <TabsTrigger value="all-positions" className="data-[state=active]:bg-primary/20">
+            <TabsTrigger value="all-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
               <Activity className="mr-2 h-4 w-4" />
               Wszystkie Pozycje
             </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-primary/20">
+            <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
               <Settings className="mr-2 h-4 w-4" />
               Ustawienia
             </TabsTrigger>
-            <TabsTrigger value="info" className="data-[state=active]:bg-primary/20">
+            <TabsTrigger value="info" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
               <Zap className="mr-2 h-4 w-4" />
               Quick Actions
             </TabsTrigger>
@@ -565,16 +565,16 @@ export default function DashboardPage() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Balance Card */}
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            {/* Balance Card - Dark Theme */}
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 text-white">
                       <Wallet className="h-5 w-5" />
                       Saldo Konta
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-gray-500">
                       {lastUpdate && <span className="text-xs">Zaktualizowano: {lastUpdate}</span>}
                     </CardDescription>
                   </div>
@@ -582,7 +582,7 @@ export default function DashboardPage() {
                     onClick={() => fetchBalance()}
                     disabled={loading}
                     size="sm"
-                    className="hover:scale-105 transition-transform"
+                    className="bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
                   >
                     <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                     Odśwież
@@ -591,9 +591,9 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {error && (
-                  <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+                  <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm">
+                    <AlertDescription className="text-sm text-yellow-400">
                       <strong>Nie można pobrać salda:</strong> {error}
                     </AlertDescription>
                   </Alert>
@@ -601,15 +601,15 @@ export default function DashboardPage() {
 
                 {loading && (
                   <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Pobieranie salda...</p>
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
+                    <p className="text-sm text-gray-500">Pobieranie salda...</p>
                   </div>
                 )}
 
                 {!loading && balances.length === 0 && !error && (
                   <div className="text-center py-8">
-                    <Wallet className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
-                    <p className="text-sm text-muted-foreground">Brak danych o saldzie</p>
+                    <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
+                    <p className="text-sm text-gray-500">Brak danych o saldzie</p>
                   </div>
                 )}
 
@@ -618,24 +618,24 @@ export default function DashboardPage() {
                     {balances.map((balance, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-gradient-to-r from-card to-muted/20 hover:from-muted/30 hover:to-card transition-all"
+                        className="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-800/40 hover:from-gray-800/60 hover:to-gray-900/60 transition-all"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20">
-                            <span className="text-sm font-bold text-primary">
+                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 flex items-center justify-center border border-blue-500/30">
+                            <span className="text-sm font-bold text-blue-300">
                               {balance.asset.substring(0, 2)}
                             </span>
                           </div>
                           <div>
-                            <div className="font-semibold text-lg">{balance.asset}</div>
-                            <div className="text-xs text-muted-foreground">
+                            <div className="font-semibold text-lg text-white">{balance.asset}</div>
+                            <div className="text-xs text-gray-500">
                               Wolne: {balance.free} · Zablokowane: {balance.locked}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-2xl">{balance.total}</div>
-                          <div className="text-xs text-muted-foreground">Łącznie</div>
+                          <div className="font-bold text-2xl text-white">{balance.total}</div>
+                          <div className="text-xs text-gray-500">Łącznie</div>
                         </div>
                       </div>
                     ))}
@@ -644,28 +644,28 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Quick Summary */}
+            {/* Quick Summary - Dark Theme */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="border-border/50 bg-gradient-to-br from-primary/10 via-card/80 to-card/80 backdrop-blur-sm">
+              <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/60 to-gray-900/60 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Pozycje Bota</CardTitle>
-                  <CardDescription>Aktywne pozycje automatyczne</CardDescription>
+                  <CardTitle className="text-lg text-white">Pozycje Bota</CardTitle>
+                  <CardDescription className="text-gray-500">Aktywne pozycje automatyczne</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Aktywne:</span>
-                      <span className="font-bold">{botPositions.length}</span>
+                      <span className="text-gray-400">Aktywne:</span>
+                      <span className="font-bold text-white">{botPositions.length}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">PnL:</span>
-                      <span className={`font-bold ${botPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      <span className="text-gray-400">PnL:</span>
+                      <span className={`font-bold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
                       </span>
                     </div>
                     <Button 
                       onClick={() => document.querySelector('[value="bot-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
-                      className="w-full mt-4"
+                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
                       variant="secondary"
                     >
                       Zobacz Pozycje
@@ -674,26 +674,26 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-border/50 bg-gradient-to-br from-purple-500/10 via-card/80 to-card/80 backdrop-blur-sm">
+              <Card className="border-gray-800 bg-gradient-to-br from-purple-600/20 via-gray-900/60 to-gray-900/60 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Wszystkie Pozycje</CardTitle>
-                  <CardDescription>Łączne informacje</CardDescription>
+                  <CardTitle className="text-lg text-white">Wszystkie Pozycje</CardTitle>
+                  <CardDescription className="text-gray-500">Łączne informacje</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Otwarte:</span>
-                      <span className="font-bold">{totalPositionsCount}</span>
+                      <span className="text-gray-400">Otwarte:</span>
+                      <span className="font-bold text-white">{totalPositionsCount}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Total PnL:</span>
-                      <span className={`font-bold ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      <span className="text-gray-400">Total PnL:</span>
+                      <span className={`font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
                       </span>
                     </div>
                     <Button 
                       onClick={() => document.querySelector('[value="all-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
-                      className="w-full mt-4"
+                      className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white"
                       variant="secondary"
                     >
                       Zobacz Wszystkie
@@ -704,22 +704,22 @@ export default function DashboardPage() {
             </div>
           </TabsContent>
 
-          {/* Bot Positions Tab */}
+          {/* Bot Positions Tab - Dark Theme */}
           <TabsContent value="bot-positions" className="space-y-6">
-            <Card className="border-primary/50 bg-gradient-to-br from-primary/5 via-card/80 to-card/80 backdrop-blur-sm">
+            <Card className="border-blue-700 bg-gradient-to-br from-blue-600/10 via-gray-900/60 to-gray-900/60 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Bot className="h-5 w-5 text-primary" />
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <Bot className="h-5 w-5 text-blue-400" />
                       Pozycje Bota
                       {botPositions.length > 0 && (
-                        <Badge variant="default" className="ml-2">
+                        <Badge variant="default" className="ml-2 bg-blue-600 text-white">
                           {botPositions.length} Aktywnych
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-gray-500">
                       Pozycje otwarte automatycznie przez bota
                     </CardDescription>
                   </div>
@@ -729,7 +729,7 @@ export default function DashboardPage() {
                       disabled={loadingSync}
                       size="sm"
                       variant="secondary"
-                      className="hover:scale-105 transition-transform"
+                      className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:scale-105 transition-transform"
                     >
                       <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? "animate-spin" : ""}`} />
                       Sync
@@ -739,7 +739,7 @@ export default function DashboardPage() {
                       disabled={loadingBotPositions}
                       size="sm"
                       variant="outline"
-                      className="hover:scale-105 transition-transform"
+                      className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
                     >
                       <RefreshCw className={`mr-2 h-4 w-4 ${loadingBotPositions ? "animate-spin" : ""}`} />
                       Odśwież
@@ -749,9 +749,9 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {botPositionsError && (
-                  <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+                  <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm">
+                    <AlertDescription className="text-sm text-yellow-400">
                       <strong>Błąd:</strong> {botPositionsError}
                     </AlertDescription>
                   </Alert>
@@ -759,15 +759,15 @@ export default function DashboardPage() {
 
                 {loadingBotPositions && (
                   <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Pobieranie pozycji bota...</p>
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
+                    <p className="text-sm text-gray-500">Pobieranie pozycji bota...</p>
                   </div>
                 )}
 
                 {!loadingBotPositions && botPositions.length === 0 && !botPositionsError && (
                   <div className="text-center py-12">
-                    <Bot className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                    <p className="text-muted-foreground">Brak aktywnych pozycji bota</p>
+                    <Bot className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
+                    <p className="text-gray-500">Brak aktywnych pozycji bota</p>
                   </div>
                 )}
 
@@ -779,92 +779,92 @@ export default function DashboardPage() {
                       const isProfitable = pnl >= 0;
                       
                       const tierColors: Record<string, string> = {
-                        'Platinum': 'bg-purple-500/10 text-purple-500 border-purple-500/50',
-                        'Premium': 'bg-blue-500/10 text-blue-500 border-blue-500/50',
-                        'Standard': 'bg-green-500/10 text-green-500 border-green-500/50',
-                        'Quick': 'bg-orange-500/10 text-orange-500 border-orange-500/50',
-                        'Emergency': 'bg-red-500/10 text-red-500 border-red-500/50',
+                        'Platinum': 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+                        'Premium': 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+                        'Standard': 'bg-green-500/20 text-green-300 border-green-500/40',
+                        'Quick': 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+                        'Emergency': 'bg-red-500/20 text-red-300 border-red-500/40',
                       };
                       
                       return (
                         <div
                           key={position.id}
-                          className="p-5 rounded-xl border-2 border-primary/20 bg-gradient-to-r from-card/80 to-primary/5 hover:from-card hover:to-primary/10 transition-all"
+                          className="p-5 rounded-xl border-2 border-blue-700/30 bg-gradient-to-r from-gray-900/80 to-blue-900/20 hover:from-gray-900 hover:to-blue-900/30 transition-all"
                         >
                           <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-3">
                               <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                                position.side === "BUY" ? "bg-green-500/20 border border-green-500/30" : "bg-red-500/20 border border-red-500/30"
+                                position.side === "BUY" ? "bg-green-500/30 border border-green-500/40" : "bg-red-500/30 border border-red-500/40"
                               }`}>
                                 {position.side === "BUY" ? (
-                                  <ArrowUpRight className="h-6 w-6 text-green-500" />
+                                  <ArrowUpRight className="h-6 w-6 text-green-400" />
                                 ) : (
-                                  <ArrowDownRight className="h-6 w-6 text-red-500" />
+                                  <ArrowDownRight className="h-6 w-6 text-red-400" />
                                 )}
                               </div>
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-xl">{position.symbol}</span>
+                                  <span className="font-bold text-xl text-white">{position.symbol}</span>
                                   <Badge variant="outline" className={tierColors[position.tier] || ''}>
                                     {position.tier}
                                   </Badge>
                                 </div>
                                 <div className={`text-sm font-semibold ${
-                                  position.side === "BUY" ? "text-green-500" : "text-red-500"
+                                  position.side === "BUY" ? "text-green-400" : "text-red-400"
                                 }`}>
                                   {position.side === "BUY" ? "LONG" : "SHORT"} {position.leverage}x
                                 </div>
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className={`text-xl font-bold ${isProfitable ? "text-green-500" : "text-red-500"}`}>
+                              <div className={`text-xl font-bold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
                                 {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
                               </div>
-                              <div className={`text-sm font-semibold ${isProfitable ? "text-green-500" : "text-red-500"}`}>
+                              <div className={`text-sm font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
                                 ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
                               </div>
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-3 text-sm mb-3 p-3 rounded-lg bg-muted/30">
+                          <div className="grid grid-cols-2 gap-3 text-sm mb-3 p-3 rounded-lg bg-gray-800/40">
                             <div>
-                              <div className="text-muted-foreground">Rozmiar</div>
-                              <div className="font-semibold">{position.quantity.toFixed(4)}</div>
+                              <div className="text-gray-500">Rozmiar</div>
+                              <div className="font-semibold text-gray-200">{position.quantity.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Wartość</div>
-                              <div className="font-semibold">{position.positionValue.toFixed(2)} USDT</div>
+                              <div className="text-gray-500">Wartość</div>
+                              <div className="font-semibold text-gray-200">{position.positionValue.toFixed(2)} USDT</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Cena Wejścia</div>
-                              <div className="font-semibold">{position.entryPrice.toFixed(4)}</div>
+                              <div className="text-gray-500">Cena Wejścia</div>
+                              <div className="font-semibold text-gray-200">{position.entryPrice.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Stop Loss</div>
-                              <div className="font-semibold text-red-500">{position.currentSl.toFixed(4)}</div>
+                              <div className="text-gray-500">Stop Loss</div>
+                              <div className="font-semibold text-red-400">{position.currentSl.toFixed(4)}</div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 text-xs mb-2">
-                            <span className="text-muted-foreground">Take Profit:</span>
+                            <span className="text-gray-500">Take Profit:</span>
                             {position.tp1Price && (
-                              <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-500" : ""}>
+                              <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
                                 TP1: {position.tp1Price.toFixed(4)} {position.tp1Hit ? "✓" : ""}
                               </Badge>
                             )}
                             {position.tp2Price && (
-                              <Badge variant={position.tp2Hit ? "default" : "outline"} className={position.tp2Hit ? "bg-green-500" : ""}>
+                              <Badge variant={position.tp2Hit ? "default" : "outline"} className={position.tp2Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
                                 TP2: {position.tp2Price.toFixed(4)} {position.tp2Hit ? "✓" : ""}
                               </Badge>
                             )}
                             {position.tp3Price && (
-                              <Badge variant={position.tp3Hit ? "default" : "outline"} className={position.tp3Hit ? "bg-green-500" : ""}>
+                              <Badge variant={position.tp3Hit ? "default" : "outline"} className={position.tp3Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
                                 TP3: {position.tp3Price.toFixed(4)} {position.tp3Hit ? "✓" : ""}
                               </Badge>
                             )}
                           </div>
 
-                          <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/30">
+                          <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-800">
                             <span>Confidence: {(position.confidenceScore * 100).toFixed(0)}%</span>
                             <span>{new Date(position.openedAt).toLocaleString("pl-PL")}</span>
                           </div>
@@ -879,20 +879,20 @@ export default function DashboardPage() {
 
           {/* All Positions Tab */}
           <TabsContent value="all-positions" className="space-y-6">
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 text-white">
                       <Activity className="h-5 w-5" />
                       Wszystkie Pozycje
                       {positions.length > 0 && (
-                        <Badge variant="secondary" className="ml-2">
+                        <Badge variant="secondary" className="ml-2 bg-gray-700 text-gray-300">
                           {positions.length} Otwartych
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-gray-500">
                       Wszystkie otwarte pozycje na giełdzie
                     </CardDescription>
                   </div>
@@ -901,7 +901,7 @@ export default function DashboardPage() {
                     disabled={loadingPositions}
                     size="sm"
                     variant="outline"
-                    className="hover:scale-105 transition-transform"
+                    className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
                   >
                     <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
                     Odśwież
@@ -910,9 +910,9 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {positionsError && (
-                  <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+                  <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm">
+                    <AlertDescription className="text-sm text-yellow-400">
                       <strong>Błąd:</strong> {positionsError}
                     </AlertDescription>
                   </Alert>
@@ -920,15 +920,15 @@ export default function DashboardPage() {
 
                 {loadingPositions && (
                   <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Pobieranie pozycji...</p>
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
+                    <p className="text-sm text-gray-500">Pobieranie pozycji...</p>
                   </div>
                 )}
 
                 {!loadingPositions && positions.length === 0 && !positionsError && (
                   <div className="text-center py-12">
-                    <Activity className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                    <p className="text-muted-foreground">Brak otwartych pozycji</p>
+                    <Activity className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
+                    <p className="text-gray-500">Brak otwartych pozycji</p>
                   </div>
                 )}
 
@@ -952,72 +952,72 @@ export default function DashboardPage() {
                           key={idx}
                           className={`p-5 rounded-xl border transition-all ${
                             isBotPosition 
-                              ? "border-primary/50 bg-gradient-to-r from-primary/5 to-card/80 hover:from-primary/10" 
-                              : "border-border/50 bg-card/80 hover:bg-card"
+                              ? "border-blue-700/40 bg-gradient-to-r from-blue-600/10 to-gray-900/80 hover:from-blue-600/20" 
+                              : "border-gray-800 bg-gray-900/80 hover:bg-gray-900"
                           }`}
                         >
                           <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-3">
                               <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                                position.side === "Buy" ? "bg-green-500/20 border border-green-500/30" : "bg-red-500/20 border border-red-500/30"
+                                position.side === "Buy" ? "bg-green-500/30 border border-green-500/40" : "bg-red-500/30 border border-red-500/40"
                               }`}>
                                 {position.side === "Buy" ? (
-                                  <ArrowUpRight className="h-6 w-6 text-green-500" />
+                                  <ArrowUpRight className="h-6 w-6 text-green-400" />
                                 ) : (
-                                  <ArrowDownRight className="h-6 w-6 text-red-500" />
+                                  <ArrowDownRight className="h-6 w-6 text-red-400" />
                                 )}
                               </div>
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-xl">{position.symbol}</span>
+                                  <span className="font-bold text-xl text-white">{position.symbol}</span>
                                   {isBotPosition && (
-                                    <Badge variant="default" className="text-xs">BOT</Badge>
+                                    <Badge variant="default" className="text-xs bg-blue-600 text-white">BOT</Badge>
                                   )}
                                 </div>
                                 <div className={`text-sm font-semibold ${
-                                  position.side === "Buy" ? "text-green-500" : "text-red-500"
+                                  position.side === "Buy" ? "text-green-400" : "text-red-400"
                                 }`}>
                                   {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
                                 </div>
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className={`text-xl font-bold ${isProfitable ? "text-green-500" : "text-red-500"}`}>
+                              <div className={`text-xl font-bold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
                                 {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
                               </div>
-                              <div className={`text-sm font-semibold ${isProfitable ? "text-green-500" : "text-red-500"}`}>
+                              <div className={`text-sm font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
                                 ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
                               </div>
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-3 text-sm p-3 rounded-lg bg-muted/30">
+                          <div className="grid grid-cols-2 gap-3 text-sm p-3 rounded-lg bg-gray-800/40">
                             <div>
-                              <div className="text-muted-foreground">Rozmiar</div>
-                              <div className="font-semibold">{position.size}</div>
+                              <div className="text-gray-500">Rozmiar</div>
+                              <div className="font-semibold text-gray-200">{position.size}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Wartość</div>
-                              <div className="font-semibold">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
+                              <div className="text-gray-500">Wartość</div>
+                              <div className="font-semibold text-gray-200">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Cena Wejścia</div>
-                              <div className="font-semibold">{parseFloat(position.entryPrice).toFixed(4)}</div>
+                              <div className="text-gray-500">Cena Wejścia</div>
+                              <div className="font-semibold text-gray-200">{parseFloat(position.entryPrice).toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Cena Bieżąca</div>
-                              <div className="font-semibold">{parseFloat(position.markPrice).toFixed(4)}</div>
+                              <div className="text-gray-500">Cena Bieżąca</div>
+                              <div className="font-semibold text-gray-200">{parseFloat(position.markPrice).toFixed(4)}</div>
                             </div>
                             {parseFloat(position.takeProfit) > 0 && (
                               <div>
-                                <div className="text-muted-foreground">Take Profit</div>
-                                <div className="font-semibold text-green-500">{parseFloat(position.takeProfit).toFixed(4)}</div>
+                                <div className="text-gray-500">Take Profit</div>
+                                <div className="font-semibold text-green-400">{parseFloat(position.takeProfit).toFixed(4)}</div>
                               </div>
                             )}
                             {parseFloat(position.stopLoss) > 0 && (
                               <div>
-                                <div className="text-muted-foreground">Stop Loss</div>
-                                <div className="font-semibold text-red-500">{parseFloat(position.stopLoss).toFixed(4)}</div>
+                                <div className="text-gray-500">Stop Loss</div>
+                                <div className="font-semibold text-red-400">{parseFloat(position.stopLoss).toFixed(4)}</div>
                               </div>
                             )}
                           </div>
@@ -1032,19 +1032,19 @@ export default function DashboardPage() {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-white">
                   <Settings className="h-5 w-5" />
                   Ustawienia i Konfiguracja
                 </CardTitle>
-                <CardDescription>Zarządzaj swoim botem i konfiguracją API</CardDescription>
+                <CardDescription className="text-gray-500">Zarządzaj swoim botem i konfiguracją API</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Button
                     onClick={() => router.push("/ustawienia-bota")}
-                    className="h-24 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
                     variant="outline"
                   >
                     <Bot className="h-8 w-8" />
@@ -1053,7 +1053,7 @@ export default function DashboardPage() {
                   
                   <Button
                     onClick={() => router.push("/exchange-test")}
-                    className="h-24 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
                     variant="outline"
                   >
                     <Settings className="h-8 w-8" />
@@ -1062,7 +1062,7 @@ export default function DashboardPage() {
                   
                   <Button
                     onClick={() => router.push("/logi-bota")}
-                    className="h-24 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
                     variant="outline"
                   >
                     <FileText className="h-8 w-8" />
@@ -1071,7 +1071,7 @@ export default function DashboardPage() {
                   
                   <Button
                     onClick={() => router.push("/bot-history")}
-                    className="h-24 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-24 flex-col gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
                     variant="outline"
                   >
                     <History className="h-8 w-8" />
@@ -1079,28 +1079,28 @@ export default function DashboardPage() {
                   </Button>
                 </div>
 
-                <Card className="bg-muted/50 border-border/30">
+                <Card className="bg-gray-800/50 border-gray-700">
                   <CardHeader>
-                    <CardTitle className="text-base">Informacje o konfiguracji</CardTitle>
+                    <CardTitle className="text-base text-white">Informacje o konfiguracji</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between p-2 rounded bg-background/50">
-                      <span className="text-muted-foreground">Giełda:</span>
-                      <span className="font-semibold">{credentials.exchange.toUpperCase()}</span>
+                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                      <span className="text-gray-400">Giełda:</span>
+                      <span className="font-semibold text-gray-200">{credentials.exchange.toUpperCase()}</span>
                     </div>
-                    <div className="flex justify-between p-2 rounded bg-background/50">
-                      <span className="text-muted-foreground">Środowisko:</span>
-                      <span className="font-semibold capitalize">{credentials.environment}</span>
+                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                      <span className="text-gray-400">Środowisko:</span>
+                      <span className="font-semibold capitalize text-gray-200">{credentials.environment}</span>
                     </div>
-                    <div className="flex justify-between p-2 rounded bg-background/50">
-                      <span className="text-muted-foreground">API Key:</span>
-                      <span className="font-mono text-xs">
+                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                      <span className="text-gray-400">API Key:</span>
+                      <span className="font-mono text-xs text-gray-300">
                         {credentials.apiKey.substring(0, 8)}...{credentials.apiKey.slice(-4)}
                       </span>
                     </div>
-                    <div className="flex justify-between p-2 rounded bg-background/50">
-                      <span className="text-muted-foreground">Zapisano:</span>
-                      <span className="text-xs">
+                    <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                      <span className="text-gray-400">Zapisano:</span>
+                      <span className="text-xs text-gray-300">
                         {new Date(credentials.savedAt).toLocaleString("pl-PL")}
                       </span>
                     </div>
@@ -1112,20 +1112,20 @@ export default function DashboardPage() {
 
           {/* Quick Actions Tab */}
           <TabsContent value="info" className="space-y-6">
-            <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-white">
                   <Zap className="h-5 w-5" />
                   Szybkie Akcje
                 </CardTitle>
-                <CardDescription>Najczęściej używane funkcje</CardDescription>
+                <CardDescription className="text-gray-500">Najczęściej używane funkcje</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Button
                     onClick={handleSyncPositions}
                     disabled={loadingSync}
-                    className="h-20 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-20 flex-col gap-2 bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
                     variant="default"
                   >
                     <RefreshCw className={`h-6 w-6 ${loadingSync ? "animate-spin" : ""}`} />
@@ -1138,7 +1138,7 @@ export default function DashboardPage() {
                       fetchPositions();
                       fetchBotPositions();
                     }}
-                    className="h-20 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-20 flex-col gap-2 bg-purple-600 hover:bg-purple-700 text-white hover:scale-105 transition-transform"
                     variant="default"
                   >
                     <RefreshCw className="h-6 w-6" />
@@ -1147,7 +1147,7 @@ export default function DashboardPage() {
 
                   <Button
                     onClick={() => router.push("/alerts")}
-                    className="h-20 flex-col gap-2 hover:scale-105 transition-transform"
+                    className="h-20 flex-col gap-2 bg-amber-600 hover:bg-amber-700 text-white hover:scale-105 transition-transform"
                     variant="default"
                   >
                     <Bell className="h-6 w-6" />
@@ -1155,11 +1155,11 @@ export default function DashboardPage() {
                   </Button>
                 </div>
 
-                <Card className="bg-gradient-to-r from-primary/10 to-card border-primary/20">
+                <Card className="bg-gradient-to-r from-blue-600/20 to-gray-900 border-blue-700/30">
                   <CardHeader>
-                    <CardTitle className="text-base">💡 Porady</CardTitle>
+                    <CardTitle className="text-base text-white">💡 Porady</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
+                  <CardContent className="space-y-2 text-sm text-gray-400">
                     <p>• Pozycje odświeżają się automatycznie co 0.5s</p>
                     <p>• Użyj "Sync" aby zsynchronizować pozycje z giełdą</p>
                     <p>• Sprawdzaj logi bota regularnie aby monitorować błędy</p>
