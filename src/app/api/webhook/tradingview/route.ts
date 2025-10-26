@@ -3,6 +3,40 @@ import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+// Bybit API Signing Helper
+async function signBybitRequest(
+  apiKey: string,
+  apiSecret: string,
+  timestamp: number,
+  payload: string
+): Promise<string> {
+  const signString = timestamp + apiKey + 5000 + payload;
+  
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(signString);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  
+  return hashHex;
+}
+
+function getBybitBaseUrl(environment: string): string {
+  if (environment === "demo") return "https://api-demo.bybit.com";
+  if (environment === "testnet") return "https://api-testnet.bybit.com";
+  return "https://api.bybit.com";
+}
+
 export async function POST(request: Request) {
   try {
     const data = await request.json();
@@ -194,19 +228,43 @@ export async function POST(request: Request) {
         if (botConfig.oppositeDirectionStrategy === "market_reversal") {
           console.log(`🔄 Closing opposite position and reversing on ${data.symbol}`);
           
-          // Close existing position
+          // Close existing position using direct Bybit API call
           try {
-            const closeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/exchange/close-position`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                symbol: data.symbol,
-                side: existingPosition.side,
-              }),
+            const apiKey = process.env.BYBIT_API_KEY!;
+            const apiSecret = process.env.BYBIT_API_SECRET!;
+            const environment = process.env.BYBIT_ENVIRONMENT || "demo";
+            const baseUrl = getBybitBaseUrl(environment);
+
+            const closeTimestamp = Date.now();
+            const closePayload = JSON.stringify({
+              category: "linear",
+              symbol: data.symbol,
+              side: existingPosition.side === "BUY" ? "Sell" : "Buy",
+              orderType: "Market",
+              qty: existingPosition.quantity.toString(),
+              timeInForce: "GTC",
+              reduceOnly: true,
+              closeOnTrigger: false
             });
 
-            if (!closeResponse.ok) {
-              throw new Error("Failed to close position");
+            const closeSignature = await signBybitRequest(apiKey, apiSecret, closeTimestamp, closePayload);
+
+            const closeResponse = await fetch(`${baseUrl}/v5/order/create`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-BAPI-API-KEY": apiKey,
+                "X-BAPI-TIMESTAMP": closeTimestamp.toString(),
+                "X-BAPI-SIGN": closeSignature,
+                "X-BAPI-RECV-WINDOW": "5000",
+              },
+              body: closePayload
+            });
+
+            const closeData = await closeResponse.json();
+
+            if (closeData.retCode !== 0) {
+              throw new Error(`Bybit close failed: ${closeData.retMsg}`);
             }
 
             // Update database
@@ -308,7 +366,7 @@ export async function POST(request: Request) {
     // 🎯 CALCULATE SL/TP VALUES
     // ============================================
     
-    const entryPrice = parseFloat(data.entryPrice);
+    const entryPrice = parseFloat(data.entryPrice || data.price);
     let slPrice: number | null = null;
     let tp1Price: number | null = null;
     let tp2Price: number | null = null;
@@ -400,45 +458,136 @@ export async function POST(request: Request) {
     console.log(`💰 Position size: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
 
     // ============================================
-    // 🚀 OPEN POSITION ON EXCHANGE
+    // 🚀 OPEN POSITION ON BYBIT (DIRECT API CALL)
     // ============================================
 
     try {
-      // Determine base URL for API calls
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+      const apiKey = process.env.BYBIT_API_KEY;
+      const apiSecret = process.env.BYBIT_API_SECRET;
+      const environment = process.env.BYBIT_ENVIRONMENT || "demo";
 
-      const openPositionResponse = await fetch(
-        `${baseUrl}/api/exchange/open-position`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            exchange: "bybit",
-            apiKey: process.env.BYBIT_API_KEY,
-            apiSecret: process.env.BYBIT_API_SECRET,
-            environment: process.env.BYBIT_ENVIRONMENT || "demo",
-            symbol: data.symbol,
-            side: data.side === "BUY" ? "Buy" : "Sell",
-            quantity: quantity.toFixed(8),
-            leverage: leverage,
-            stopLoss: slPrice?.toFixed(2),
-            takeProfit: tp1Price?.toFixed(2),
-            tp1: tp1Price?.toFixed(2),
-            tp2: tp2Price?.toFixed(2),
-            tp3: tp3Price?.toFixed(2),
-            tpMode: botConfig.tpStrategy || "main_only",
-          }),
-        }
-      );
-
-      if (!openPositionResponse.ok) {
-        const errorData = await openPositionResponse.json();
-        throw new Error(errorData.error || "Failed to open position");
+      if (!apiKey || !apiSecret) {
+        throw new Error("Bybit API credentials not configured in .env");
       }
 
-      const positionData = await openPositionResponse.json();
-      console.log("✅ Position opened on exchange:", positionData);
+      const baseUrl = getBybitBaseUrl(environment);
+      const symbol = data.symbol;
+      const side = data.side === "BUY" ? "Buy" : "Sell";
+      const tpMode = botConfig.tpStrategy || "main_only";
+
+      // Step 1: Set Leverage
+      if (leverage) {
+        const leverageTimestamp = Date.now();
+        const leveragePayload = JSON.stringify({
+          category: "linear",
+          symbol,
+          buyLeverage: leverage.toString(),
+          sellLeverage: leverage.toString()
+        });
+
+        const leverageSignature = await signBybitRequest(apiKey, apiSecret, leverageTimestamp, leveragePayload);
+
+        const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-BAPI-API-KEY": apiKey,
+            "X-BAPI-TIMESTAMP": leverageTimestamp.toString(),
+            "X-BAPI-SIGN": leverageSignature,
+            "X-BAPI-RECV-WINDOW": "5000",
+          },
+          body: leveragePayload
+        });
+
+        const leverageData = await leverageResponse.json();
+
+        // Non-critical error - leverage might already be set
+        if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
+          console.warn("Leverage setting warning:", leverageData.retMsg);
+        }
+      }
+
+      // Step 2: Open Position (Market Order)
+      const orderTimestamp = Date.now();
+      const orderPayload = JSON.stringify({
+        category: "linear",
+        symbol,
+        side,
+        orderType: "Market",
+        qty: quantity.toFixed(4),
+        timeInForce: "GTC",
+        reduceOnly: false,
+        closeOnTrigger: false
+      });
+
+      const orderSignature = await signBybitRequest(apiKey, apiSecret, orderTimestamp, orderPayload);
+
+      const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-BAPI-API-KEY": apiKey,
+          "X-BAPI-TIMESTAMP": orderTimestamp.toString(),
+          "X-BAPI-SIGN": orderSignature,
+          "X-BAPI-RECV-WINDOW": "5000",
+        },
+        body: orderPayload
+      });
+
+      const orderData = await orderResponse.json();
+
+      if (orderData.retCode !== 0) {
+        throw new Error(`Bybit order failed: ${orderData.retMsg}`);
+      }
+
+      const orderId = orderData.result?.orderId;
+      console.log("✅ Position opened on Bybit:", orderId);
+
+      // Step 3: Set SL/TP
+      if (slPrice || tp1Price) {
+        // Wait 500ms for position to be created
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const tpslTimestamp = Date.now();
+        const tpslPayload: any = {
+          category: "linear",
+          symbol,
+          positionIdx: 0 // One-Way Mode
+        };
+
+        // Set Stop Loss
+        if (slPrice) {
+          tpslPayload.stopLoss = slPrice.toFixed(2);
+        }
+
+        // Set Take Profit based on mode
+        if (tpMode === "multiple" && tp1Price) {
+          tpslPayload.takeProfit = tp1Price.toFixed(2);
+        } else if (tp1Price) {
+          tpslPayload.takeProfit = tp1Price.toFixed(2);
+        }
+
+        const tpslPayloadStr = JSON.stringify(tpslPayload);
+        const tpslSignature = await signBybitRequest(apiKey, apiSecret, tpslTimestamp, tpslPayloadStr);
+
+        const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-BAPI-API-KEY": apiKey,
+            "X-BAPI-TIMESTAMP": tpslTimestamp.toString(),
+            "X-BAPI-SIGN": tpslSignature,
+            "X-BAPI-RECV-WINDOW": "5000",
+          },
+          body: tpslPayloadStr
+        });
+
+        const tpslData = await tpslResponse.json();
+
+        if (tpslData.retCode !== 0) {
+          console.warn("SL/TP setting warning:", tpslData.retMsg);
+        }
+      }
 
       // ============================================
       // 💾 SAVE POSITION TO DATABASE
@@ -467,7 +616,7 @@ export async function POST(request: Request) {
         unrealisedPnl: 0,
         status: "open",
         alertId: alert.id,
-        bybitOrderId: positionData.orderId,
+        bybitOrderId: orderId,
         openedAt: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),
       }).returning();
