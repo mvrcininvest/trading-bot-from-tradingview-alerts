@@ -87,6 +87,10 @@ export const botPositions = sqliteTable('bot_positions', {
   openedAt: text('opened_at').notNull(),
   lastUpdated: text('last_updated').notNull(),
   bybitOrderId: text('bybit_order_id'),
+  tp2OrderId: text('tp2_order_id'),
+  tp3OrderId: text('tp3_order_id'),
+  closedAt: text('closed_at'),
+  closeReason: text('close_reason'),
   status: text('status').notNull().default('open'),
 });
 

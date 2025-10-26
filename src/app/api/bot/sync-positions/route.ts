@@ -201,33 +201,30 @@ export async function POST(request: NextRequest) {
             (closedAt.getTime() - new Date(dbPos.openedAt).getTime()) / 1000 / 60
           );
 
+          // Calculate PnL
+          const pnl = dbPos.unrealisedPnl; // Last known PnL
+          const pnlPercent = (pnl / dbPos.initialMargin) * 100;
+
           // 3. Save to position_history
           await db.insert(positionHistory).values({
+            positionId: dbPos.id,
             symbol: dbPos.symbol,
             side: dbPos.side,
             tier: dbPos.tier,
             entryPrice: dbPos.entryPrice,
-            exitPrice: dbPos.entryPrice, // We don't know exact exit price
+            closePrice: dbPos.entryPrice, // We don't know exact exit price
             quantity: dbPos.quantity,
             leverage: dbPos.leverage,
-            stopLoss: dbPos.stopLoss,
-            tp1Price: dbPos.tp1Price,
-            tp2Price: dbPos.tp2Price,
-            tp3Price: dbPos.tp3Price,
-            mainTpPrice: dbPos.mainTpPrice,
+            pnl,
+            pnlPercent,
+            closeReason: "auto_sync",
             tp1Hit: dbPos.tp1Hit,
             tp2Hit: dbPos.tp2Hit,
             tp3Hit: dbPos.tp3Hit,
-            currentSl: dbPos.currentSl,
-            positionValue: dbPos.positionValue,
-            initialMargin: dbPos.initialMargin,
-            realisedPnl: dbPos.unrealisedPnl, // Last known PnL
             confirmationCount: dbPos.confirmationCount,
-            confidenceScore: dbPos.confidenceScore,
             openedAt: dbPos.openedAt,
             closedAt: closedAt.toISOString(),
             durationMinutes,
-            closeReason: "auto_sync", // Closed by exchange (SL/TP hit or manual close)
           });
 
           // 4. Update position status to closed
@@ -242,15 +239,16 @@ export async function POST(request: NextRequest) {
 
           // 5. Log action
           await db.insert(botActions).values({
-            action: "position_closed",
+            actionType: "position_closed",
             symbol: dbPos.symbol,
             side: dbPos.side,
-            details: {
-              reason: "auto_sync",
+            reason: "auto_sync",
+            details: JSON.stringify({
               message: "Position closed on exchange, synced to database",
               positionId: dbPos.id,
-            },
+            }),
             success: true,
+            createdAt: new Date().toISOString(),
           });
 
           syncResults.closed++;

@@ -10,13 +10,10 @@ export async function POST(request: Request) {
 
     // Validate basic required fields
     const requiredFields = [
-      "ticker",
-      "action",
+      "symbol",
+      "side",
       "tier",
-      "direction",
-      "entry",
-      "confidence",
-      "confirmations",
+      "entryPrice",
     ];
 
     // Check basic required fields
@@ -31,19 +28,35 @@ export async function POST(request: Request) {
 
     // Save alert to database
     const [alert] = await db.insert(alerts).values({
-      ticker: data.ticker,
-      action: data.action,
+      timestamp: data.timestamp || Date.now(),
+      symbol: data.symbol,
+      side: data.side,
       tier: data.tier,
-      direction: data.direction,
-      entry: data.entry?.toString() || "0",
-      sl: data.sl?.toString() || null,
-      tp1: data.tp1?.toString() || null,
-      tp2: data.tp2?.toString() || null,
-      tp3: data.tp3?.toString() || null,
-      main_tp: data.main_tp?.toString() || null,
-      confidence: data.confidence,
-      confirmations: data.confirmations,
-      rawData: JSON.stringify(data),
+      tierNumeric: data.tierNumeric || 3,
+      strength: data.strength || 0.5,
+      entryPrice: parseFloat(data.entryPrice),
+      sl: parseFloat(data.sl || "0"),
+      tp1: parseFloat(data.tp1 || "0"),
+      tp2: parseFloat(data.tp2 || "0"),
+      tp3: parseFloat(data.tp3 || "0"),
+      mainTp: parseFloat(data.mainTp || data.tp1 || "0"),
+      atr: data.atr || 0,
+      volumeRatio: data.volumeRatio || 1,
+      session: data.session || "unknown",
+      regime: data.regime || "neutral",
+      regimeConfidence: data.regimeConfidence || 0.5,
+      mtfAgreement: data.mtfAgreement || 0.5,
+      leverage: data.leverage || 10,
+      inOb: data.inOb || false,
+      inFvg: data.inFvg || false,
+      obScore: data.obScore || 0,
+      fvgScore: data.fvgScore || 0,
+      institutionalFlow: data.institutionalFlow || null,
+      accumulation: data.accumulation || null,
+      volumeClimax: data.volumeClimax || null,
+      latency: data.latency || 0,
+      rawJson: JSON.stringify(data),
+      createdAt: new Date().toISOString(),
     }).returning();
 
     console.log("✅ Alert saved to database:", alert.id);
@@ -66,7 +79,7 @@ export async function POST(request: Request) {
     const botConfig = settings[0];
 
     // Check if bot is enabled
-    if (!botConfig.enabled) {
+    if (!botConfig.botEnabled) {
       console.log("🛑 Bot is disabled");
       return NextResponse.json({ 
         success: true, 
@@ -76,23 +89,24 @@ export async function POST(request: Request) {
     }
 
     // Tier filtering
-    const allowedTiers = [
-      botConfig.tier1Enabled && "1",
-      botConfig.tier2Enabled && "2",
-      botConfig.tier3Enabled && "3",
-    ].filter(Boolean) as string[];
-
-    if (!allowedTiers.includes(data.tier)) {
-      console.log(`⚠️ Alert tier ${data.tier} not enabled`);
+    const disabledTiers = JSON.parse(botConfig.disabledTiers || '[]');
+    if (disabledTiers.includes(data.tier)) {
+      console.log(`⚠️ Alert tier ${data.tier} is disabled`);
       await db.insert(botActions).values({
         actionType: "alert_filtered",
-        symbol: data.ticker,
-        details: JSON.stringify({ reason: "tier_not_enabled", tier: data.tier }),
+        symbol: data.symbol,
+        side: data.side,
+        tier: data.tier,
+        alertId: alert.id,
+        reason: "tier_disabled",
+        details: JSON.stringify({ tier: data.tier }),
+        success: false,
+        createdAt: new Date().toISOString(),
       });
       return NextResponse.json({ 
         success: true, 
         alert_id: alert.id,
-        message: `Alert tier ${data.tier} not enabled`
+        message: `Alert tier ${data.tier} is disabled`
       });
     }
 
@@ -102,7 +116,7 @@ export async function POST(request: Request) {
       .from(botPositions)
       .where(
         and(
-          eq(botPositions.symbol, data.ticker),
+          eq(botPositions.symbol, data.symbol),
           eq(botPositions.status, "open")
         )
       );
@@ -111,12 +125,18 @@ export async function POST(request: Request) {
     if (existingPositions.length > 0) {
       const existingPosition = existingPositions[0];
       
-      if (botConfig.sameSymbolAction === "ignore") {
-        console.log(`⚠️ Position already exists on ${data.ticker}, ignoring`);
+      if (botConfig.sameSymbolBehavior === "ignore") {
+        console.log(`⚠️ Position already exists on ${data.symbol}, ignoring`);
         await db.insert(botActions).values({
           actionType: "alert_ignored",
-          symbol: data.ticker,
+          symbol: data.symbol,
+          side: data.side,
+          tier: data.tier,
+          alertId: alert.id,
+          reason: "same_symbol_ignore",
           details: JSON.stringify({ reason: "same_symbol_ignore" }),
+          success: false,
+          createdAt: new Date().toISOString(),
         });
         return NextResponse.json({ 
           success: true, 
@@ -127,12 +147,12 @@ export async function POST(request: Request) {
 
       // Check if opposite direction
       const isOpposite = 
-        (existingPosition.direction === "long" && data.direction === "short") ||
-        (existingPosition.direction === "short" && data.direction === "long");
+        (existingPosition.side === "BUY" && data.side === "SELL") ||
+        (existingPosition.side === "SELL" && data.side === "BUY");
 
       if (isOpposite) {
-        if (botConfig.oppositeDirectionAction === "close_and_reverse") {
-          console.log(`🔄 Closing opposite position and reversing on ${data.ticker}`);
+        if (botConfig.oppositeDirectionStrategy === "market_reversal") {
+          console.log(`🔄 Closing opposite position and reversing on ${data.symbol}`);
           
           // Close existing position
           try {
@@ -140,8 +160,8 @@ export async function POST(request: Request) {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                symbol: data.ticker,
-                positionIdx: existingPosition.direction === "long" ? 1 : 2,
+                symbol: data.symbol,
+                side: existingPosition.side,
               }),
             });
 
@@ -155,15 +175,20 @@ export async function POST(request: Request) {
               .set({ 
                 status: "closed",
                 closeReason: "opposite_signal",
-                closedAt: new Date(),
+                closedAt: new Date().toISOString(),
               })
               .where(eq(botPositions.id, existingPosition.id));
 
             await db.insert(botActions).values({
               actionType: "position_closed",
-              symbol: data.ticker,
+              symbol: data.symbol,
+              side: existingPosition.side,
+              tier: existingPosition.tier,
               positionId: existingPosition.id,
+              reason: "opposite_signal",
               details: JSON.stringify({ reason: "opposite_signal" }),
+              success: true,
+              createdAt: new Date().toISOString(),
             });
 
             console.log("✅ Opposite position closed, proceeding with new trade");
@@ -175,12 +200,18 @@ export async function POST(request: Request) {
               error: "Failed to close opposite position"
             }, { status: 500 });
           }
-        } else if (botConfig.oppositeDirectionAction === "ignore") {
-          console.log(`⚠️ Opposite direction signal on ${data.ticker}, ignoring`);
+        } else {
+          console.log(`⚠️ Opposite direction signal on ${data.symbol}, ignoring`);
           await db.insert(botActions).values({
             actionType: "alert_ignored",
-            symbol: data.ticker,
+            symbol: data.symbol,
+            side: data.side,
+            tier: data.tier,
+            alertId: alert.id,
+            reason: "opposite_direction_ignore",
             details: JSON.stringify({ reason: "opposite_direction_ignore" }),
+            success: false,
+            createdAt: new Date().toISOString(),
           });
           return NextResponse.json({ 
             success: true, 
@@ -189,10 +220,22 @@ export async function POST(request: Request) {
           });
         }
       } else {
-        // Same direction - add to position or ignore based on sameSymbolAction
-        if (botConfig.sameSymbolAction === "add_to_position") {
-          console.log(`➕ Adding to existing position on ${data.ticker}`);
-          // Continue with opening new position
+        // Same direction - track confirmations
+        if (botConfig.sameSymbolBehavior === "track_confirmations") {
+          console.log(`➕ Tracking confirmation for ${data.symbol}`);
+          await db
+            .update(botPositions)
+            .set({ 
+              confirmationCount: existingPosition.confirmationCount + 1,
+              lastUpdated: new Date().toISOString(),
+            })
+            .where(eq(botPositions.id, existingPosition.id));
+          
+          return NextResponse.json({ 
+            success: true, 
+            alert_id: alert.id,
+            message: "Confirmation tracked"
+          });
         }
       }
     }
@@ -201,22 +244,22 @@ export async function POST(request: Request) {
     // 🎯 CALCULATE SL/TP VALUES
     // ============================================
     
-    const entryPrice = parseFloat(data.entry);
+    const entryPrice = parseFloat(data.entryPrice);
     let slPrice: number | null = null;
     let tp1Price: number | null = null;
     let tp2Price: number | null = null;
     let tp3Price: number | null = null;
 
     // Check if alert contains SL/TP values
-    const hasSlTpInAlert = data.sl && data.tp1 && data.tp2 && data.tp3;
+    const hasSlTpInAlert = data.sl && data.tp1;
 
     if (hasSlTpInAlert) {
       // Use values from alert (priority)
       console.log("✅ Using SL/TP from alert");
       slPrice = parseFloat(data.sl);
       tp1Price = parseFloat(data.tp1);
-      tp2Price = parseFloat(data.tp2);
-      tp3Price = parseFloat(data.tp3);
+      tp2Price = data.tp2 ? parseFloat(data.tp2) : null;
+      tp3Price = data.tp3 ? parseFloat(data.tp3) : null;
     } else if (botConfig.useDefaultSlTp) {
       // Calculate default SL/TP based on entry price
       console.log("🛡️ Using default SL/TP from settings");
@@ -226,7 +269,7 @@ export async function POST(request: Request) {
       const tp2Percent = botConfig.defaultTp2Percent / 100;
       const tp3Percent = botConfig.defaultTp3Percent / 100;
 
-      if (data.direction === "long") {
+      if (data.side === "BUY") {
         slPrice = entryPrice * (1 - slPercent);
         tp1Price = entryPrice * (1 + tp1Percent);
         tp2Price = entryPrice * (1 + tp2Percent);
@@ -244,8 +287,14 @@ export async function POST(request: Request) {
       console.log("❌ No SL/TP provided and default SL/TP not enabled");
       await db.insert(botActions).values({
         actionType: "alert_ignored",
-        symbol: data.ticker,
+        symbol: data.symbol,
+        side: data.side,
+        tier: data.tier,
+        alertId: alert.id,
+        reason: "no_sl_tp_provided",
         details: JSON.stringify({ reason: "no_sl_tp_provided" }),
+        success: false,
+        createdAt: new Date().toISOString(),
       });
       return NextResponse.json({ 
         success: false, 
@@ -258,19 +307,21 @@ export async function POST(request: Request) {
     // 💰 CALCULATE POSITION SIZE
     // ============================================
 
-    let positionSizeUsd = botConfig.positionSizeUsd;
+    let positionSizeUsd = botConfig.positionSizeFixed;
 
-    if (botConfig.tierBasedSize) {
-      if (data.tier === "1") positionSizeUsd = botConfig.tier1SizeUsd;
-      else if (data.tier === "2") positionSizeUsd = botConfig.tier2SizeUsd;
-      else if (data.tier === "3") positionSizeUsd = botConfig.tier3SizeUsd;
+    if (botConfig.positionSizeMode === "percent") {
+      // Get account balance and calculate percentage
+      // For now, use fixed size
+      positionSizeUsd = botConfig.positionSizeFixed;
     }
 
     // Calculate quantity
     const quantity = positionSizeUsd / entryPrice;
 
     // Get leverage
-    const leverage = botConfig.leverage;
+    const leverage = botConfig.leverageMode === "from_alert" 
+      ? (data.leverage || botConfig.leverageFixed) 
+      : botConfig.leverageFixed;
 
     console.log(`💰 Position size: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
 
@@ -285,15 +336,20 @@ export async function POST(request: Request) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            symbol: data.ticker,
-            side: data.direction === "long" ? "Buy" : "Sell",
-            qty: quantity.toFixed(8),
+            exchange: "bybit",
+            apiKey: process.env.BYBIT_API_KEY,
+            apiSecret: process.env.BYBIT_API_SECRET,
+            environment: process.env.BYBIT_ENVIRONMENT || "demo",
+            symbol: data.symbol,
+            side: data.side === "BUY" ? "Buy" : "Sell",
+            quantity: quantity.toFixed(8),
             leverage: leverage,
-            sl: slPrice?.toFixed(2),
+            stopLoss: slPrice?.toFixed(2),
+            takeProfit: tp1Price?.toFixed(2),
             tp1: tp1Price?.toFixed(2),
             tp2: tp2Price?.toFixed(2),
             tp3: tp3Price?.toFixed(2),
-            mainTp: data.main_tp,
+            tpMode: botConfig.tpStrategy || "main_only",
           }),
         }
       );
@@ -311,24 +367,31 @@ export async function POST(request: Request) {
       // ============================================
 
       const [botPosition] = await db.insert(botPositions).values({
-        symbol: data.ticker,
-        direction: data.direction,
-        entryPrice: entryPrice.toString(),
-        quantity: quantity.toString(),
+        symbol: data.symbol,
+        side: data.side,
+        entryPrice: entryPrice,
+        quantity: quantity,
         leverage: leverage,
-        sl: slPrice?.toString() || null,
-        tp1: tp1Price?.toString() || null,
-        tp2: tp2Price?.toString() || null,
-        tp3: tp3?.toString() || null,
-        mainTp: data.main_tp,
+        stopLoss: slPrice || 0,
+        tp1Price: tp1Price,
+        tp2Price: tp2Price,
+        tp3Price: tp3Price,
+        mainTpPrice: tp1Price || 0,
         tier: data.tier,
-        confidence: data.confidence,
-        confirmations: data.confirmations,
+        confidenceScore: data.strength || 0.5,
+        confirmationCount: 1,
         tp1Hit: false,
         tp2Hit: false,
         tp3Hit: false,
+        currentSl: slPrice || 0,
+        positionValue: positionSizeUsd,
+        initialMargin: positionSizeUsd / leverage,
+        unrealisedPnl: 0,
         status: "open",
         alertId: alert.id,
+        bybitOrderId: positionData.orderId,
+        openedAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
       }).returning();
 
       console.log("✅ Position saved to database:", botPosition.id);
@@ -336,15 +399,21 @@ export async function POST(request: Request) {
       // Save action
       await db.insert(botActions).values({
         actionType: "position_opened",
-        symbol: data.ticker,
+        symbol: data.symbol,
+        side: data.side,
+        tier: data.tier,
+        alertId: alert.id,
         positionId: botPosition.id,
+        reason: "new_signal",
         details: JSON.stringify({
           tier: data.tier,
-          confidence: data.confidence,
+          confidence: data.strength,
           entry: entryPrice,
           quantity: quantity,
           leverage: leverage,
         }),
+        success: true,
+        createdAt: new Date().toISOString(),
       });
 
       return NextResponse.json({
@@ -353,8 +422,8 @@ export async function POST(request: Request) {
         position_id: botPosition.id,
         message: "Alert received and position opened successfully",
         position: {
-          symbol: data.ticker,
-          direction: data.direction,
+          symbol: data.symbol,
+          side: data.side,
           entry: entryPrice,
           quantity: quantity,
           sl: slPrice,
@@ -369,8 +438,15 @@ export async function POST(request: Request) {
       // Save failed action
       await db.insert(botActions).values({
         actionType: "position_failed",
-        symbol: data.ticker,
+        symbol: data.symbol,
+        side: data.side,
+        tier: data.tier,
+        alertId: alert.id,
+        reason: "exchange_error",
         details: JSON.stringify({ error: error.message }),
+        success: false,
+        errorMessage: error.message,
+        createdAt: new Date().toISOString(),
       });
 
       return NextResponse.json(
