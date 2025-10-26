@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
     for (const dbPos of dbPositions) {
       syncResults.checked++;
       const posKey = `${dbPos.symbol}_${dbPos.side === "BUY" ? "Buy" : "Sell"}`;
-      const exchangePos = exchangePositionsMap.get(posKey);
+      const exchangePos = exchangePositionsMap.get(posKey) as any;
 
       if (!exchangePos) {
         // Position is closed on exchange but still open in DB
