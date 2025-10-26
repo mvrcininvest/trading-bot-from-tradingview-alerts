@@ -34,12 +34,11 @@ export default function BotSettingsPage() {
   const [emergencyOverrideMode, setEmergencyOverrideMode] = useState("only_profit")
   const [emergencyMinProfitPercent, setEmergencyMinProfitPercent] = useState(0.0)
   
-  // Updated SL/TP safety fields - changed from % to RR (Risk:Reward)
   const [useDefaultSlTp, setUseDefaultSlTp] = useState(false)
-  const [defaultSlRR, setDefaultSlRR] = useState(1.0) // RR ratio for SL
-  const [defaultTp1RR, setDefaultTp1RR] = useState(1.0) // RR ratio for TP1
-  const [defaultTp2RR, setDefaultTp2RR] = useState(2.0) // RR ratio for TP2
-  const [defaultTp3RR, setDefaultTp3RR] = useState(3.0) // RR ratio for TP3
+  const [defaultSlRR, setDefaultSlRR] = useState(1.0)
+  const [defaultTp1RR, setDefaultTp1RR] = useState(1.0)
+  const [defaultTp2RR, setDefaultTp2RR] = useState(2.0)
+  const [defaultTp3RR, setDefaultTp3RR] = useState(3.0)
 
   useEffect(() => {
     fetchSettings()
@@ -70,7 +69,6 @@ export default function BotSettingsPage() {
         setEmergencyOverrideMode(s.emergencyOverrideMode)
         setEmergencyMinProfitPercent(s.emergencyMinProfitPercent)
         setUseDefaultSlTp(s.useDefaultSlTp || false)
-        // Changed from percent to RR
         setDefaultSlRR(s.defaultSlRR || 1.0)
         setDefaultTp1RR(s.defaultTp1RR || 1.0)
         setDefaultTp2RR(s.defaultTp2RR || 2.0)
@@ -109,7 +107,6 @@ export default function BotSettingsPage() {
           emergencyOverrideMode,
           emergencyMinProfitPercent,
           useDefaultSlTp,
-          // Changed from percent to RR
           defaultSlRR,
           defaultTp1RR,
           defaultTp2RR,
@@ -142,9 +139,9 @@ export default function BotSettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background p-8">
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-8">
         <div className="max-w-4xl mx-auto">
-          <p>Ładowanie...</p>
+          <p className="text-white">Ładowanie...</p>
         </div>
       </div>
     )
@@ -175,7 +172,7 @@ export default function BotSettingsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">Status Bota</h3>
-              <p className="text-sm text-gray-500">Włącz lub wyłącz automatyczny trading</p>
+              <p className="text-sm text-gray-400">Włącz lub wyłącz automatyczny trading</p>
             </div>
             <Switch checked={botEnabled} onCheckedChange={setBotEnabled} />
           </div>
@@ -186,9 +183,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Wielkość Pozycji</h3>
           
           <div className="space-y-2">
-            <Label>Tryb</Label>
+            <Label className="text-white">Tryb</Label>
             <Select value={positionSizeMode} onValueChange={setPositionSizeMode}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -200,23 +197,25 @@ export default function BotSettingsPage() {
 
           {positionSizeMode === "percent" && (
             <div className="space-y-2">
-              <Label>Procent kapitału (%)</Label>
+              <Label className="text-white">Procent kapitału (%)</Label>
               <Input 
                 type="number" 
                 value={positionSizePercent} 
                 onChange={(e) => setPositionSizePercent(parseFloat(e.target.value))}
                 step="0.1"
+                className="text-white"
               />
             </div>
           )}
 
           {positionSizeMode === "fixed" && (
             <div className="space-y-2">
-              <Label>Stała kwota (USDT)</Label>
+              <Label className="text-white">Stała kwota (USDT)</Label>
               <Input 
                 type="number" 
                 value={positionSizeFixed} 
                 onChange={(e) => setPositionSizeFixed(parseFloat(e.target.value))}
+                className="text-white"
               />
             </div>
           )}
@@ -227,9 +226,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Dźwignia (Leverage)</h3>
           
           <div className="space-y-2">
-            <Label>Tryb</Label>
+            <Label className="text-white">Tryb</Label>
             <Select value={leverageMode} onValueChange={setLeverageMode}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -241,13 +240,14 @@ export default function BotSettingsPage() {
 
           {leverageMode === "fixed" && (
             <div className="space-y-2">
-              <Label>Stała dźwignia (x)</Label>
+              <Label className="text-white">Stała dźwignia (x)</Label>
               <Input 
                 type="number" 
                 value={leverageFixed} 
                 onChange={(e) => setLeverageFixed(parseInt(e.target.value))}
                 min="1"
                 max="125"
+                className="text-white"
               />
             </div>
           )}
@@ -258,9 +258,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Filtrowanie Tier</h3>
           
           <div className="space-y-2">
-            <Label>Tryb</Label>
+            <Label className="text-white">Tryb</Label>
             <Select value={tierFilteringMode} onValueChange={setTierFilteringMode}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -272,7 +272,7 @@ export default function BotSettingsPage() {
 
           {tierFilteringMode === "custom" && (
             <div className="space-y-2">
-              <Label>Wyłączone tiery (kliknij aby zaznaczyć)</Label>
+              <Label className="text-white">Wyłączone tiery (kliknij aby zaznaczyć)</Label>
               <div className="flex flex-wrap gap-2">
                 {["Platinum", "Premium", "Standard", "Quick", "Emergency"].map((tier) => (
                   <Button
@@ -280,6 +280,7 @@ export default function BotSettingsPage() {
                     variant={disabledTiers.includes(tier) ? "destructive" : "outline"}
                     size="sm"
                     onClick={() => toggleTier(tier)}
+                    className={disabledTiers.includes(tier) ? "" : "text-white"}
                   >
                     {tier}
                   </Button>
@@ -294,9 +295,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Strategia Take Profit</h3>
           
           <div className="space-y-2">
-            <Label>Tryb TP</Label>
+            <Label className="text-white">Tryb TP</Label>
             <Select value={tpStrategy} onValueChange={setTpStrategy}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -306,82 +307,86 @@ export default function BotSettingsPage() {
             </Select>
           </div>
           
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-400">
             {tpStrategy === "single" 
               ? "Zamyka całą pozycję gdy main_tp zostanie osiągnięty"
               : "Zamyka pozycję częściowo: 50% na TP1, 30% na TP2, 20% na TP3"}
           </p>
         </Card>
 
-        {/* UPDATED: SL/TP Safety - Changed from % to RR */}
+        {/* SL/TP Safety */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h3>
-              <p className="text-sm text-gray-500">Automatyczne ustawienie gdy alert nie zawiera wartości (Risk:Reward)</p>
+              <p className="text-sm text-gray-400">Automatyczne ustawienie gdy alert nie zawiera wartości (Risk:Reward)</p>
             </div>
             <Switch checked={useDefaultSlTp} onCheckedChange={setUseDefaultSlTp} />
           </div>
 
           {useDefaultSlTp && (
             <>
-              <Separator />
+              <Separator className="bg-gray-700" />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Domyślny SL (RR)</Label>
+                  <Label className="text-white">Domyślny SL (RR)</Label>
                   <Input 
                     type="number" 
                     value={defaultSlRR} 
                     onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
+                    className="text-white"
                   />
-                  <p className="text-xs text-gray-500">Risk ratio dla Stop Loss</p>
+                  <p className="text-xs text-gray-400">Risk ratio dla Stop Loss</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Domyślny TP1 (RR)</Label>
+                  <Label className="text-white">Domyślny TP1 (RR)</Label>
                   <Input 
                     type="number" 
                     value={defaultTp1RR} 
                     onChange={(e) => setDefaultTp1RR(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
+                    className="text-white"
                   />
-                  <p className="text-xs text-gray-500">Reward ratio dla TP1</p>
+                  <p className="text-xs text-gray-400">Reward ratio dla TP1</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Domyślny TP2 (RR)</Label>
+                  <Label className="text-white">Domyślny TP2 (RR)</Label>
                   <Input 
                     type="number" 
                     value={defaultTp2RR} 
                     onChange={(e) => setDefaultTp2RR(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
+                    className="text-white"
                   />
-                  <p className="text-xs text-gray-500">Reward ratio dla TP2</p>
+                  <p className="text-xs text-gray-400">Reward ratio dla TP2</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Domyślny TP3 (RR)</Label>
+                  <Label className="text-white">Domyślny TP3 (RR)</Label>
                   <Input 
                     type="number" 
                     value={defaultTp3RR} 
                     onChange={(e) => setDefaultTp3RR(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
+                    className="text-white"
                   />
-                  <p className="text-xs text-gray-500">Reward ratio dla TP3</p>
+                  <p className="text-xs text-gray-400">Reward ratio dla TP3</p>
                 </div>
               </div>
 
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <p className="text-sm text-blue-400">
+                <p className="text-sm text-blue-300">
                   <strong>Przykład dla pozycji BUY @ $100:</strong><br/>
                   Jeśli SL = 1.0 RR, to ryzyko = $1 od ceny wejścia<br/>
                   SL: $99 | TP1 (1.0 RR): $101 | TP2 (2.0 RR): $102 | TP3 (3.0 RR): $103<br/>
-                  <span className="text-xs opacity-70">RR = Risk:Reward - stosunek zysku do ryzyka</span>
+                  <span className="text-xs text-blue-400/70">RR = Risk:Reward - stosunek zysku do ryzyka</span>
                 </p>
               </div>
             </>
@@ -392,12 +397,13 @@ export default function BotSettingsPage() {
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Maksymalna Liczba Pozycji</h3>
           <div className="space-y-2">
-            <Label>Max otwartych pozycji jednocześnie</Label>
+            <Label className="text-white">Max otwartych pozycji jednocześnie</Label>
             <Input 
               type="number" 
               value={maxConcurrentPositions} 
               onChange={(e) => setMaxConcurrentPositions(parseInt(e.target.value))}
               min="1"
+              className="text-white"
             />
           </div>
         </Card>
@@ -405,12 +411,12 @@ export default function BotSettingsPage() {
         {/* Same Symbol Behavior */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Zachowanie dla Tego Samego Symbolu</h3>
-          <p className="text-sm text-gray-500">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
+          <p className="text-sm text-gray-400">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
           
           <div className="space-y-2">
-            <Label>Strategia</Label>
+            <Label className="text-white">Strategia</Label>
             <Select value={sameSymbolBehavior} onValueChange={setSameSymbolBehavior}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -426,12 +432,12 @@ export default function BotSettingsPage() {
         {/* Opposite Direction Strategy */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Strategia dla Przeciwnego Kierunku</h3>
-          <p className="text-sm text-gray-500">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
+          <p className="text-sm text-gray-400">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
           
           <div className="space-y-2">
-            <Label>Strategia</Label>
+            <Label className="text-white">Strategia</Label>
             <Select value={oppositeDirectionStrategy} onValueChange={setOppositeDirectionStrategy}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -447,17 +453,18 @@ export default function BotSettingsPage() {
           {["market_reversal", "tier_based"].includes(oppositeDirectionStrategy) && (
             <>
               <div className="space-y-2">
-                <Label>Odczekaj barów przed odwróceniem</Label>
+                <Label className="text-white">Odczekaj barów przed odwróceniem</Label>
                 <Input 
                   type="number" 
                   value={reversalWaitBars} 
                   onChange={(e) => setReversalWaitBars(parseInt(e.target.value))}
                   min="0"
+                  className="text-white"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Minimalna siła dla odwrócenia (0.0-1.0)</Label>
+                <Label className="text-white">Minimalna siła dla odwrócenia (0.0-1.0)</Label>
                 <Input 
                   type="number" 
                   value={reversalMinStrength} 
@@ -465,6 +472,7 @@ export default function BotSettingsPage() {
                   step="0.01"
                   min="0"
                   max="1"
+                  className="text-white"
                 />
               </div>
             </>
@@ -472,19 +480,19 @@ export default function BotSettingsPage() {
 
           <div className="flex items-center space-x-2">
             <Switch checked={emergencyCanReverse} onCheckedChange={setEmergencyCanReverse} />
-            <Label>Pozwól Emergency na odwrócenie</Label>
+            <Label className="text-white">Pozwól Emergency na odwrócenie</Label>
           </div>
         </Card>
 
         {/* Emergency Override */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Emergency Override</h3>
-          <p className="text-sm text-gray-500">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
+          <p className="text-sm text-gray-400">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
           
           <div className="space-y-2">
-            <Label>Tryb</Label>
+            <Label className="text-white">Tryb</Label>
             <Select value={emergencyOverrideMode} onValueChange={setEmergencyOverrideMode}>
-              <SelectTrigger>
+              <SelectTrigger className="text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -498,12 +506,13 @@ export default function BotSettingsPage() {
 
           {emergencyOverrideMode === "profit_above_x" && (
             <div className="space-y-2">
-              <Label>Minimalny procent zysku (%)</Label>
+              <Label className="text-white">Minimalny procent zysku (%)</Label>
               <Input 
                 type="number" 
                 value={emergencyMinProfitPercent} 
                 onChange={(e) => setEmergencyMinProfitPercent(parseFloat(e.target.value))}
                 step="0.1"
+                className="text-white"
               />
             </div>
           )}
