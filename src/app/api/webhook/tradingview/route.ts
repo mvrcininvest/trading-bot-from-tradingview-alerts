@@ -1,7 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { alerts, botSettings, botPositions, botActions } from '@/db/schema';
+import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+
+// Helper function to log to botLogs
+async function logToBot(
+  level: 'error' | 'warning' | 'info' | 'success',
+  action: string,
+  message: string,
+  details?: any,
+  alertId?: number,
+  positionId?: number
+) {
+  try {
+    const timestamp = Math.floor(Date.now() / 1000);
+    await db.insert(botLogs).values({
+      timestamp,
+      level,
+      action,
+      message,
+      details: details ? JSON.stringify(details) : null,
+      alertId: alertId || null,
+      positionId: positionId || null,
+      createdAt: timestamp,
+    });
+  } catch (error) {
+    console.error('Failed to log to botLogs:', error);
+  }
+}
 
 // Bybit API Signing Helper
 async function signBybitRequest(
@@ -53,6 +79,7 @@ export async function POST(request: Request) {
     // Check basic required fields
     for (const field of requiredFields) {
       if (!(field in data)) {
+        await logToBot('error', 'webhook_validation_failed', `Missing required field: ${field}`, { field, data });
         return NextResponse.json(
           { error: `Missing required field: ${field}` },
           { status: 400 }
@@ -96,6 +123,15 @@ export async function POST(request: Request) {
     }).returning();
 
     console.log("✅ Alert saved to database:", alert.id);
+    
+    // LOG: Alert received and saved
+    await logToBot(
+      'info',
+      'webhook_received',
+      `Alert received: ${data.symbol} ${data.side} ${data.tier}`,
+      { symbol: data.symbol, side: data.side, tier: data.tier, entryPrice: data.entryPrice },
+      alert.id
+    );
 
     // ============================================
     // 🤖 BOT LOGIC - Automatic Trading
@@ -113,6 +149,15 @@ export async function POST(request: Request) {
           rejectionReason: 'bot_settings_not_configured'
         })
         .where(eq(alerts.id, alert.id));
+      
+      // LOG: Settings not found
+      await logToBot(
+        'error',
+        'alert_rejected',
+        'Bot settings not configured',
+        { reason: 'bot_settings_not_configured' },
+        alert.id
+      );
       
       return NextResponse.json({ 
         success: true, 
@@ -134,6 +179,15 @@ export async function POST(request: Request) {
           rejectionReason: 'bot_disabled'
         })
         .where(eq(alerts.id, alert.id));
+      
+      // LOG: Bot disabled
+      await logToBot(
+        'warning',
+        'alert_rejected',
+        `Bot is disabled - alert ignored: ${data.symbol} ${data.side}`,
+        { reason: 'bot_disabled', symbol: data.symbol, side: data.side },
+        alert.id
+      );
       
       return NextResponse.json({ 
         success: true, 
@@ -166,6 +220,15 @@ export async function POST(request: Request) {
         success: false,
         createdAt: new Date().toISOString(),
       });
+      
+      // LOG: Tier disabled
+      await logToBot(
+        'warning',
+        'alert_rejected',
+        `Tier ${data.tier} is disabled - alert ignored: ${data.symbol}`,
+        { reason: 'tier_disabled', tier: data.tier, symbol: data.symbol },
+        alert.id
+      );
       
       return NextResponse.json({ 
         success: true, 
@@ -212,6 +275,16 @@ export async function POST(request: Request) {
           createdAt: new Date().toISOString(),
         });
         
+        // LOG: Same symbol ignored
+        await logToBot(
+          'info',
+          'alert_rejected',
+          `Position already exists on ${data.symbol} - alert ignored`,
+          { reason: 'same_symbol_position_exists', symbol: data.symbol, existingPositionId: existingPosition.id },
+          alert.id,
+          existingPosition.id
+        );
+        
         return NextResponse.json({ 
           success: true, 
           alert_id: alert.id,
@@ -227,6 +300,16 @@ export async function POST(request: Request) {
       if (isOpposite) {
         if (botConfig.oppositeDirectionStrategy === "market_reversal") {
           console.log(`🔄 Closing opposite position and reversing on ${data.symbol}`);
+          
+          // LOG: Attempting reversal
+          await logToBot(
+            'info',
+            'position_reversal_attempt',
+            `Attempting to close opposite position and reverse: ${data.symbol}`,
+            { existingPosition: existingPosition.side, newPosition: data.side, positionId: existingPosition.id },
+            alert.id,
+            existingPosition.id
+          );
           
           // Close existing position using direct Bybit API call
           try {
@@ -289,6 +372,16 @@ export async function POST(request: Request) {
               createdAt: new Date().toISOString(),
             });
 
+            // LOG: Reversal success
+            await logToBot(
+              'success',
+              'position_closed',
+              `Opposite position closed successfully: ${data.symbol}`,
+              { reason: 'opposite_signal', orderId: closeData.result?.orderId },
+              alert.id,
+              existingPosition.id
+            );
+
             console.log("✅ Opposite position closed, proceeding with new trade");
           } catch (error) {
             console.error("❌ Failed to close opposite position:", error);
@@ -300,6 +393,16 @@ export async function POST(request: Request) {
                 rejectionReason: 'failed_to_close_opposite_position'
               })
               .where(eq(alerts.id, alert.id));
+            
+            // LOG: Reversal failed
+            await logToBot(
+              'error',
+              'position_close_failed',
+              `Failed to close opposite position: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              { error: error instanceof Error ? error.message : String(error) },
+              alert.id,
+              existingPosition.id
+            );
             
             return NextResponse.json({ 
               success: false, 
@@ -330,6 +433,16 @@ export async function POST(request: Request) {
             createdAt: new Date().toISOString(),
           });
           
+          // LOG: Opposite ignored
+          await logToBot(
+            'info',
+            'alert_rejected',
+            `Opposite direction signal ignored: ${data.symbol}`,
+            { reason: 'opposite_direction_ignored', existingPositionSide: existingPosition.side, newSide: data.side },
+            alert.id,
+            existingPosition.id
+          );
+          
           return NextResponse.json({ 
             success: true, 
             alert_id: alert.id,
@@ -352,6 +465,16 @@ export async function POST(request: Request) {
           await db.update(alerts)
             .set({ executionStatus: 'executed' })
             .where(eq(alerts.id, alert.id));
+          
+          // LOG: Confirmation tracked
+          await logToBot(
+            'info',
+            'confirmation_tracked',
+            `Confirmation tracked for ${data.symbol}: count=${existingPosition.confirmationCount + 1}`,
+            { confirmationCount: existingPosition.confirmationCount + 1 },
+            alert.id,
+            existingPosition.id
+          );
           
           return NextResponse.json({ 
             success: true, 
@@ -428,6 +551,15 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
       });
       
+      // LOG: No SL/TP
+      await logToBot(
+        'error',
+        'alert_rejected',
+        `No SL/TP provided and default SL/TP not enabled: ${data.symbol}`,
+        { reason: 'no_sl_tp_provided' },
+        alert.id
+      );
+      
       return NextResponse.json({ 
         success: false, 
         alert_id: alert.id,
@@ -474,6 +606,15 @@ export async function POST(request: Request) {
       const symbol = data.symbol;
       const side = data.side === "BUY" ? "Buy" : "Sell";
       const tpMode = botConfig.tpStrategy || "main_only";
+      
+      // LOG: Starting position opening
+      await logToBot(
+        'info',
+        'position_opening',
+        `Opening position: ${symbol} ${side} ${leverage}x`,
+        { symbol, side, leverage, quantity, entryPrice, sl: slPrice, tp1: tp1Price },
+        alert.id
+      );
 
       // Step 1: Set Leverage
       if (leverage) {
@@ -504,6 +645,13 @@ export async function POST(request: Request) {
         // Non-critical error - leverage might already be set
         if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
           console.warn("Leverage setting warning:", leverageData.retMsg);
+          await logToBot(
+            'warning',
+            'leverage_set_warning',
+            `Leverage setting warning: ${leverageData.retMsg}`,
+            { retCode: leverageData.retCode, retMsg: leverageData.retMsg },
+            alert.id
+          );
         }
       }
 
@@ -586,6 +734,13 @@ export async function POST(request: Request) {
 
         if (tpslData.retCode !== 0) {
           console.warn("SL/TP setting warning:", tpslData.retMsg);
+          await logToBot(
+            'warning',
+            'sl_tp_set_warning',
+            `SL/TP setting warning: ${tpslData.retMsg}`,
+            { retCode: tpslData.retCode, retMsg: tpslData.retMsg, sl: slPrice, tp: tp1Price },
+            alert.id
+          );
         }
       }
 
@@ -647,6 +802,29 @@ export async function POST(request: Request) {
         success: true,
         createdAt: new Date().toISOString(),
       });
+      
+      // LOG: Position opened successfully
+      await logToBot(
+        'success',
+        'position_opened',
+        `Position opened successfully: ${symbol} ${side} ${leverage}x`,
+        {
+          positionId: botPosition.id,
+          orderId,
+          symbol,
+          side,
+          leverage,
+          quantity,
+          entryPrice,
+          sl: slPrice,
+          tp1: tp1Price,
+          tp2: tp2Price,
+          tp3: tp3Price,
+          tier: data.tier
+        },
+        alert.id,
+        botPosition.id
+      );
 
       return NextResponse.json({
         success: true,
@@ -688,6 +866,20 @@ export async function POST(request: Request) {
         errorMessage: error.message,
         createdAt: new Date().toISOString(),
       });
+      
+      // LOG: Position opening failed
+      await logToBot(
+        'error',
+        'order_failed',
+        `Failed to open position: ${error.message}`,
+        {
+          error: error.message,
+          symbol: data.symbol,
+          side: data.side,
+          tier: data.tier
+        },
+        alert.id
+      );
 
       return NextResponse.json(
         {
@@ -700,6 +892,15 @@ export async function POST(request: Request) {
     }
   } catch (error: any) {
     console.error("❌ Webhook error:", error);
+    
+    // LOG: Critical webhook error
+    await logToBot(
+      'error',
+      'webhook_error',
+      `Critical webhook error: ${error.message}`,
+      { error: error.message, stack: error.stack }
+    );
+    
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }
