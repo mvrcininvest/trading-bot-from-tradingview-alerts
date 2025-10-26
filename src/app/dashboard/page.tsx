@@ -369,7 +369,7 @@ export default function DashboardPage() {
       if (data.success) {
         // Refresh bot positions after sync
         await fetchBotPositions();
-        await fetchPositions(credentials);
+        await fetchPositions(credentials || undefined);
         alert(`Synchronizacja ukończona!\n\nSprawdzono: ${data.results.checked}\nZamknięto: ${data.results.closed}\nNadal otwarte: ${data.results.stillOpen}`);
       } else {
         alert(`Błąd synchronizacji: ${data.message}`);
