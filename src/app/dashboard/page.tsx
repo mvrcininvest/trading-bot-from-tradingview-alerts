@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +78,7 @@ export default function DashboardPage() {
   const [botPositionsError, setBotPositionsError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [lastPositionsUpdate, setLastPositionsUpdate] = useState<string | null>(null);
+  const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     // Load credentials from localStorage
@@ -89,6 +90,7 @@ export default function DashboardPage() {
       fetchBalance(creds);
       fetchPositions(creds);
       fetchBotPositions();
+      fetchBotStatus();
     }
   }, []);
 
@@ -98,6 +100,7 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       fetchBotPositions(true); // silent mode
+      fetchBotStatus(true); // also refresh bot status silently
     }, 2000);
 
     return () => clearInterval(interval);
@@ -113,6 +116,21 @@ export default function DashboardPage() {
 
     return () => clearInterval(interval);
   }, [credentials]);
+
+  const fetchBotStatus = async (silent = false) => {
+    try {
+      const response = await fetch("/api/bot/settings");
+      const data = await response.json();
+      
+      if (data.success && data.settings) {
+        setBotEnabled(data.settings.botEnabled);
+      }
+    } catch (err) {
+      if (!silent) {
+        console.error("Failed to fetch bot status:", err);
+      }
+    }
+  };
 
   const signBybitRequest = async (apiKey: string, apiSecret: string, timestamp: number, params: Record<string, any>) => {
     const queryString = Object.keys(params)
@@ -431,10 +449,25 @@ export default function DashboardPage() {
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                   Dashboard Tradingowy
                 </h1>
-                <p className="text-sm text-gray-400 flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  {credentials.exchange.toUpperCase()} · {credentials.environment}
-                </p>
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-gray-400 flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    {credentials.exchange.toUpperCase()} · {credentials.environment}
+                  </p>
+                  {botEnabled !== null && (
+                    <Badge 
+                      variant={botEnabled ? "default" : "secondary"}
+                      className={`flex items-center gap-1.5 ${
+                        botEnabled 
+                          ? "bg-green-600/20 text-green-400 border-green-500/30 hover:bg-green-600/30" 
+                          : "bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/30"
+                      }`}
+                    >
+                      <Power className="h-3 w-3" />
+                      BOT {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1012,6 +1045,46 @@ export default function DashboardPage() {
                 <CardDescription className="text-gray-500">Zarządzaj swoim botem i konfiguracją API</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Bot Status Indicator */}
+                {botEnabled !== null && (
+                  <Card className={`border-2 ${
+                    botEnabled 
+                      ? "bg-gradient-to-br from-green-600/10 to-gray-900/80 border-green-500/30" 
+                      : "bg-gradient-to-br from-red-600/10 to-gray-900/80 border-red-500/30"
+                  }`}>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-4 rounded-xl ${
+                            botEnabled 
+                              ? "bg-green-500/20 border-2 border-green-500/40" 
+                              : "bg-red-500/20 border-2 border-red-500/40"
+                          }`}>
+                            <Power className={`h-8 w-8 ${botEnabled ? "text-green-400" : "text-red-400"}`} />
+                          </div>
+                          <div>
+                            <h3 className="text-2xl font-bold text-white mb-1">
+                              Status Bota: {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
+                            </h3>
+                            <p className={`text-sm font-medium ${botEnabled ? "text-green-400" : "text-red-400"}`}>
+                              {botEnabled 
+                                ? "Bot aktywnie monitoruje i otwiera pozycje na podstawie alertów" 
+                                : "Bot nie będzie otwierał nowych pozycji"}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => router.push("/ustawienia-bota")}
+                          variant="outline"
+                          className="border-gray-700 hover:bg-gray-800 text-gray-300"
+                        >
+                          Zmień Status
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Button
                     onClick={() => router.push("/ustawienia-bota")}

@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
-import { Bot } from "lucide-react"
+import { Bot, Power } from "lucide-react"
 
 export default function BotSettingsPage() {
   const [loading, setLoading] = useState(true)
@@ -129,6 +129,38 @@ export default function BotSettingsPage() {
     }
   }
 
+  const handleToggleBot = async (newStatus: boolean) => {
+    const previousStatus = botEnabled;
+    setBotEnabled(newStatus);
+    
+    try {
+      const response = await fetch("/api/bot/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botEnabled: newStatus
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast.success(newStatus ? "Bot został WŁĄCZONY" : "Bot został WYŁĄCZONY", {
+          description: newStatus 
+            ? "Bot będzie teraz automatycznie otwierał pozycje na podstawie alertów" 
+            : "Bot nie będzie otwierał nowych pozycji"
+        });
+      } else {
+        setBotEnabled(previousStatus);
+        toast.error(data.error || "Błąd zmiany statusu bota");
+      }
+    } catch (error) {
+      setBotEnabled(previousStatus);
+      toast.error("Błąd połączenia z serwerem");
+      console.error(error);
+    }
+  };
+
   const toggleTier = (tier: string) => {
     if (disabledTiers.includes(tier)) {
       setDisabledTiers(disabledTiers.filter(t => t !== tier))
@@ -167,14 +199,40 @@ export default function BotSettingsPage() {
           </Button>
         </div>
 
-        {/* Bot Enable/Disable */}
-        <Card className="p-6 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        {/* Bot Enable/Disable - PROMINENT */}
+        <Card className={`p-6 border-2 transition-all ${
+          botEnabled 
+            ? "bg-gradient-to-br from-green-600/10 to-gray-900/80 border-green-500/30 shadow-green-500/20 shadow-lg" 
+            : "bg-gradient-to-br from-red-600/10 to-gray-900/80 border-red-500/30 shadow-red-500/20 shadow-lg"
+        }`}>
           <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-white">Status Bota</h3>
-              <p className="text-sm text-gray-400">Włącz lub wyłącz automatyczny trading</p>
+            <div className="flex items-center gap-4">
+              <div className={`p-4 rounded-xl border-2 ${
+                botEnabled 
+                  ? "bg-green-500/20 border-green-500/40" 
+                  : "bg-red-500/20 border-red-500/40"
+              }`}>
+                <Power className={`h-10 w-10 ${botEnabled ? "text-green-400" : "text-red-400"}`} />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-white mb-1">
+                  Status Bota: {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
+                </h3>
+                <p className={`text-sm font-medium ${botEnabled ? "text-green-400" : "text-red-400"}`}>
+                  {botEnabled 
+                    ? "Bot aktywnie monitoruje i otwiera pozycje na podstawie alertów" 
+                    : "Bot nie będzie otwierał nowych pozycji"}
+                </p>
+              </div>
             </div>
-            <Switch checked={botEnabled} onCheckedChange={setBotEnabled} />
+            <div className="flex flex-col items-end gap-2">
+              <Switch 
+                checked={botEnabled} 
+                onCheckedChange={handleToggleBot}
+                className="scale-150"
+              />
+              <span className="text-xs text-gray-500">Kliknij aby {botEnabled ? "wyłączyć" : "włączyć"}</span>
+            </div>
           </div>
         </Card>
 
