@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// Remove Edge Runtime - use Node.js crypto instead
-// export const runtime = 'edge';
-
-// Bybit API Signing Helper (Node.js crypto - same as get-balance)
-function signBybitRequest(
+// USE EXACT SAME SIGNING METHOD AS get-balance (which works!)
+function createBybitSignature(
   apiKey: string,
   apiSecret: string,
   timestamp: number,
-  payload: string
+  params: Record<string, any>
 ): string {
-  const signString = timestamp + apiKey + "5000" + payload;
-  return crypto.createHmac('sha256', apiSecret).update(signString).digest('hex');
+  const paramString = timestamp + apiKey + "5000" + JSON.stringify(params);
+  return crypto.createHmac('sha256', apiSecret).update(paramString).digest('hex');
 }
 
 function getBybitBaseUrl(environment: string): string {
@@ -71,19 +68,19 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Set Leverage
     if (leverage) {
-      const leverageTimestamp = Date.now();
-      const leveragePayload = JSON.stringify({
+      const leverageTimestamp = Date.now(); // NUMBER not string!
+      const leverageParams = {
         category: "linear",
         symbol,
         buyLeverage: leverage.toString(),
         sellLeverage: leverage.toString()
-      });
+      };
 
-      const leverageSignature = signBybitRequest(
+      const leverageSignature = createBybitSignature(
         apiKey,
         apiSecret,
         leverageTimestamp,
-        leveragePayload
+        leverageParams
       );
 
       const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
@@ -95,7 +92,7 @@ export async function POST(request: NextRequest) {
           "X-BAPI-SIGN": leverageSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
-        body: leveragePayload
+        body: JSON.stringify(leverageParams)
       });
 
       const leverageData = await leverageResponse.json();
@@ -107,8 +104,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Open Position (Market Order)
-    const orderTimestamp = Date.now();
-    const orderPayload = JSON.stringify({
+    const orderTimestamp = Date.now(); // NUMBER not string!
+    const orderParams = {
       category: "linear",
       symbol,
       side,
@@ -117,13 +114,13 @@ export async function POST(request: NextRequest) {
       timeInForce: "GTC",
       reduceOnly: false,
       closeOnTrigger: false
-    });
+    };
 
-    const orderSignature = signBybitRequest(
+    const orderSignature = createBybitSignature(
       apiKey,
       apiSecret,
       orderTimestamp,
-      orderPayload
+      orderParams
     );
 
     const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
@@ -135,7 +132,7 @@ export async function POST(request: NextRequest) {
         "X-BAPI-SIGN": orderSignature,
         "X-BAPI-RECV-WINDOW": "5000",
       },
-      body: orderPayload
+      body: JSON.stringify(orderParams)
     });
 
     const orderData = await orderResponse.json();
@@ -156,8 +153,8 @@ export async function POST(request: NextRequest) {
       // Wait 500ms for position to be created
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const tpslTimestamp = Date.now();
-      const tpslPayload: any = {
+      const tpslTimestamp = Date.now(); // NUMBER not string!
+      const tpslParams: any = {
         category: "linear",
         symbol,
         positionIdx: 0 // One-Way Mode
@@ -165,24 +162,21 @@ export async function POST(request: NextRequest) {
 
       // Set Stop Loss
       if (stopLoss) {
-        tpslPayload.stopLoss = stopLoss;
+        tpslParams.stopLoss = stopLoss;
       }
 
       // Set Take Profit based on mode
       if (tpMode === "multiple" && tp1) {
-        // For multiple TP, we'll set TP1 as main TP initially
-        // TP2/TP3 will be set as limit orders separately
-        tpslPayload.takeProfit = tp1;
+        tpslParams.takeProfit = tp1;
       } else if (takeProfit) {
-        tpslPayload.takeProfit = takeProfit;
+        tpslParams.takeProfit = takeProfit;
       }
 
-      const tpslPayloadStr = JSON.stringify(tpslPayload);
-      const tpslSignature = signBybitRequest(
+      const tpslSignature = createBybitSignature(
         apiKey,
         apiSecret,
         tpslTimestamp,
-        tpslPayloadStr
+        tpslParams
       );
 
       const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
@@ -194,7 +188,7 @@ export async function POST(request: NextRequest) {
           "X-BAPI-SIGN": tpslSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
-        body: tpslPayloadStr
+        body: JSON.stringify(tpslParams)
       });
 
       const tpslData = await tpslResponse.json();
@@ -230,8 +224,8 @@ export async function POST(request: NextRequest) {
 
         // Create TP2/TP3 limit orders
         for (const tp of tpOrders) {
-          const tpOrderTimestamp = Date.now();
-          const tpOrderPayload = JSON.stringify({
+          const tpOrderTimestamp = Date.now(); // NUMBER not string!
+          const tpOrderParams = {
             category: "linear",
             symbol,
             side: side === "Buy" ? "Sell" : "Buy", // Opposite side to close
@@ -242,13 +236,13 @@ export async function POST(request: NextRequest) {
             reduceOnly: true,
             closeOnTrigger: false,
             orderLinkId: `${orderId}_${tp.label}` // Link to main order
-          });
+          };
 
-          const tpOrderSignature = signBybitRequest(
+          const tpOrderSignature = createBybitSignature(
             apiKey,
             apiSecret,
             tpOrderTimestamp,
-            tpOrderPayload
+            tpOrderParams
           );
 
           await fetch(`${baseUrl}/v5/order/create`, {
@@ -260,7 +254,7 @@ export async function POST(request: NextRequest) {
               "X-BAPI-SIGN": tpOrderSignature,
               "X-BAPI-RECV-WINDOW": "5000",
             },
-            body: tpOrderPayload
+            body: JSON.stringify(tpOrderParams)
           });
 
           // Small delay between orders

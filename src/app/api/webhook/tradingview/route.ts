@@ -5,18 +5,15 @@ import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
 // CRITICAL: Use EXACT same signing method as get-balance (which works!)
+// timestamp as NUMBER, params as object, recv_window as STRING "5000"
 function createBybitSignature(
   apiKey: string,
   apiSecret: string,
-  timestamp: string,
-  recvWindow: string,
-  params: Record<string, any> | string
+  timestamp: number,
+  params: Record<string, any>
 ): string {
-  // If params is already a string (JSON), use it directly
-  // If params is an object, stringify it
-  const paramString = typeof params === 'string' ? params : JSON.stringify(params);
-  const signString = timestamp + apiKey + recvWindow + paramString;
-  return crypto.createHmac("sha256", apiSecret).update(signString).digest("hex");
+  const paramString = timestamp + apiKey + "5000" + JSON.stringify(params);
+  return crypto.createHmac("sha256", apiSecret).update(paramString).digest("hex");
 }
 
 // Helper function to convert snake_case to camelCase
@@ -79,17 +76,6 @@ export async function GET(request: Request) {
   });
 }
 
-// Bybit API Signing Helper (Node.js crypto - same as get-balance and open-position)
-function signBybitRequest(
-  apiKey: string,
-  apiSecret: string,
-  timestamp: number,
-  payload: string
-): string {
-  const signString = timestamp + apiKey + "5000" + payload;
-  return crypto.createHmac('sha256', apiSecret).update(signString).digest('hex');
-}
-
 function getBybitBaseUrl(environment: string): string {
   if (environment === "demo") return "https://api-demo.bybit.com";
   if (environment === "testnet") return "https://api-testnet.bybit.com";
@@ -132,9 +118,8 @@ export async function POST(request: Request) {
     console.log("🔄 Normalized data:", JSON.stringify(data, null, 2));
 
     // KROK 2.5: NORMALIZE SYMBOL - Remove .P suffix for Bybit API
-    // TradingView sends ETHUSDT.P, but Bybit API expects ETHUSDT
     const originalSymbol = data.symbol;
-    const normalizedSymbol = data.symbol.replace(/\.P$/, ''); // Remove .P at the end
+    const normalizedSymbol = data.symbol.replace(/\.P$/, '');
     data.symbol = normalizedSymbol;
     
     console.log(`🔧 Symbol normalization: ${originalSymbol} → ${normalizedSymbol}`);
@@ -435,7 +420,7 @@ export async function POST(request: Request) {
             const baseUrl = getBybitBaseUrl(environment);
 
             const closeTimestamp = Date.now();
-            const closePayload = JSON.stringify({
+            const closeParams = {
               category: "linear",
               symbol: data.symbol,
               side: existingPosition.side === "BUY" ? "Sell" : "Buy",
@@ -444,9 +429,9 @@ export async function POST(request: Request) {
               timeInForce: "GTC",
               reduceOnly: true,
               closeOnTrigger: false
-            });
+            };
 
-            const closeSignature = signBybitRequest(apiKey, apiSecret, closeTimestamp, closePayload);
+            const closeSignature = createBybitSignature(apiKey, apiSecret, closeTimestamp, closeParams);
 
             const closeResponse = await fetch(`${baseUrl}/v5/order/create`, {
               method: "POST",
@@ -457,7 +442,7 @@ export async function POST(request: Request) {
                 "X-BAPI-SIGN": closeSignature,
                 "X-BAPI-RECV-WINDOW": "5000",
               },
-              body: closePayload
+              body: JSON.stringify(closeParams)
             });
 
             // CRITICAL: Check if response is JSON before parsing
@@ -735,7 +720,6 @@ export async function POST(request: Request) {
       const side = data.side === "BUY" ? "Buy" : "Sell";
       const tpMode = botConfig.tpStrategy || "main_only";
       
-      // LOG: Starting position opening
       await logToBot(
         'info',
         'position_opening',
@@ -744,32 +728,34 @@ export async function POST(request: Request) {
         alert.id
       );
 
-      // Step 1: Set Leverage
+      // Step 1: Set Leverage - USE EXACT SAME METHOD AS get-balance
       if (leverage) {
-        const leverageTimestamp = Date.now().toString();
+        const leverageTimestamp = Date.now(); // NUMBER not STRING!
         const leverageParams = {
           category: "linear",
           symbol,
           buyLeverage: leverage.toString(),
           sellLeverage: leverage.toString()
         };
-        const leveragePayload = JSON.stringify(leverageParams);
 
         const leverageSignature = createBybitSignature(
           apiKey,
           apiSecret,
           leverageTimestamp,
-          "5000",
           leverageParams
         );
 
+        const queryParams = new URLSearchParams({
+          category: "linear",
+          symbol,
+          buyLeverage: leverage.toString(),
+          sellLeverage: leverage.toString()
+        });
+
         console.log("🔑 DEBUG Leverage Request:");
         console.log("  URL:", `${baseUrl}/v5/position/set-leverage`);
-        console.log("  Environment:", environment);
-        console.log("  API Key (first 8):", apiKey.substring(0, 8));
         console.log("  Timestamp:", leverageTimestamp);
         console.log("  Params:", leverageParams);
-        console.log("  Payload:", leveragePayload);
         console.log("  Signature:", leverageSignature);
 
         const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
@@ -777,14 +763,13 @@ export async function POST(request: Request) {
           headers: {
             "Content-Type": "application/json",
             "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": leverageTimestamp,
+            "X-BAPI-TIMESTAMP": leverageTimestamp.toString(),
             "X-BAPI-SIGN": leverageSignature,
             "X-BAPI-RECV-WINDOW": "5000",
           },
-          body: leveragePayload
+          body: JSON.stringify(leverageParams)
         });
 
-        // CRITICAL: Check if response is JSON before parsing
         const leverageResponseText = await leverageResponse.text();
         console.log("📥 Bybit Leverage Response (raw):", leverageResponseText);
         
@@ -793,28 +778,9 @@ export async function POST(request: Request) {
           leverageData = JSON.parse(leverageResponseText);
         } catch (parseError) {
           console.error("❌ Bybit returned non-JSON response:", leverageResponseText.substring(0, 500));
-          
-          // Check if it's CloudFlare block
-          if (leverageResponseText.includes("<!DOCTYPE") || leverageResponseText.includes("<html")) {
-            await logToBot(
-              'error',
-              'bybit_api_blocked',
-              '⚠️ CLOUDFLARE/WAF BLOCK - Twój API key może nie mieć uprawnień do tradingu lub IP nie jest whitelistowany',
-              { 
-                responsePreview: leverageResponseText.substring(0, 500),
-                apiKey: apiKey?.substring(0, 8) + '...',
-                environment,
-                hint: 'Sprawdź uprawnienia API key w Bybit: musi mieć "Trade" permission i IP whitelist'
-              },
-              alert.id
-            );
-            throw new Error(`⚠️ BYBIT API KEY PROBLEM:\n\n1. Sprawdź uprawnienia API key w Bybit - MUSI mieć uprawnienie "Contract Trade"\n2. Sprawdź IP whitelist - może być wymagany\n3. Upewnij się że używasz kluczy dla środowiska: ${environment}\n\nHTML Response (CloudFlare block): ${leverageResponseText.substring(0, 200)}`);
-          }
-          
-          throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${leverageResponseText.substring(0, 200)}`);
+          throw new Error(`Bybit API returned HTML/non-JSON response. Response: ${leverageResponseText.substring(0, 200)}`);
         }
 
-        // Non-critical error - leverage might already be set
         if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
           console.warn("Leverage setting warning:", leverageData.retMsg);
           await logToBot(
@@ -827,8 +793,8 @@ export async function POST(request: Request) {
         }
       }
 
-      // Step 2: Open Position (Market Order)
-      const orderTimestamp = Date.now().toString();
+      // Step 2: Open Position - USE EXACT SAME METHOD AS get-balance
+      const orderTimestamp = Date.now(); // NUMBER not STRING!
       const orderParams = {
         category: "linear",
         symbol,
@@ -839,24 +805,18 @@ export async function POST(request: Request) {
         reduceOnly: false,
         closeOnTrigger: false
       };
-      const orderPayload = JSON.stringify(orderParams);
 
       const orderSignature = createBybitSignature(
         apiKey,
         apiSecret,
         orderTimestamp,
-        "5000",
         orderParams
       );
 
       console.log("🔑 DEBUG Order Request:");
       console.log("  URL:", `${baseUrl}/v5/order/create`);
-      console.log("  Environment:", environment);
-      console.log("  Base URL:", baseUrl);
-      console.log("  API Key (first 8):", apiKey.substring(0, 8));
       console.log("  Timestamp:", orderTimestamp);
       console.log("  Params:", orderParams);
-      console.log("  Payload:", orderPayload);
       console.log("  Signature:", orderSignature);
 
       const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
@@ -864,18 +824,16 @@ export async function POST(request: Request) {
         headers: {
           "Content-Type": "application/json",
           "X-BAPI-API-KEY": apiKey,
-          "X-BAPI-TIMESTAMP": orderTimestamp,
+          "X-BAPI-TIMESTAMP": orderTimestamp.toString(),
           "X-BAPI-SIGN": orderSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
-        body: orderPayload
+        body: JSON.stringify(orderParams)
       });
 
-      // CRITICAL: Check if response is JSON before parsing
       const orderResponseText = await orderResponse.text();
       console.log("📥 Bybit Order Response (raw):", orderResponseText);
       console.log("📥 Response Status:", orderResponse.status);
-      console.log("📥 Response Headers:", JSON.stringify(Object.fromEntries(orderResponse.headers.entries())));
       
       let orderData;
       try {
@@ -883,50 +841,10 @@ export async function POST(request: Request) {
       } catch (parseError) {
         console.error("❌ Bybit returned non-JSON response:", orderResponseText.substring(0, 500));
         
-        // Check if it's CloudFlare block
-        if (orderResponseText.includes("<!DOCTYPE") || orderResponseText.includes("<html")) {
-          await logToBot(
-            'error',
-            'bybit_api_blocked',
-            '⚠️ CLOUDFLARE/WAF BLOCK - Twój API key prawdopodobnie NIE MA UPRAWNIEŃ DO TRADINGU',
-            { 
-              responsePreview: orderResponseText.substring(0, 500),
-              apiKey: apiKey?.substring(0, 8) + '...',
-              environment,
-              symbol,
-              side,
-              hint: '🔑 ROZWIĄZANIE: Przejdź do Bybit API Management i upewnij się że API key ma uprawnienie "Contract Trade" (Unified Trading). Może też być wymagany IP whitelist.'
-            },
-            alert.id
-          );
-          
-          throw new Error(`
-⚠️ BYBIT API KEY PROBLEM - BRAK UPRAWNIEŃ DO TRADINGU!
-
-Twój API key działa dla odczytu salda, ale NIE MOŻE otwierać pozycji.
-
-🔧 ROZWIĄZANIE:
-1. Zaloguj się do Bybit
-2. Przejdź do: API Management
-3. Sprawdź swój API key
-4. Upewnij się że ma zaznaczone uprawnienie: "Contract Trade" lub "Unified Trading"
-5. Jeśli nie ma - usuń stary klucz i utwórz NOWY z odpowiednimi uprawnieniami
-6. Dodaj nowy klucz do .env: BYBIT_API_KEY i BYBIT_API_SECRET
-
-📋 Wymagane uprawnienia dla ${environment}:
-   ✅ Read (do odczytu salda - już działa)
-   ✅ Trade (do otwierania pozycji - BRAKUJE!)
-
-🌐 IP Whitelist: Może też być wymagany - sprawdź w ustawieniach API key
-
-Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
-          `);
-        }
-        
         await logToBot(
           'error',
           'bybit_api_error',
-          'Bybit API returned HTML instead of JSON - likely invalid API keys or missing permissions',
+          'Bybit API returned HTML instead of JSON',
           { 
             responsePreview: orderResponseText.substring(0, 500),
             apiKey: apiKey?.substring(0, 8) + '...',
@@ -934,7 +852,7 @@ Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
           },
           alert.id
         );
-        throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${orderResponseText.substring(0, 200)}`);
+        throw new Error(`Bybit API returned HTML/non-JSON response. Response: ${orderResponseText.substring(0, 200)}`);
       }
 
       if (orderData.retCode !== 0) {
@@ -944,36 +862,31 @@ Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
       const orderId = orderData.result?.orderId;
       console.log("✅ Position opened on Bybit:", orderId);
 
-      // Step 3: Set SL/TP
+      // Step 3: Set SL/TP - USE EXACT SAME METHOD AS get-balance
       if (slPrice || tp1Price) {
-        // Wait 500ms for position to be created
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        const tpslTimestamp = Date.now().toString();
+        const tpslTimestamp = Date.now(); // NUMBER not STRING!
         const tpslParams: any = {
           category: "linear",
           symbol,
-          positionIdx: 0 // One-Way Mode
+          positionIdx: 0
         };
 
-        // Set Stop Loss
         if (slPrice) {
           tpslParams.stopLoss = slPrice.toFixed(2);
         }
 
-        // Set Take Profit based on mode
         if (tpMode === "multiple" && tp1Price) {
           tpslParams.takeProfit = tp1Price.toFixed(2);
         } else if (tp1Price) {
           tpslParams.takeProfit = tp1Price.toFixed(2);
         }
 
-        const tpslPayloadStr = JSON.stringify(tpslParams);
         const tpslSignature = createBybitSignature(
           apiKey,
           apiSecret,
           tpslTimestamp,
-          "5000",
           tpslParams
         );
 
@@ -982,11 +895,11 @@ Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
           headers: {
             "Content-Type": "application/json",
             "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": tpslTimestamp,
+            "X-BAPI-TIMESTAMP": tpslTimestamp.toString(),
             "X-BAPI-SIGN": tpslSignature,
             "X-BAPI-RECV-WINDOW": "5000",
           },
-          body: tpslPayloadStr
+          body: JSON.stringify(tpslParams)
         });
 
         const tpslResponseText = await tpslResponse.text();
