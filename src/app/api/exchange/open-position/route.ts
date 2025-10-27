@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         sellLeverage: leverage.toString()
       });
 
-      const leverageSignature = await signBybitRequest(
+      const leverageSignature = signBybitRequest(
         apiKey,
         apiSecret,
         leverageTimestamp,
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       closeOnTrigger: false
     });
 
-    const orderSignature = await signBybitRequest(
+    const orderSignature = signBybitRequest(
       apiKey,
       apiSecret,
       orderTimestamp,
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       }
 
       const tpslPayloadStr = JSON.stringify(tpslPayload);
-      const tpslSignature = await signBybitRequest(
+      const tpslSignature = signBybitRequest(
         apiKey,
         apiSecret,
         tpslTimestamp,
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
             orderLinkId: `${orderId}_${tp.label}` // Link to main order
           });
 
-          const tpOrderSignature = await signBybitRequest(
+          const tpOrderSignature = signBybitRequest(
             apiKey,
             apiSecret,
             tpOrderTimestamp,

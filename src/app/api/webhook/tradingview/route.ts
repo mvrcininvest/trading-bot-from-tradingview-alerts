@@ -116,6 +116,14 @@ export async function POST(request: Request) {
     const data = snakeToCamel(rawData);
     console.log("🔄 Normalized data:", JSON.stringify(data, null, 2));
 
+    // KROK 2.5: NORMALIZE SYMBOL - Remove .P suffix for Bybit API
+    // TradingView sends ETHUSDT.P, but Bybit API expects ETHUSDT
+    const originalSymbol = data.symbol;
+    const normalizedSymbol = data.symbol.replace(/\.P$/, ''); // Remove .P at the end
+    data.symbol = normalizedSymbol;
+    
+    console.log(`🔧 Symbol normalization: ${originalSymbol} → ${normalizedSymbol}`);
+
     // KROK 3: Validate basic required fields (now in camelCase)
     const requiredFields = [
       "symbol",
