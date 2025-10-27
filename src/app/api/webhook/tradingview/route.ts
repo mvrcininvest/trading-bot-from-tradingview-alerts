@@ -3,6 +3,20 @@ import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+// Helper function to convert snake_case to camelCase
+function snakeToCamel(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(v => snakeToCamel(v));
+  } else if (obj !== null && obj.constructor === Object) {
+    return Object.keys(obj).reduce((result, key) => {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      result[camelKey] = snakeToCamel(obj[key]);
+      return result;
+    }, {} as any);
+  }
+  return obj;
+}
+
 // Helper function to log to botLogs
 async function logToBot(
   level: 'error' | 'warning' | 'info' | 'success',
@@ -88,16 +102,14 @@ export async function POST(request: Request) {
     // KROK 1: Sprawdź raw body dla debugowania
     const rawBody = await request.text();
     console.log("📨 RAW REQUEST BODY:", rawBody);
-    console.log("📨 REQUEST HEADERS:", JSON.stringify(Object.fromEntries(request.headers), null, 2));
     
     // Spróbuj sparsować JSON
-    let data;
+    let rawData;
     try {
-      data = JSON.parse(rawBody);
-      console.log("✅ JSON parsed successfully:", JSON.stringify(data, null, 2));
+      rawData = JSON.parse(rawBody);
+      console.log("✅ JSON parsed successfully:", JSON.stringify(rawData, null, 2));
     } catch (parseError) {
       console.error("❌ JSON PARSE ERROR:", parseError);
-      console.error("❌ Raw body was:", rawBody.substring(0, 500));
       
       await logToBot(
         'error',
@@ -116,9 +128,11 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("📨 Received TradingView alert:", JSON.stringify(data, null, 2));
+    // KROK 2: Normalize snake_case to camelCase
+    const data = snakeToCamel(rawData);
+    console.log("🔄 Normalized data:", JSON.stringify(data, null, 2));
 
-    // Validate basic required fields
+    // KROK 3: Validate basic required fields (now in camelCase)
     const requiredFields = [
       "symbol",
       "side",
