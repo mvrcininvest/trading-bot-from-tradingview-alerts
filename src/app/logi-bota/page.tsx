@@ -125,7 +125,7 @@ export default function LogiBotaPage() {
                 Logi Bota
               </h1>
               <p className="text-gray-400">
-                Śledzenie wszystkich akcji, błędów i ostrzeżeń
+                Śledzenie wszystkich akcji, błędów i ostrzeżeń.
               </p>
             </div>
           </div>
