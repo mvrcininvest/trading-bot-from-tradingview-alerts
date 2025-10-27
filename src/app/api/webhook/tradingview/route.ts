@@ -4,15 +4,14 @@ import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/sch
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
-// CRITICAL: Use EXACT same signing method as get-balance (which works!)
-// timestamp as NUMBER, params as object, recv_window as STRING "5000"
+// CRITICAL FIX: For POST requests, sign with the EXACT JSON string sent in body
 function createBybitSignature(
   apiKey: string,
   apiSecret: string,
   timestamp: number,
-  params: Record<string, any>
+  payloadString: string
 ): string {
-  const paramString = timestamp + apiKey + "5000" + JSON.stringify(params);
+  const paramString = timestamp + apiKey + "5000" + payloadString;
   return crypto.createHmac("sha256", apiSecret).update(paramString).digest("hex");
 }
 
@@ -420,7 +419,7 @@ export async function POST(request: Request) {
             const baseUrl = getBybitBaseUrl(environment);
 
             const closeTimestamp = Date.now();
-            const closeParams = {
+            const closePayload = JSON.stringify({
               category: "linear",
               symbol: data.symbol,
               side: existingPosition.side === "BUY" ? "Sell" : "Buy",
@@ -429,9 +428,9 @@ export async function POST(request: Request) {
               timeInForce: "GTC",
               reduceOnly: true,
               closeOnTrigger: false
-            };
+            });
 
-            const closeSignature = createBybitSignature(apiKey, apiSecret, closeTimestamp, closeParams);
+            const closeSignature = createBybitSignature(apiKey, apiSecret, closeTimestamp, closePayload);
 
             const closeResponse = await fetch(`${baseUrl}/v5/order/create`, {
               method: "POST",
@@ -442,7 +441,7 @@ export async function POST(request: Request) {
                 "X-BAPI-SIGN": closeSignature,
                 "X-BAPI-RECV-WINDOW": "5000",
               },
-              body: JSON.stringify(closeParams)
+              body: closePayload
             });
 
             // CRITICAL: Check if response is JSON before parsing
@@ -728,34 +727,22 @@ export async function POST(request: Request) {
         alert.id
       );
 
-      // Step 1: Set Leverage - USE EXACT SAME METHOD AS get-balance
+      // Step 1: Set Leverage - CRITICAL FIX: Use single JSON string
       if (leverage) {
-        const leverageTimestamp = Date.now(); // NUMBER not STRING!
-        const leverageParams = {
-          category: "linear",
-          symbol,
-          buyLeverage: leverage.toString(),
-          sellLeverage: leverage.toString()
-        };
-
-        const leverageSignature = createBybitSignature(
-          apiKey,
-          apiSecret,
-          leverageTimestamp,
-          leverageParams
-        );
-
-        const queryParams = new URLSearchParams({
+        const leverageTimestamp = Date.now();
+        const leveragePayload = JSON.stringify({
           category: "linear",
           symbol,
           buyLeverage: leverage.toString(),
           sellLeverage: leverage.toString()
         });
 
+        const leverageSignature = createBybitSignature(apiKey, apiSecret, leverageTimestamp, leveragePayload);
+
         console.log("🔑 DEBUG Leverage Request:");
         console.log("  URL:", `${baseUrl}/v5/position/set-leverage`);
         console.log("  Timestamp:", leverageTimestamp);
-        console.log("  Params:", leverageParams);
+        console.log("  Payload:", leveragePayload);
         console.log("  Signature:", leverageSignature);
 
         const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
@@ -767,7 +754,7 @@ export async function POST(request: Request) {
             "X-BAPI-SIGN": leverageSignature,
             "X-BAPI-RECV-WINDOW": "5000",
           },
-          body: JSON.stringify(leverageParams)
+          body: leveragePayload
         });
 
         const leverageResponseText = await leverageResponse.text();
@@ -793,9 +780,9 @@ export async function POST(request: Request) {
         }
       }
 
-      // Step 2: Open Position - USE EXACT SAME METHOD AS get-balance
-      const orderTimestamp = Date.now(); // NUMBER not STRING!
-      const orderParams = {
+      // Step 2: Open Position - CRITICAL FIX: Use single JSON string
+      const orderTimestamp = Date.now();
+      const orderPayload = JSON.stringify({
         category: "linear",
         symbol,
         side,
@@ -804,19 +791,14 @@ export async function POST(request: Request) {
         timeInForce: "GTC",
         reduceOnly: false,
         closeOnTrigger: false
-      };
+      });
 
-      const orderSignature = createBybitSignature(
-        apiKey,
-        apiSecret,
-        orderTimestamp,
-        orderParams
-      );
+      const orderSignature = createBybitSignature(apiKey, apiSecret, orderTimestamp, orderPayload);
 
       console.log("🔑 DEBUG Order Request:");
       console.log("  URL:", `${baseUrl}/v5/order/create`);
       console.log("  Timestamp:", orderTimestamp);
-      console.log("  Params:", orderParams);
+      console.log("  Payload:", orderPayload);
       console.log("  Signature:", orderSignature);
 
       const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
@@ -828,7 +810,7 @@ export async function POST(request: Request) {
           "X-BAPI-SIGN": orderSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
-        body: JSON.stringify(orderParams)
+        body: orderPayload
       });
 
       const orderResponseText = await orderResponse.text();
@@ -862,11 +844,11 @@ export async function POST(request: Request) {
       const orderId = orderData.result?.orderId;
       console.log("✅ Position opened on Bybit:", orderId);
 
-      // Step 3: Set SL/TP - USE EXACT SAME METHOD AS get-balance
+      // Step 3: Set SL/TP - CRITICAL FIX: Use single JSON string
       if (slPrice || tp1Price) {
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        const tpslTimestamp = Date.now(); // NUMBER not STRING!
+        const tpslTimestamp = Date.now();
         const tpslParams: any = {
           category: "linear",
           symbol,
@@ -883,12 +865,8 @@ export async function POST(request: Request) {
           tpslParams.takeProfit = tp1Price.toFixed(2);
         }
 
-        const tpslSignature = createBybitSignature(
-          apiKey,
-          apiSecret,
-          tpslTimestamp,
-          tpslParams
-        );
+        const tpslPayload = JSON.stringify(tpslParams);
+        const tpslSignature = createBybitSignature(apiKey, apiSecret, tpslTimestamp, tpslPayload);
 
         const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
           method: "POST",
@@ -899,7 +877,7 @@ export async function POST(request: Request) {
             "X-BAPI-SIGN": tpslSignature,
             "X-BAPI-RECV-WINDOW": "5000",
           },
-          body: JSON.stringify(tpslParams)
+          body: tpslPayload
         });
 
         const tpslResponseText = await tpslResponse.text();

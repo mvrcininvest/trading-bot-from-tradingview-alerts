@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// USE EXACT SAME SIGNING METHOD AS get-balance (which works!)
+// CRITICAL FIX: For POST requests, sign with the EXACT JSON string sent in body
 function createBybitSignature(
   apiKey: string,
   apiSecret: string,
   timestamp: number,
-  params: Record<string, any>
+  payloadString: string
 ): string {
-  const paramString = timestamp + apiKey + "5000" + JSON.stringify(params);
+  const paramString = timestamp + apiKey + "5000" + payloadString;
   return crypto.createHmac('sha256', apiSecret).update(paramString).digest('hex');
 }
 
@@ -68,19 +68,19 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Set Leverage
     if (leverage) {
-      const leverageTimestamp = Date.now(); // NUMBER not string!
-      const leverageParams = {
+      const leverageTimestamp = Date.now();
+      const leveragePayload = JSON.stringify({
         category: "linear",
         symbol,
         buyLeverage: leverage.toString(),
         sellLeverage: leverage.toString()
-      };
+      });
 
       const leverageSignature = createBybitSignature(
         apiKey,
         apiSecret,
         leverageTimestamp,
-        leverageParams
+        leveragePayload
       );
 
       const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
           "X-BAPI-SIGN": leverageSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
-        body: JSON.stringify(leverageParams)
+        body: leveragePayload
       });
 
       const leverageData = await leverageResponse.json();
@@ -104,8 +104,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Open Position (Market Order)
-    const orderTimestamp = Date.now(); // NUMBER not string!
-    const orderParams = {
+    const orderTimestamp = Date.now();
+    const orderPayload = JSON.stringify({
       category: "linear",
       symbol,
       side,
@@ -114,13 +114,13 @@ export async function POST(request: NextRequest) {
       timeInForce: "GTC",
       reduceOnly: false,
       closeOnTrigger: false
-    };
+    });
 
     const orderSignature = createBybitSignature(
       apiKey,
       apiSecret,
       orderTimestamp,
-      orderParams
+      orderPayload
     );
 
     const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         "X-BAPI-SIGN": orderSignature,
         "X-BAPI-RECV-WINDOW": "5000",
       },
-      body: JSON.stringify(orderParams)
+      body: orderPayload
     });
 
     const orderData = await orderResponse.json();
@@ -150,33 +150,31 @@ export async function POST(request: NextRequest) {
 
     // Step 3: Set SL/TP
     if (stopLoss || takeProfit || tp1) {
-      // Wait 500ms for position to be created
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const tpslTimestamp = Date.now(); // NUMBER not string!
+      const tpslTimestamp = Date.now();
       const tpslParams: any = {
         category: "linear",
         symbol,
-        positionIdx: 0 // One-Way Mode
+        positionIdx: 0
       };
 
-      // Set Stop Loss
       if (stopLoss) {
         tpslParams.stopLoss = stopLoss;
       }
 
-      // Set Take Profit based on mode
       if (tpMode === "multiple" && tp1) {
         tpslParams.takeProfit = tp1;
       } else if (takeProfit) {
         tpslParams.takeProfit = takeProfit;
       }
 
+      const tpslPayload = JSON.stringify(tpslParams);
       const tpslSignature = createBybitSignature(
         apiKey,
         apiSecret,
         tpslTimestamp,
-        tpslParams
+        tpslPayload
       );
 
       const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
@@ -188,21 +186,20 @@ export async function POST(request: NextRequest) {
           "X-BAPI-SIGN": tpslSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
-        body: JSON.stringify(tpslParams)
+        body: tpslPayload
       });
 
       const tpslData = await tpslResponse.json();
 
       if (tpslData.retCode !== 0) {
         console.warn("SL/TP setting warning:", tpslData.retMsg);
-        // Non-critical - position is already opened
       }
 
       // Step 4: Set TP2 and TP3 as limit orders (if multiple TP mode)
       if (tpMode === "multiple" && (tp2 || tp3)) {
-        const qty1 = parseFloat(quantity) * 0.5; // 50% for TP1
-        const qty2 = parseFloat(quantity) * 0.3; // 30% for TP2
-        const qty3 = parseFloat(quantity) * 0.2; // 20% for TP3
+        const qty1 = parseFloat(quantity) * 0.5;
+        const qty2 = parseFloat(quantity) * 0.3;
+        const qty3 = parseFloat(quantity) * 0.2;
 
         const tpOrders = [];
 
@@ -222,27 +219,26 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Create TP2/TP3 limit orders
         for (const tp of tpOrders) {
-          const tpOrderTimestamp = Date.now(); // NUMBER not string!
-          const tpOrderParams = {
+          const tpOrderTimestamp = Date.now();
+          const tpOrderPayload = JSON.stringify({
             category: "linear",
             symbol,
-            side: side === "Buy" ? "Sell" : "Buy", // Opposite side to close
+            side: side === "Buy" ? "Sell" : "Buy",
             orderType: "Limit",
             qty: tp.qty,
             price: tp.price,
             timeInForce: "GTC",
             reduceOnly: true,
             closeOnTrigger: false,
-            orderLinkId: `${orderId}_${tp.label}` // Link to main order
-          };
+            orderLinkId: `${orderId}_${tp.label}`
+          });
 
           const tpOrderSignature = createBybitSignature(
             apiKey,
             apiSecret,
             tpOrderTimestamp,
-            tpOrderParams
+            tpOrderPayload
           );
 
           await fetch(`${baseUrl}/v5/order/create`, {
@@ -254,10 +250,9 @@ export async function POST(request: NextRequest) {
               "X-BAPI-SIGN": tpOrderSignature,
               "X-BAPI-RECV-WINDOW": "5000",
             },
-            body: JSON.stringify(tpOrderParams)
+            body: tpOrderPayload
           });
 
-          // Small delay between orders
           await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
