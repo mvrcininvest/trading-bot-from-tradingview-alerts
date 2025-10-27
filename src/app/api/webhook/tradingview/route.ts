@@ -29,6 +29,26 @@ async function logToBot(
   }
 }
 
+// GET endpoint for testing webhook connectivity
+export async function GET(request: Request) {
+  const timestamp = new Date().toISOString();
+  
+  await logToBot(
+    'info',
+    'webhook_test',
+    'Webhook endpoint tested via GET request',
+    { timestamp, url: request.url }
+  );
+  
+  return NextResponse.json({ 
+    status: 'online',
+    message: 'TradingView Webhook Endpoint is working!',
+    timestamp,
+    endpoint: '/api/webhook/tradingview',
+    methods: ['GET (test)', 'POST (receive alerts)']
+  });
+}
+
 // Bybit API Signing Helper
 async function signBybitRequest(
   apiKey: string,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash } from "lucide-react";
+import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -55,6 +55,8 @@ export default function AlertsPage() {
   const [stats, setStats] = useState({ total: 0, buy: 0, sell: 0, avgLatency: 0 });
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [cleaningOld, setCleaningOld] = useState(false);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
   
   // Filtry
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -142,6 +144,27 @@ export default function AlertsPage() {
       toast.error("Błąd czyszczenia alertów");
     } finally {
       setCleaningOld(false);
+    }
+  };
+
+  const testWebhook = async () => {
+    setTestingWebhook(true);
+    try {
+      const response = await fetch("/api/webhook/tradingview");
+      const data = await response.json();
+      
+      if (data.status === 'online') {
+        setWebhookStatus('online');
+        toast.success("Webhook działa poprawnie!");
+      } else {
+        setWebhookStatus('offline');
+        toast.error("Webhook nie odpowiada");
+      }
+    } catch (error) {
+      setWebhookStatus('offline');
+      toast.error("Nie można połączyć z webhook");
+    } finally {
+      setTestingWebhook(false);
     }
   };
 
@@ -249,10 +272,28 @@ export default function AlertsPage() {
         {/* Webhook URL Card */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-white">URL Webhook</CardTitle>
+            <CardTitle className="text-white flex items-center justify-between">
+              <span>URL Webhook</span>
+              <Button 
+                onClick={testWebhook} 
+                disabled={testingWebhook}
+                size="sm" 
+                variant="outline"
+                className="border-blue-700 bg-blue-900/20 hover:bg-blue-900/40 text-blue-300"
+              >
+                {testingWebhook ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : webhookStatus === 'online' ? (
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-400" />
+                ) : webhookStatus === 'offline' ? (
+                  <XCircle className="h-4 w-4 mr-2 text-red-400" />
+                ) : null}
+                Testuj Webhook
+              </Button>
+            </CardTitle>
             <CardDescription className="text-gray-500">Wklej ten URL w alertach TradingView</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="flex items-center gap-2">
               <code className="flex-1 p-3 bg-gray-800/60 border border-gray-700 rounded-md text-sm font-mono overflow-x-auto text-gray-300">
                 {webhookUrl}
@@ -262,9 +303,31 @@ export default function AlertsPage() {
                 Kopiuj
               </Button>
             </div>
-            <p className="text-xs text-gray-500 mt-2">
-              ⚠️ Ważne: TradingView wymaga portu 80 lub 443. Użyj ngrok lub wdróż aplikację na serwer.
-            </p>
+            
+            {webhookStatus === 'online' && (
+              <div className="flex items-center gap-2 text-green-400 text-sm">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Webhook jest online i gotowy do odbierania alertów</span>
+              </div>
+            )}
+            
+            {webhookStatus === 'offline' && (
+              <div className="flex items-center gap-2 text-red-400 text-sm">
+                <XCircle className="h-4 w-4" />
+                <span>Webhook nie odpowiada - sprawdź logi serwera</span>
+              </div>
+            )}
+
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>📋 <strong>Jak skonfigurować w TradingView:</strong></p>
+              <ol className="list-decimal list-inside space-y-1 ml-2">
+                <li>Otwórz wykres w TradingView</li>
+                <li>Dodaj alert (Alt+A)</li>
+                <li>W sekcji "Notifications" zaznacz "Webhook URL"</li>
+                <li>Wklej powyższy URL</li>
+                <li>W "Message" wklej JSON z twojego wskaźnika</li>
+              </ol>
+            </div>
           </CardContent>
         </Card>
 
