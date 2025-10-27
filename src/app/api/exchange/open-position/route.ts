@@ -11,7 +11,7 @@ function signBybitRequest(
   timestamp: number,
   payload: string
 ): string {
-  const signString = timestamp + apiKey + 5000 + payload;
+  const signString = timestamp + apiKey + "5000" + payload;
   return crypto.createHmac('sha256', apiSecret).update(signString).digest('hex');
 }
 
