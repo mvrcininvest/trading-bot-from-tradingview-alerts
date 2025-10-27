@@ -81,6 +81,79 @@ function getBybitBaseUrl(environment: string): string {
   return "https://api.bybit.com";
 }
 
+// Helper function to make Bybit API calls with proper error handling
+async function makeBybitRequest(
+  url: string,
+  apiKey: string,
+  apiSecret: string,
+  payload: any,
+  alertId?: number
+) {
+  const timestamp = Date.now();
+  const payloadString = JSON.stringify(payload);
+  const signature = createBybitSignature(apiKey, apiSecret, timestamp, payloadString);
+
+  console.log("🔑 Bybit Request:", {
+    url,
+    timestamp,
+    payload: payloadString,
+    apiKeyPreview: apiKey.substring(0, 8) + '...'
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-TIMESTAMP": timestamp.toString(),
+      "X-BAPI-SIGN": signature,
+      "X-BAPI-RECV-WINDOW": "5000",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    },
+    body: payloadString
+  });
+
+  const responseText = await response.text();
+  console.log(`📥 Bybit Response (${response.status}):`, responseText.substring(0, 500));
+
+  // Check if response is HTML (CloudFlare block or error)
+  if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+    console.error("❌ Bybit returned HTML instead of JSON");
+    
+    await logToBot(
+      'error',
+      'bybit_html_response',
+      'Bybit API returned HTML (possible CloudFlare block or wrong URL)',
+      { 
+        status: response.status,
+        url,
+        apiKeyPreview: apiKey.substring(0, 8) + '...',
+        responsePreview: responseText.substring(0, 300)
+      },
+      alertId
+    );
+
+    throw new Error(
+      'Bybit API blocked or wrong environment. Check:\n' +
+      '1. API keys are correct and have trading permissions\n' +
+      '2. BYBIT_ENVIRONMENT in .env matches your API key type (demo/testnet/mainnet)\n' +
+      '3. IP whitelist is configured in Bybit API settings\n' +
+      `4. Current environment: ${process.env.BYBIT_ENVIRONMENT || 'not set'}`
+    );
+  }
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    console.error("❌ Failed to parse Bybit response:", responseText.substring(0, 500));
+    throw new Error(`Invalid JSON response from Bybit: ${responseText.substring(0, 200)}`);
+  }
+
+  return { response, data };
+}
+
 export async function POST(request: Request) {
   try {
     // KROK 1: Sprawdź raw body dla debugowania
@@ -714,6 +787,9 @@ export async function POST(request: Request) {
         throw new Error("Bybit API credentials not configured in .env");
       }
 
+      console.log(`🔧 Using Bybit environment: ${environment}`);
+      console.log(`🔑 API Key preview: ${apiKey.substring(0, 8)}...`);
+
       const baseUrl = getBybitBaseUrl(environment);
       const symbol = data.symbol;
       const side = data.side === "BUY" ? "Buy" : "Sell";
@@ -722,133 +798,72 @@ export async function POST(request: Request) {
       await logToBot(
         'info',
         'position_opening',
-        `Opening position: ${symbol} ${side} ${leverage}x`,
-        { symbol, side, leverage, quantity, entryPrice, sl: slPrice, tp1: tp1Price },
+        `Opening position: ${symbol} ${side} ${leverage}x (env: ${environment})`,
+        { symbol, side, leverage, quantity, entryPrice, sl: slPrice, tp1: tp1Price, environment },
         alert.id
       );
 
-      // Step 1: Set Leverage - CRITICAL FIX: Use single JSON string
+      // Step 1: Set Leverage
       if (leverage) {
-        const leverageTimestamp = Date.now();
-        const leveragePayload = JSON.stringify({
-          category: "linear",
-          symbol,
-          buyLeverage: leverage.toString(),
-          sellLeverage: leverage.toString()
-        });
-
-        const leverageSignature = createBybitSignature(apiKey, apiSecret, leverageTimestamp, leveragePayload);
-
-        console.log("🔑 DEBUG Leverage Request:");
-        console.log("  URL:", `${baseUrl}/v5/position/set-leverage`);
-        console.log("  Timestamp:", leverageTimestamp);
-        console.log("  Payload:", leveragePayload);
-        console.log("  Signature:", leverageSignature);
-
-        const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": leverageTimestamp.toString(),
-            "X-BAPI-SIGN": leverageSignature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-          body: leveragePayload
-        });
-
-        const leverageResponseText = await leverageResponse.text();
-        console.log("📥 Bybit Leverage Response (raw):", leverageResponseText);
-        
-        let leverageData;
         try {
-          leverageData = JSON.parse(leverageResponseText);
-        } catch (parseError) {
-          console.error("❌ Bybit returned non-JSON response:", leverageResponseText.substring(0, 500));
-          throw new Error(`Bybit API returned HTML/non-JSON response. Response: ${leverageResponseText.substring(0, 200)}`);
-        }
-
-        if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
-          console.warn("Leverage setting warning:", leverageData.retMsg);
-          await logToBot(
-            'warning',
-            'leverage_set_warning',
-            `Leverage setting warning: ${leverageData.retMsg}`,
-            { retCode: leverageData.retCode, retMsg: leverageData.retMsg },
+          const { data: leverageData } = await makeBybitRequest(
+            `${baseUrl}/v5/position/set-leverage`,
+            apiKey,
+            apiSecret,
+            {
+              category: "linear",
+              symbol,
+              buyLeverage: leverage.toString(),
+              sellLeverage: leverage.toString()
+            },
             alert.id
           );
+
+          if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
+            console.warn("⚠️ Leverage setting warning:", leverageData.retMsg);
+            await logToBot(
+              'warning',
+              'leverage_set_warning',
+              `Leverage setting warning: ${leverageData.retMsg}`,
+              { retCode: leverageData.retCode, retMsg: leverageData.retMsg },
+              alert.id
+            );
+          }
+        } catch (leverageError: any) {
+          console.warn("⚠️ Leverage setting failed:", leverageError.message);
+          // Non-critical, continue with trade
         }
       }
 
-      // Step 2: Open Position - CRITICAL FIX: Use single JSON string
-      const orderTimestamp = Date.now();
-      const orderPayload = JSON.stringify({
-        category: "linear",
-        symbol,
-        side,
-        orderType: "Market",
-        qty: quantity.toFixed(4),
-        timeInForce: "GTC",
-        reduceOnly: false,
-        closeOnTrigger: false
-      });
-
-      const orderSignature = createBybitSignature(apiKey, apiSecret, orderTimestamp, orderPayload);
-
-      console.log("🔑 DEBUG Order Request:");
-      console.log("  URL:", `${baseUrl}/v5/order/create`);
-      console.log("  Timestamp:", orderTimestamp);
-      console.log("  Payload:", orderPayload);
-      console.log("  Signature:", orderSignature);
-
-      const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-BAPI-API-KEY": apiKey,
-          "X-BAPI-TIMESTAMP": orderTimestamp.toString(),
-          "X-BAPI-SIGN": orderSignature,
-          "X-BAPI-RECV-WINDOW": "5000",
+      // Step 2: Open Position (Market Order)
+      const { data: orderData } = await makeBybitRequest(
+        `${baseUrl}/v5/order/create`,
+        apiKey,
+        apiSecret,
+        {
+          category: "linear",
+          symbol,
+          side,
+          orderType: "Market",
+          qty: quantity.toFixed(4),
+          timeInForce: "GTC",
+          reduceOnly: false,
+          closeOnTrigger: false
         },
-        body: orderPayload
-      });
-
-      const orderResponseText = await orderResponse.text();
-      console.log("📥 Bybit Order Response (raw):", orderResponseText);
-      console.log("📥 Response Status:", orderResponse.status);
-      
-      let orderData;
-      try {
-        orderData = JSON.parse(orderResponseText);
-      } catch (parseError) {
-        console.error("❌ Bybit returned non-JSON response:", orderResponseText.substring(0, 500));
-        
-        await logToBot(
-          'error',
-          'bybit_api_error',
-          'Bybit API returned HTML instead of JSON',
-          { 
-            responsePreview: orderResponseText.substring(0, 500),
-            apiKey: apiKey?.substring(0, 8) + '...',
-            environment 
-          },
-          alert.id
-        );
-        throw new Error(`Bybit API returned HTML/non-JSON response. Response: ${orderResponseText.substring(0, 200)}`);
-      }
+        alert.id
+      );
 
       if (orderData.retCode !== 0) {
-        throw new Error(`Bybit order failed: ${orderData.retMsg}`);
+        throw new Error(`Bybit order failed (retCode ${orderData.retCode}): ${orderData.retMsg}`);
       }
 
       const orderId = orderData.result?.orderId;
       console.log("✅ Position opened on Bybit:", orderId);
 
-      // Step 3: Set SL/TP - CRITICAL FIX: Use single JSON string
+      // Step 3: Set SL/TP
       if (slPrice || tp1Price) {
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        const tpslTimestamp = Date.now();
         const tpslParams: any = {
           category: "linear",
           symbol,
@@ -865,38 +880,28 @@ export async function POST(request: Request) {
           tpslParams.takeProfit = tp1Price.toFixed(2);
         }
 
-        const tpslPayload = JSON.stringify(tpslParams);
-        const tpslSignature = createBybitSignature(apiKey, apiSecret, tpslTimestamp, tpslPayload);
-
-        const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": tpslTimestamp.toString(),
-            "X-BAPI-SIGN": tpslSignature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-          body: tpslPayload
-        });
-
-        const tpslResponseText = await tpslResponse.text();
-        let tpslData;
         try {
-          tpslData = JSON.parse(tpslResponseText);
-        } catch {
-          console.warn("SL/TP response not JSON, skipping");
-        }
-
-        if (tpslData && tpslData.retCode !== 0) {
-          console.warn("SL/TP setting warning:", tpslData.retMsg);
-          await logToBot(
-            'warning',
-            'sl_tp_set_warning',
-            `SL/TP setting warning: ${tpslData.retMsg}`,
-            { retCode: tpslData.retCode, retMsg: tpslData.retMsg, sl: slPrice, tp: tp1Price },
+          const { data: tpslData } = await makeBybitRequest(
+            `${baseUrl}/v5/position/trading-stop`,
+            apiKey,
+            apiSecret,
+            tpslParams,
             alert.id
           );
+
+          if (tpslData.retCode !== 0) {
+            console.warn("⚠️ SL/TP setting warning:", tpslData.retMsg);
+            await logToBot(
+              'warning',
+              'sl_tp_set_warning',
+              `SL/TP setting warning: ${tpslData.retMsg}`,
+              { retCode: tpslData.retCode, retMsg: tpslData.retMsg, sl: slPrice, tp: tp1Price },
+              alert.id
+            );
+          }
+        } catch (tpslError: any) {
+          console.warn("⚠️ SL/TP setting failed:", tpslError.message);
+          // Non-critical, position is already open
         }
       }
 
@@ -963,7 +968,7 @@ export async function POST(request: Request) {
       await logToBot(
         'success',
         'position_opened',
-        `Position opened successfully: ${symbol} ${side} ${leverage}x`,
+        `✅ Position opened: ${symbol} ${side} ${leverage}x | Entry: ${entryPrice}`,
         {
           positionId: botPosition.id,
           orderId,
@@ -976,7 +981,8 @@ export async function POST(request: Request) {
           tp1: tp1Price,
           tp2: tp2Price,
           tp3: tp3Price,
-          tier: data.tier
+          tier: data.tier,
+          environment
         },
         alert.id,
         botPosition.id
@@ -1027,12 +1033,13 @@ export async function POST(request: Request) {
       await logToBot(
         'error',
         'order_failed',
-        `Failed to open position: ${error.message}`,
+        `❌ Failed to open position: ${error.message}`,
         {
           error: error.message,
           symbol: data.symbol,
           side: data.side,
-          tier: data.tier
+          tier: data.tier,
+          environment: process.env.BYBIT_ENVIRONMENT
         },
         alert.id
       );

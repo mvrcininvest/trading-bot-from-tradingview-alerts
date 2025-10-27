@@ -18,6 +18,54 @@ function getBybitBaseUrl(environment: string): string {
   return "https://api.bybit.com";
 }
 
+// Helper function to make Bybit API calls with proper error handling
+async function makeBybitRequest(url: string, apiKey: string, apiSecret: string, payload: any) {
+  const timestamp = Date.now();
+  const payloadString = JSON.stringify(payload);
+  const signature = createBybitSignature(apiKey, apiSecret, timestamp, payloadString);
+
+  console.log("🔑 Bybit Request:", { url, timestamp, payload: payloadString });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-TIMESTAMP": timestamp.toString(),
+      "X-BAPI-SIGN": signature,
+      "X-BAPI-RECV-WINDOW": "5000",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    },
+    body: payloadString
+  });
+
+  const responseText = await response.text();
+  console.log(`📥 Bybit Response (${response.status}):`, responseText.substring(0, 500));
+
+  // Check if response is HTML (CloudFlare block or error)
+  if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+    console.error("❌ Bybit returned HTML instead of JSON");
+    throw new Error(
+      'Bybit API blocked or wrong environment. Sprawdź:\n' +
+      '1. Klucze API są poprawne i mają uprawnienia do tradingu\n' +
+      '2. BYBIT_ENVIRONMENT w .env zgadza się z typem kluczy (demo/testnet/mainnet)\n' +
+      '3. IP jest dodane do whitelisty w ustawieniach API Bybit\n' +
+      `4. Obecne środowisko: ${process.env.BYBIT_ENVIRONMENT || 'nie ustawione'}`
+    );
+  }
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    console.error("❌ Failed to parse Bybit response:", responseText.substring(0, 500));
+    throw new Error(`Nieprawidłowa odpowiedź JSON od Bybit: ${responseText.substring(0, 200)}`);
+  }
+
+  return { response, data };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -65,94 +113,66 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = getBybitBaseUrl(environment || "mainnet");
+    console.log(`🔧 Using Bybit environment: ${environment || "mainnet"}`);
 
     // Step 1: Set Leverage
     if (leverage) {
-      const leverageTimestamp = Date.now();
-      const leveragePayload = JSON.stringify({
-        category: "linear",
-        symbol,
-        buyLeverage: leverage.toString(),
-        sellLeverage: leverage.toString()
-      });
+      try {
+        const { data: leverageData } = await makeBybitRequest(
+          `${baseUrl}/v5/position/set-leverage`,
+          apiKey,
+          apiSecret,
+          {
+            category: "linear",
+            symbol,
+            buyLeverage: leverage.toString(),
+            sellLeverage: leverage.toString()
+          }
+        );
 
-      const leverageSignature = createBybitSignature(
-        apiKey,
-        apiSecret,
-        leverageTimestamp,
-        leveragePayload
-      );
-
-      const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-BAPI-API-KEY": apiKey,
-          "X-BAPI-TIMESTAMP": leverageTimestamp.toString(),
-          "X-BAPI-SIGN": leverageSignature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-        body: leveragePayload
-      });
-
-      const leverageData = await leverageResponse.json();
-
-      // Non-critical error - leverage might already be set
-      if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
-        console.warn("Leverage setting warning:", leverageData.retMsg);
+        // Non-critical error - leverage might already be set
+        if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
+          console.warn("Leverage setting warning:", leverageData.retMsg);
+        }
+      } catch (leverageError: any) {
+        console.warn("⚠️ Leverage setting failed:", leverageError.message);
+        // Continue with trade
       }
     }
 
     // Step 2: Open Position (Market Order)
-    const orderTimestamp = Date.now();
-    const orderPayload = JSON.stringify({
-      category: "linear",
-      symbol,
-      side,
-      orderType: "Market",
-      qty: quantity,
-      timeInForce: "GTC",
-      reduceOnly: false,
-      closeOnTrigger: false
-    });
-
-    const orderSignature = createBybitSignature(
+    const { data: orderData } = await makeBybitRequest(
+      `${baseUrl}/v5/order/create`,
       apiKey,
       apiSecret,
-      orderTimestamp,
-      orderPayload
+      {
+        category: "linear",
+        symbol,
+        side,
+        orderType: "Market",
+        qty: quantity,
+        timeInForce: "GTC",
+        reduceOnly: false,
+        closeOnTrigger: false
+      }
     );
-
-    const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-BAPI-API-KEY": apiKey,
-        "X-BAPI-TIMESTAMP": orderTimestamp.toString(),
-        "X-BAPI-SIGN": orderSignature,
-        "X-BAPI-RECV-WINDOW": "5000",
-      },
-      body: orderPayload
-    });
-
-    const orderData = await orderResponse.json();
 
     if (orderData.retCode !== 0) {
       return NextResponse.json({
         success: false,
-        error: `Bybit order failed: ${orderData.retMsg}`,
+        error: `Bybit order failed (retCode ${orderData.retCode}): ${orderData.retMsg}`,
         code: "ORDER_FAILED",
         details: orderData
       }, { status: 400 });
     }
 
     const orderId = orderData.result?.orderId;
+    console.log("✅ Position opened:", orderId);
 
     // Step 3: Set SL/TP
     if (stopLoss || takeProfit || tp1) {
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const tpslTimestamp = Date.now();
       const tpslParams: any = {
         category: "linear",
         symbol,
@@ -169,30 +189,20 @@ export async function POST(request: NextRequest) {
         tpslParams.takeProfit = takeProfit;
       }
 
-      const tpslPayload = JSON.stringify(tpslParams);
-      const tpslSignature = createBybitSignature(
-        apiKey,
-        apiSecret,
-        tpslTimestamp,
-        tpslPayload
-      );
+      try {
+        const { data: tpslData } = await makeBybitRequest(
+          `${baseUrl}/v5/position/trading-stop`,
+          apiKey,
+          apiSecret,
+          tpslParams
+        );
 
-      const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-BAPI-API-KEY": apiKey,
-          "X-BAPI-TIMESTAMP": tpslTimestamp.toString(),
-          "X-BAPI-SIGN": tpslSignature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-        body: tpslPayload
-      });
-
-      const tpslData = await tpslResponse.json();
-
-      if (tpslData.retCode !== 0) {
-        console.warn("SL/TP setting warning:", tpslData.retMsg);
+        if (tpslData.retCode !== 0) {
+          console.warn("SL/TP setting warning:", tpslData.retMsg);
+        }
+      } catch (tpslError: any) {
+        console.warn("⚠️ SL/TP setting failed:", tpslError.message);
+        // Non-critical, position already open
       }
 
       // Step 4: Set TP2 and TP3 as limit orders (if multiple TP mode)
@@ -220,40 +230,28 @@ export async function POST(request: NextRequest) {
         }
 
         for (const tp of tpOrders) {
-          const tpOrderTimestamp = Date.now();
-          const tpOrderPayload = JSON.stringify({
-            category: "linear",
-            symbol,
-            side: side === "Buy" ? "Sell" : "Buy",
-            orderType: "Limit",
-            qty: tp.qty,
-            price: tp.price,
-            timeInForce: "GTC",
-            reduceOnly: true,
-            closeOnTrigger: false,
-            orderLinkId: `${orderId}_${tp.label}`
-          });
-
-          const tpOrderSignature = createBybitSignature(
-            apiKey,
-            apiSecret,
-            tpOrderTimestamp,
-            tpOrderPayload
-          );
-
-          await fetch(`${baseUrl}/v5/order/create`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-BAPI-API-KEY": apiKey,
-              "X-BAPI-TIMESTAMP": tpOrderTimestamp.toString(),
-              "X-BAPI-SIGN": tpOrderSignature,
-              "X-BAPI-RECV-WINDOW": "5000",
-            },
-            body: tpOrderPayload
-          });
-
-          await new Promise(resolve => setTimeout(resolve, 200));
+          try {
+            await makeBybitRequest(
+              `${baseUrl}/v5/order/create`,
+              apiKey,
+              apiSecret,
+              {
+                category: "linear",
+                symbol,
+                side: side === "Buy" ? "Sell" : "Buy",
+                orderType: "Limit",
+                qty: tp.qty,
+                price: tp.price,
+                timeInForce: "GTC",
+                reduceOnly: true,
+                closeOnTrigger: false,
+                orderLinkId: `${orderId}_${tp.label}`
+              }
+            );
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (tpError: any) {
+            console.warn(`⚠️ ${tp.label} order failed:`, tpError.message);
+          }
         }
       }
     }
