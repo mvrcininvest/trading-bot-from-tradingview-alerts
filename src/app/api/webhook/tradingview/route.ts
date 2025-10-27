@@ -151,8 +151,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // KROK 3.5: IDEMPOTENCY CHECK - zapobiegaj duplikatom
-    const alertTimestamp = data.timestamp || data.tvTs || Math.floor(Date.now() / 1000);
+    // KROK 3.5: OBLICZ LATENCJĘ
+    const receivedAt = Date.now();
+    const alertTimestamp = data.timestamp || data.tvTs || Math.floor(receivedAt / 1000);
+    const latency = receivedAt - (alertTimestamp * 1000); // Convert to ms
+    console.log(`⏱️ Latency calculated: ${latency}ms`);
+
+    // KROK 3.6: IDEMPOTENCY CHECK - użyj timestamp + symbol jako unique key
+    const idempotencyKey = `${data.symbol}_${data.side}_${data.tier}_${alertTimestamp}`;
     const idempotencyWindow = 60; // 60 sekund
     const recentTimestamp = alertTimestamp - idempotencyWindow;
     
@@ -165,16 +171,16 @@ export async function POST(request: Request) {
           eq(alerts.tier, data.tier)
         )
       )
-      .limit(10); // Sprawdź ostatnie 10 alertów
+      .limit(10);
     
-    // Sprawdź czy jest duplikat w ostatnich 60 sekundach
+    // Sprawdź czy jest dokładnie ten sam timestamp (duplikat)
     const isDuplicate = duplicateCheck.some(alert => {
       const timeDiff = Math.abs(alert.timestamp - alertTimestamp);
-      return timeDiff < idempotencyWindow;
+      return timeDiff < 5; // Dokładnie ten sam alert (różnica < 5 sekund)
     });
     
     if (isDuplicate) {
-      console.log("⚠️ Duplicate alert detected, ignoring");
+      console.log("⚠️ Duplicate alert detected (same timestamp), ignoring");
       await logToBot(
         'warning',
         'duplicate_alert_ignored',
@@ -182,10 +188,9 @@ export async function POST(request: Request) {
         { symbol: data.symbol, side: data.side, tier: data.tier, timestamp: alertTimestamp }
       );
       
-      // Zwróć 200 aby TradingView nie retry
       return NextResponse.json({ 
         success: true, 
-        message: "Duplicate alert ignored (already processed recently)",
+        message: "Duplicate alert ignored",
         duplicate: true
       });
     }
@@ -218,7 +223,7 @@ export async function POST(request: Request) {
       institutionalFlow: data.institutionalFlow || null,
       accumulation: data.accumulation || null,
       volumeClimax: data.volumeClimax || null,
-      latency: data.latency || 0,
+      latency: Math.max(0, latency), // Obliczona latencja
       rawJson: JSON.stringify(data),
       executionStatus: 'pending',
       rejectionReason: null,
