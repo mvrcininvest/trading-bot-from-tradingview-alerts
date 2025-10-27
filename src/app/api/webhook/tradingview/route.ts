@@ -151,9 +151,48 @@ export async function POST(request: Request) {
       }
     }
 
+    // KROK 3.5: IDEMPOTENCY CHECK - zapobiegaj duplikatom
+    const alertTimestamp = data.timestamp || data.tvTs || Math.floor(Date.now() / 1000);
+    const idempotencyWindow = 60; // 60 sekund
+    const recentTimestamp = alertTimestamp - idempotencyWindow;
+    
+    const duplicateCheck = await db.select()
+      .from(alerts)
+      .where(
+        and(
+          eq(alerts.symbol, data.symbol),
+          eq(alerts.side, data.side),
+          eq(alerts.tier, data.tier)
+        )
+      )
+      .limit(10); // Sprawdź ostatnie 10 alertów
+    
+    // Sprawdź czy jest duplikat w ostatnich 60 sekundach
+    const isDuplicate = duplicateCheck.some(alert => {
+      const timeDiff = Math.abs(alert.timestamp - alertTimestamp);
+      return timeDiff < idempotencyWindow;
+    });
+    
+    if (isDuplicate) {
+      console.log("⚠️ Duplicate alert detected, ignoring");
+      await logToBot(
+        'warning',
+        'duplicate_alert_ignored',
+        `Duplicate alert ignored: ${data.symbol} ${data.side} ${data.tier}`,
+        { symbol: data.symbol, side: data.side, tier: data.tier, timestamp: alertTimestamp }
+      );
+      
+      // Zwróć 200 aby TradingView nie retry
+      return NextResponse.json({ 
+        success: true, 
+        message: "Duplicate alert ignored (already processed recently)",
+        duplicate: true
+      });
+    }
+
     // Save alert to database with pending status
     const [alert] = await db.insert(alerts).values({
-      timestamp: data.timestamp || Date.now(),
+      timestamp: alertTimestamp,
       symbol: data.symbol,
       side: data.side,
       tier: data.tier,
@@ -223,6 +262,7 @@ export async function POST(request: Request) {
         alert.id
       );
       
+      // Zwróć 200 aby TradingView nie retry
       return NextResponse.json({ 
         success: true, 
         alert_id: alert.id,
@@ -408,7 +448,17 @@ export async function POST(request: Request) {
               body: closePayload
             });
 
-            const closeData = await closeResponse.json();
+            // CRITICAL: Check if response is JSON before parsing
+            const closeResponseText = await closeResponse.text();
+            console.log("📥 Bybit Close Response (raw):", closeResponseText);
+            
+            let closeData;
+            try {
+              closeData = JSON.parse(closeResponseText);
+            } catch (parseError) {
+              console.error("❌ Bybit returned non-JSON response:", closeResponseText.substring(0, 500));
+              throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${closeResponseText.substring(0, 200)}`);
+            }
 
             if (closeData.retCode !== 0) {
               throw new Error(`Bybit close failed: ${closeData.retMsg}`);
@@ -468,11 +518,13 @@ export async function POST(request: Request) {
               existingPosition.id
             );
             
+            // Zwróć 200 aby TradingView nie retry
             return NextResponse.json({ 
-              success: false, 
+              success: true, 
               alert_id: alert.id,
-              error: "Failed to close opposite position"
-            }, { status: 500 });
+              error: "Failed to close opposite position",
+              message: "Alert saved but position opening failed"
+            });
           }
         } else {
           console.log(`⚠️ Opposite direction signal on ${data.symbol}, ignoring`);
@@ -625,10 +677,10 @@ export async function POST(request: Request) {
       );
       
       return NextResponse.json({ 
-        success: false, 
+        success: true, 
         alert_id: alert.id,
-        error: "No SL/TP provided and default SL/TP not enabled"
-      }, { status: 400 });
+        message: "No SL/TP provided and default SL/TP not enabled"
+      });
     }
 
     // ============================================
@@ -704,7 +756,17 @@ export async function POST(request: Request) {
           body: leveragePayload
         });
 
-        const leverageData = await leverageResponse.json();
+        // CRITICAL: Check if response is JSON before parsing
+        const leverageResponseText = await leverageResponse.text();
+        console.log("📥 Bybit Leverage Response (raw):", leverageResponseText);
+        
+        let leverageData;
+        try {
+          leverageData = JSON.parse(leverageResponseText);
+        } catch (parseError) {
+          console.error("❌ Bybit returned non-JSON response:", leverageResponseText.substring(0, 500));
+          throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${leverageResponseText.substring(0, 200)}`);
+        }
 
         // Non-critical error - leverage might already be set
         if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
@@ -746,7 +808,28 @@ export async function POST(request: Request) {
         body: orderPayload
       });
 
-      const orderData = await orderResponse.json();
+      // CRITICAL: Check if response is JSON before parsing
+      const orderResponseText = await orderResponse.text();
+      console.log("📥 Bybit Order Response (raw):", orderResponseText);
+      
+      let orderData;
+      try {
+        orderData = JSON.parse(orderResponseText);
+      } catch (parseError) {
+        console.error("❌ Bybit returned non-JSON response:", orderResponseText.substring(0, 500));
+        await logToBot(
+          'error',
+          'bybit_api_error',
+          'Bybit API returned HTML instead of JSON - likely invalid API keys',
+          { 
+            responsePreview: orderResponseText.substring(0, 500),
+            apiKey: apiKey?.substring(0, 8) + '...',
+            environment 
+          },
+          alert.id
+        );
+        throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${orderResponseText.substring(0, 200)}`);
+      }
 
       if (orderData.retCode !== 0) {
         throw new Error(`Bybit order failed: ${orderData.retMsg}`);
@@ -794,9 +877,15 @@ export async function POST(request: Request) {
           body: tpslPayloadStr
         });
 
-        const tpslData = await tpslResponse.json();
+        const tpslResponseText = await tpslResponse.text();
+        let tpslData;
+        try {
+          tpslData = JSON.parse(tpslResponseText);
+        } catch {
+          console.warn("SL/TP response not JSON, skipping");
+        }
 
-        if (tpslData.retCode !== 0) {
+        if (tpslData && tpslData.retCode !== 0) {
           console.warn("SL/TP setting warning:", tpslData.retMsg);
           await logToBot(
             'warning',
@@ -945,14 +1034,13 @@ export async function POST(request: Request) {
         alert.id
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          alert_id: alert.id,
-          error: error.message,
-        },
-        { status: 500 }
-      );
+      // CRITICAL: Zwróć 200 aby TradingView nie retry
+      return NextResponse.json({
+        success: true,
+        alert_id: alert.id,
+        error: error.message,
+        message: "Alert saved but position opening failed"
+      });
     }
   } catch (error: any) {
     console.error("❌ Webhook error:", error);
