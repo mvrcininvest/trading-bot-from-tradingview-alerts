@@ -741,6 +741,13 @@ export async function POST(request: Request) {
 
         const leverageSignature = signBybitRequest(apiKey, apiSecret, leverageTimestamp, leveragePayload);
 
+        console.log("🔑 DEBUG Leverage Request:");
+        console.log("  URL:", `${baseUrl}/v5/position/set-leverage`);
+        console.log("  API Key (first 8):", apiKey.substring(0, 8));
+        console.log("  Timestamp:", leverageTimestamp);
+        console.log("  Payload:", leveragePayload);
+        console.log("  Signature:", leverageSignature);
+
         const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
           method: "POST",
           headers: {
@@ -762,6 +769,24 @@ export async function POST(request: Request) {
           leverageData = JSON.parse(leverageResponseText);
         } catch (parseError) {
           console.error("❌ Bybit returned non-JSON response:", leverageResponseText.substring(0, 500));
+          
+          // Check if it's CloudFlare block
+          if (leverageResponseText.includes("<!DOCTYPE") || leverageResponseText.includes("<html")) {
+            await logToBot(
+              'error',
+              'bybit_api_blocked',
+              '⚠️ CLOUDFLARE/WAF BLOCK - Twój API key może nie mieć uprawnień do tradingu lub IP nie jest whitelistowany',
+              { 
+                responsePreview: leverageResponseText.substring(0, 500),
+                apiKey: apiKey?.substring(0, 8) + '...',
+                environment,
+                hint: 'Sprawdź uprawnienia API key w Bybit: musi mieć "Trade" permission i IP whitelist'
+              },
+              alert.id
+            );
+            throw new Error(`⚠️ BYBIT API KEY PROBLEM:\n\n1. Sprawdź uprawnienia API key w Bybit - MUSI mieć uprawnienie "Contract Trade"\n2. Sprawdź IP whitelist - może być wymagany\n3. Upewnij się że używasz kluczy dla środowiska: ${environment}\n\nHTML Response (CloudFlare block): ${leverageResponseText.substring(0, 200)}`);
+          }
+          
           throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${leverageResponseText.substring(0, 200)}`);
         }
 
@@ -793,6 +818,14 @@ export async function POST(request: Request) {
 
       const orderSignature = signBybitRequest(apiKey, apiSecret, orderTimestamp, orderPayload);
 
+      console.log("🔑 DEBUG Order Request:");
+      console.log("  URL:", `${baseUrl}/v5/order/create`);
+      console.log("  Environment:", environment);
+      console.log("  API Key (first 8):", apiKey.substring(0, 8));
+      console.log("  Timestamp:", orderTimestamp);
+      console.log("  Payload:", orderPayload);
+      console.log("  Signature:", orderSignature);
+
       const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
         method: "POST",
         headers: {
@@ -808,16 +841,59 @@ export async function POST(request: Request) {
       // CRITICAL: Check if response is JSON before parsing
       const orderResponseText = await orderResponse.text();
       console.log("📥 Bybit Order Response (raw):", orderResponseText);
+      console.log("📥 Response Status:", orderResponse.status);
+      console.log("📥 Response Headers:", JSON.stringify(Object.fromEntries(orderResponse.headers.entries())));
       
       let orderData;
       try {
         orderData = JSON.parse(orderResponseText);
       } catch (parseError) {
         console.error("❌ Bybit returned non-JSON response:", orderResponseText.substring(0, 500));
+        
+        // Check if it's CloudFlare block
+        if (orderResponseText.includes("<!DOCTYPE") || orderResponseText.includes("<html")) {
+          await logToBot(
+            'error',
+            'bybit_api_blocked',
+            '⚠️ CLOUDFLARE/WAF BLOCK - Twój API key prawdopodobnie NIE MA UPRAWNIEŃ DO TRADINGU',
+            { 
+              responsePreview: orderResponseText.substring(0, 500),
+              apiKey: apiKey?.substring(0, 8) + '...',
+              environment,
+              symbol,
+              side,
+              hint: '🔑 ROZWIĄZANIE: Przejdź do Bybit API Management i upewnij się że API key ma uprawnienie "Contract Trade" (Unified Trading). Może też być wymagany IP whitelist.'
+            },
+            alert.id
+          );
+          
+          throw new Error(`
+⚠️ BYBIT API KEY PROBLEM - BRAK UPRAWNIEŃ DO TRADINGU!
+
+Twój API key działa dla odczytu salda, ale NIE MOŻE otwierać pozycji.
+
+🔧 ROZWIĄZANIE:
+1. Zaloguj się do Bybit
+2. Przejdź do: API Management
+3. Sprawdź swój API key
+4. Upewnij się że ma zaznaczone uprawnienie: "Contract Trade" lub "Unified Trading"
+5. Jeśli nie ma - usuń stary klucz i utwórz NOWY z odpowiednimi uprawnieniami
+6. Dodaj nowy klucz do .env: BYBIT_API_KEY i BYBIT_API_SECRET
+
+📋 Wymagane uprawnienia dla ${environment}:
+   ✅ Read (do odczytu salda - już działa)
+   ✅ Trade (do otwierania pozycji - BRAKUJE!)
+
+🌐 IP Whitelist: Może też być wymagany - sprawdź w ustawieniach API key
+
+Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
+          `);
+        }
+        
         await logToBot(
           'error',
           'bybit_api_error',
-          'Bybit API returned HTML instead of JSON - likely invalid API keys',
+          'Bybit API returned HTML instead of JSON - likely invalid API keys or missing permissions',
           { 
             responsePreview: orderResponseText.substring(0, 500),
             apiKey: apiKey?.substring(0, 8) + '...',
