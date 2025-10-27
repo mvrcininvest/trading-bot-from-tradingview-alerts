@@ -168,6 +168,64 @@ export default function AlertsPage() {
     }
   };
 
+  const sendTestAlert = async () => {
+    try {
+      // Wysyłamy prawdziwy testowy alert POST jak TradingView
+      const testAlertData = {
+        symbol: "BTCUSDT",
+        side: "BUY",
+        tier: "Premium",
+        tierNumeric: 4,
+        strength: 0.85,
+        entryPrice: 50000,
+        sl: 49500,
+        tp1: 50500,
+        tp2: 51000,
+        tp3: 51500,
+        mainTp: 50500,
+        atr: 250,
+        volumeRatio: 1.5,
+        session: "London",
+        regime: "Bullish",
+        regimeConfidence: 0.8,
+        mtfAgreement: 0.75,
+        leverage: 10,
+        inOb: true,
+        inFvg: false,
+        obScore: 0.9,
+        fvgScore: 0.6,
+        institutionalFlow: 0.7,
+        accumulation: 0.65,
+        volumeClimax: false,
+        latency: 150,
+        timestamp: Math.floor(Date.now() / 1000)
+      };
+
+      toast.info("Wysyłam testowy alert...");
+      
+      const response = await fetch("/api/webhook/tradingview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(testAlertData)
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        toast.success(`✅ Alert testowy zapisany! ID: ${result.alert_id}`);
+        // Odśwież listę alertów
+        setTimeout(() => fetchAlerts(), 1000);
+      } else {
+        toast.error(`❌ Błąd: ${result.error || result.message || "Nieznany błąd"}`);
+      }
+    } catch (error) {
+      console.error("Test alert error:", error);
+      toast.error("Nie udało się wysłać testowego alertu");
+    }
+  };
+
   // Filtrowanie alertów
   const filteredAlerts = alerts.filter(alert => {
     if (tierFilter !== "all" && alert.tier !== tierFilter) return false;
@@ -274,22 +332,33 @@ export default function AlertsPage() {
           <CardHeader>
             <CardTitle className="text-white flex items-center justify-between">
               <span>URL Webhook</span>
-              <Button 
-                onClick={testWebhook} 
-                disabled={testingWebhook}
-                size="sm" 
-                variant="outline"
-                className="border-blue-700 bg-blue-900/20 hover:bg-blue-900/40 text-blue-300"
-              >
-                {testingWebhook ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                ) : webhookStatus === 'online' ? (
-                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-400" />
-                ) : webhookStatus === 'offline' ? (
-                  <XCircle className="h-4 w-4 mr-2 text-red-400" />
-                ) : null}
-                Testuj Webhook
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={sendTestAlert} 
+                  size="sm" 
+                  variant="outline"
+                  className="border-green-700 bg-green-900/20 hover:bg-green-900/40 text-green-300"
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  Wyślij testowy alert
+                </Button>
+                <Button 
+                  onClick={testWebhook} 
+                  disabled={testingWebhook}
+                  size="sm" 
+                  variant="outline"
+                  className="border-blue-700 bg-blue-900/20 hover:bg-blue-900/40 text-blue-300"
+                >
+                  {testingWebhook ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : webhookStatus === 'online' ? (
+                    <CheckCircle2 className="h-4 w-4 mr-2 text-green-400" />
+                  ) : webhookStatus === 'offline' ? (
+                    <XCircle className="h-4 w-4 mr-2 text-red-400" />
+                  ) : null}
+                  Testuj Webhook
+                </Button>
+              </div>
             </CardTitle>
             <CardDescription className="text-gray-500">Wklej ten URL w alertach TradingView</CardDescription>
           </CardHeader>
