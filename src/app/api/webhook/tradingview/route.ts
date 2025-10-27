@@ -85,7 +85,37 @@ function getBybitBaseUrl(environment: string): string {
 
 export async function POST(request: Request) {
   try {
-    const data = await request.json();
+    // KROK 1: Sprawdź raw body dla debugowania
+    const rawBody = await request.text();
+    console.log("📨 RAW REQUEST BODY:", rawBody);
+    console.log("📨 REQUEST HEADERS:", JSON.stringify(Object.fromEntries(request.headers), null, 2));
+    
+    // Spróbuj sparsować JSON
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+      console.log("✅ JSON parsed successfully:", JSON.stringify(data, null, 2));
+    } catch (parseError) {
+      console.error("❌ JSON PARSE ERROR:", parseError);
+      console.error("❌ Raw body was:", rawBody.substring(0, 500));
+      
+      await logToBot(
+        'error',
+        'webhook_parse_error',
+        'Failed to parse TradingView alert JSON',
+        { 
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+          rawBodyPreview: rawBody.substring(0, 500),
+          contentType: request.headers.get('content-type')
+        }
+      );
+      
+      return NextResponse.json(
+        { error: "Invalid JSON format", received: rawBody.substring(0, 200) },
+        { status: 400 }
+      );
+    }
+
     console.log("📨 Received TradingView alert:", JSON.stringify(data, null, 2));
 
     // Validate basic required fields
@@ -148,7 +178,7 @@ export async function POST(request: Request) {
     await logToBot(
       'info',
       'webhook_received',
-      `Alert received: ${data.symbol} ${data.side} ${data.tier}`,
+      `✅ TradingView alert received: ${data.symbol} ${data.side} ${data.tier}`,
       { symbol: data.symbol, side: data.side, tier: data.tier, entryPrice: data.entryPrice },
       alert.id
     );

@@ -211,9 +211,26 @@ export default function AlertsPage() {
         body: JSON.stringify(testAlertData)
       });
 
-      const result = await response.json();
+      // Sprawdź czy response jest OK
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Response error:", text);
+        toast.error(`❌ Błąd HTTP ${response.status}: ${text.substring(0, 100)}`);
+        return;
+      }
+
+      // Próbuj sparsować JSON
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        const text = await response.text();
+        console.error("JSON parse error:", text);
+        toast.error(`❌ Błąd parsowania odpowiedzi: ${text.substring(0, 100)}`);
+        return;
+      }
       
-      if (response.ok && result.success) {
+      if (result.success) {
         toast.success(`✅ Alert testowy zapisany! ID: ${result.alert_id}`);
         // Odśwież listę alertów
         setTimeout(() => fetchAlerts(), 1000);
@@ -222,7 +239,7 @@ export default function AlertsPage() {
       }
     } catch (error) {
       console.error("Test alert error:", error);
-      toast.error("Nie udało się wysłać testowego alertu");
+      toast.error(`❌ Błąd sieci: ${error instanceof Error ? error.message : "Nieznany błąd"}`);
     }
   };
 
@@ -334,15 +351,6 @@ export default function AlertsPage() {
               <span>URL Webhook</span>
               <div className="flex items-center gap-2">
                 <Button 
-                  onClick={sendTestAlert} 
-                  size="sm" 
-                  variant="outline"
-                  className="border-green-700 bg-green-900/20 hover:bg-green-900/40 text-green-300"
-                >
-                  <Bell className="h-4 w-4 mr-2" />
-                  Wyślij testowy alert
-                </Button>
-                <Button 
                   onClick={testWebhook} 
                   disabled={testingWebhook}
                   size="sm" 
@@ -376,7 +384,7 @@ export default function AlertsPage() {
             {webhookStatus === 'online' && (
               <div className="flex items-center gap-2 text-green-400 text-sm">
                 <CheckCircle2 className="h-4 w-4" />
-                <span>Webhook jest online i gotowy do odbierania alertów</span>
+                <span>Webhook jest online i gotowy do odbierania alertów z TradingView</span>
               </div>
             )}
             
@@ -387,15 +395,17 @@ export default function AlertsPage() {
               </div>
             )}
 
-            <div className="text-xs text-gray-500 space-y-1">
-              <p>📋 <strong>Jak skonfigurować w TradingView:</strong></p>
+            <div className="text-xs text-gray-500 space-y-1 border-t border-gray-800 pt-3">
+              <p className="font-semibold text-gray-400">📋 Konfiguracja w TradingView:</p>
               <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li>Otwórz wykres w TradingView</li>
-                <li>Dodaj alert (Alt+A)</li>
-                <li>W sekcji "Notifications" zaznacz "Webhook URL"</li>
-                <li>Wklej powyższy URL</li>
-                <li>W "Message" wklej JSON z twojego wskaźnika</li>
+                <li>Otwórz wykres z twoim wskaźnikiem ICT/SMC</li>
+                <li>Dodaj alert (Alt+A lub kliknij ikonę zegara)</li>
+                <li>W sekcji "Notifications" zaznacz <strong>"Webhook URL"</strong></li>
+                <li>Wklej powyższy URL webhook</li>
+                <li>W polu "Message" wstaw JSON z twojego wskaźnika (wszystkie pola: symbol, side, tier, entryPrice, sl, tp1, tp2, tp3, itp.)</li>
+                <li>Zapisz alert - od teraz każdy sygnał będzie automatycznie przesyłany do bota</li>
               </ol>
+              <p className="text-amber-400 font-semibold mt-2">⚡ Ważne: Upewnij się, że Message w TradingView zawiera prawidłowy JSON ze wszystkimi wymaganymi polami!</p>
             </div>
           </CardContent>
         </Card>
