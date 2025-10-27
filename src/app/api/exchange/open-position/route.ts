@@ -1,34 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 
-// Force Edge Runtime for crypto.subtle support
-export const runtime = 'edge';
+// Remove Edge Runtime - use Node.js crypto instead
+// export const runtime = 'edge';
 
-// Bybit API Signing Helper
-async function signBybitRequest(
+// Bybit API Signing Helper (Node.js crypto - same as get-balance)
+function signBybitRequest(
   apiKey: string,
   apiSecret: string,
   timestamp: number,
   payload: string
-): Promise<string> {
+): string {
   const signString = timestamp + apiKey + 5000 + payload;
-  
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiSecret);
-  const messageData = encoder.encode(signString);
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-  const hashArray = Array.from(new Uint8Array(signature));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-  
-  return hashHex;
+  return crypto.createHmac('sha256', apiSecret).update(signString).digest('hex');
 }
 
 function getBybitBaseUrl(environment: string): string {

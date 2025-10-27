@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import crypto from 'crypto';
 
 // Helper function to convert snake_case to camelCase
 function snakeToCamel(obj: any): any {
@@ -63,32 +64,15 @@ export async function GET(request: Request) {
   });
 }
 
-// Bybit API Signing Helper
-async function signBybitRequest(
+// Bybit API Signing Helper (Node.js crypto - same as get-balance and open-position)
+function signBybitRequest(
   apiKey: string,
   apiSecret: string,
   timestamp: number,
   payload: string
-): Promise<string> {
+): string {
   const signString = timestamp + apiKey + 5000 + payload;
-  
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiSecret);
-  const messageData = encoder.encode(signString);
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-  const hashArray = Array.from(new Uint8Array(signature));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-  
-  return hashHex;
+  return crypto.createHmac('sha256', apiSecret).update(signString).digest('hex');
 }
 
 function getBybitBaseUrl(environment: string): string {
@@ -439,7 +423,7 @@ export async function POST(request: Request) {
               closeOnTrigger: false
             });
 
-            const closeSignature = await signBybitRequest(apiKey, apiSecret, closeTimestamp, closePayload);
+            const closeSignature = signBybitRequest(apiKey, apiSecret, closeTimestamp, closePayload);
 
             const closeResponse = await fetch(`${baseUrl}/v5/order/create`, {
               method: "POST",
@@ -747,7 +731,7 @@ export async function POST(request: Request) {
           sellLeverage: leverage.toString()
         });
 
-        const leverageSignature = await signBybitRequest(apiKey, apiSecret, leverageTimestamp, leveragePayload);
+        const leverageSignature = signBybitRequest(apiKey, apiSecret, leverageTimestamp, leveragePayload);
 
         const leverageResponse = await fetch(`${baseUrl}/v5/position/set-leverage`, {
           method: "POST",
@@ -799,7 +783,7 @@ export async function POST(request: Request) {
         closeOnTrigger: false
       });
 
-      const orderSignature = await signBybitRequest(apiKey, apiSecret, orderTimestamp, orderPayload);
+      const orderSignature = signBybitRequest(apiKey, apiSecret, orderTimestamp, orderPayload);
 
       const orderResponse = await fetch(`${baseUrl}/v5/order/create`, {
         method: "POST",
@@ -868,7 +852,7 @@ export async function POST(request: Request) {
         }
 
         const tpslPayloadStr = JSON.stringify(tpslPayload);
-        const tpslSignature = await signBybitRequest(apiKey, apiSecret, tpslTimestamp, tpslPayloadStr);
+        const tpslSignature = signBybitRequest(apiKey, apiSecret, tpslTimestamp, tpslPayloadStr);
 
         const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
           method: "POST",
