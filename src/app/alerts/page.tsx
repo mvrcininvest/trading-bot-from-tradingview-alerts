@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash, CheckCircle2, XCircle } from "lucide-react";
+import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash, CheckCircle2, XCircle, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -174,9 +174,9 @@ export default function AlertsPage() {
       const testAlertData = {
         symbol: "BTCUSDT",
         side: "BUY",
-        tier: "Premium",
-        tierNumeric: 4,
-        strength: 0.85,
+        tier: "Standard",
+        tierNumeric: 3,
+        strength: 0.75,
         entryPrice: 50000,
         sl: 49500,
         tp1: 50500,
@@ -350,6 +350,15 @@ export default function AlertsPage() {
             <CardTitle className="text-white flex items-center justify-between">
               <span>URL Webhook</span>
               <div className="flex items-center gap-2">
+                <Button 
+                  onClick={sendTestAlert}
+                  size="sm" 
+                  variant="outline"
+                  className="border-green-700 bg-green-900/20 hover:bg-green-900/40 text-green-300"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Wyślij testowy alert
+                </Button>
                 <Button 
                   onClick={testWebhook} 
                   disabled={testingWebhook}

@@ -4,6 +4,21 @@ import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/sch
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
+// CRITICAL: Use EXACT same signing method as get-balance (which works!)
+function createBybitSignature(
+  apiKey: string,
+  apiSecret: string,
+  timestamp: string,
+  recvWindow: string,
+  params: Record<string, any> | string
+): string {
+  // If params is already a string (JSON), use it directly
+  // If params is an object, stringify it
+  const paramString = typeof params === 'string' ? params : JSON.stringify(params);
+  const signString = timestamp + apiKey + recvWindow + paramString;
+  return crypto.createHmac("sha256", apiSecret).update(signString).digest("hex");
+}
+
 // Helper function to convert snake_case to camelCase
 function snakeToCamel(obj: any): any {
   if (Array.isArray(obj)) {
@@ -731,20 +746,29 @@ export async function POST(request: Request) {
 
       // Step 1: Set Leverage
       if (leverage) {
-        const leverageTimestamp = Date.now();
-        const leveragePayload = JSON.stringify({
+        const leverageTimestamp = Date.now().toString();
+        const leverageParams = {
           category: "linear",
           symbol,
           buyLeverage: leverage.toString(),
           sellLeverage: leverage.toString()
-        });
+        };
+        const leveragePayload = JSON.stringify(leverageParams);
 
-        const leverageSignature = signBybitRequest(apiKey, apiSecret, leverageTimestamp, leveragePayload);
+        const leverageSignature = createBybitSignature(
+          apiKey,
+          apiSecret,
+          leverageTimestamp,
+          "5000",
+          leverageParams
+        );
 
         console.log("🔑 DEBUG Leverage Request:");
         console.log("  URL:", `${baseUrl}/v5/position/set-leverage`);
+        console.log("  Environment:", environment);
         console.log("  API Key (first 8):", apiKey.substring(0, 8));
         console.log("  Timestamp:", leverageTimestamp);
+        console.log("  Params:", leverageParams);
         console.log("  Payload:", leveragePayload);
         console.log("  Signature:", leverageSignature);
 
@@ -753,7 +777,7 @@ export async function POST(request: Request) {
           headers: {
             "Content-Type": "application/json",
             "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": leverageTimestamp.toString(),
+            "X-BAPI-TIMESTAMP": leverageTimestamp,
             "X-BAPI-SIGN": leverageSignature,
             "X-BAPI-RECV-WINDOW": "5000",
           },
@@ -804,8 +828,8 @@ export async function POST(request: Request) {
       }
 
       // Step 2: Open Position (Market Order)
-      const orderTimestamp = Date.now();
-      const orderPayload = JSON.stringify({
+      const orderTimestamp = Date.now().toString();
+      const orderParams = {
         category: "linear",
         symbol,
         side,
@@ -814,15 +838,24 @@ export async function POST(request: Request) {
         timeInForce: "GTC",
         reduceOnly: false,
         closeOnTrigger: false
-      });
+      };
+      const orderPayload = JSON.stringify(orderParams);
 
-      const orderSignature = signBybitRequest(apiKey, apiSecret, orderTimestamp, orderPayload);
+      const orderSignature = createBybitSignature(
+        apiKey,
+        apiSecret,
+        orderTimestamp,
+        "5000",
+        orderParams
+      );
 
       console.log("🔑 DEBUG Order Request:");
       console.log("  URL:", `${baseUrl}/v5/order/create`);
       console.log("  Environment:", environment);
+      console.log("  Base URL:", baseUrl);
       console.log("  API Key (first 8):", apiKey.substring(0, 8));
       console.log("  Timestamp:", orderTimestamp);
+      console.log("  Params:", orderParams);
       console.log("  Payload:", orderPayload);
       console.log("  Signature:", orderSignature);
 
@@ -831,7 +864,7 @@ export async function POST(request: Request) {
         headers: {
           "Content-Type": "application/json",
           "X-BAPI-API-KEY": apiKey,
-          "X-BAPI-TIMESTAMP": orderTimestamp.toString(),
+          "X-BAPI-TIMESTAMP": orderTimestamp,
           "X-BAPI-SIGN": orderSignature,
           "X-BAPI-RECV-WINDOW": "5000",
         },
@@ -916,8 +949,8 @@ Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
         // Wait 500ms for position to be created
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        const tpslTimestamp = Date.now();
-        const tpslPayload: any = {
+        const tpslTimestamp = Date.now().toString();
+        const tpslParams: any = {
           category: "linear",
           symbol,
           positionIdx: 0 // One-Way Mode
@@ -925,25 +958,31 @@ Odpowiedź HTML (CloudFlare block): ${orderResponseText.substring(0, 200)}
 
         // Set Stop Loss
         if (slPrice) {
-          tpslPayload.stopLoss = slPrice.toFixed(2);
+          tpslParams.stopLoss = slPrice.toFixed(2);
         }
 
         // Set Take Profit based on mode
         if (tpMode === "multiple" && tp1Price) {
-          tpslPayload.takeProfit = tp1Price.toFixed(2);
+          tpslParams.takeProfit = tp1Price.toFixed(2);
         } else if (tp1Price) {
-          tpslPayload.takeProfit = tp1Price.toFixed(2);
+          tpslParams.takeProfit = tp1Price.toFixed(2);
         }
 
-        const tpslPayloadStr = JSON.stringify(tpslPayload);
-        const tpslSignature = signBybitRequest(apiKey, apiSecret, tpslTimestamp, tpslPayloadStr);
+        const tpslPayloadStr = JSON.stringify(tpslParams);
+        const tpslSignature = createBybitSignature(
+          apiKey,
+          apiSecret,
+          tpslTimestamp,
+          "5000",
+          tpslParams
+        );
 
         const tpslResponse = await fetch(`${baseUrl}/v5/position/trading-stop`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": tpslTimestamp.toString(),
+            "X-BAPI-TIMESTAMP": tpslTimestamp,
             "X-BAPI-SIGN": tpslSignature,
             "X-BAPI-RECV-WINDOW": "5000",
           },
