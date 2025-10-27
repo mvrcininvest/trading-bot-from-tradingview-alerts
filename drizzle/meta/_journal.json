@@ -36,6 +36,13 @@
       "when": 1761511701217,
       "tag": "0004_mute_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1761593907512,
+      "tag": "0005_mixed_champions",
+      "breakpoints": true
     }
   ]
 }

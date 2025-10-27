@@ -59,6 +59,10 @@ export const botSettings = sqliteTable('bot_settings', {
   defaultTp1Percent: real('default_tp1_percent').notNull().default(2.0),
   defaultTp2Percent: real('default_tp2_percent').notNull().default(4.0),
   defaultTp3Percent: real('default_tp3_percent').notNull().default(6.0),
+  apiKey: text('api_key'),
+  apiSecret: text('api_secret'),
+  exchange: text('exchange').notNull().default('bybit'),
+  environment: text('environment').notNull().default('demo'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

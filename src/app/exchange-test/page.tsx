@@ -35,23 +35,50 @@ export default function ExchangeTestPage() {
 
   // Auto-load saved credentials on mount
   useEffect(() => {
-    const stored = localStorage.getItem("exchange_credentials");
-    if (stored) {
+    const loadCredentials = async () => {
       try {
-        const creds = JSON.parse(stored);
-        setExchange(creds.exchange || "binance");
-        setApiKey(creds.apiKey || "");
-        setApiSecret(creds.apiSecret || "");
+        // Try to load from database first
+        const response = await fetch("/api/bot/credentials");
+        const data = await response.json();
         
-        if (creds.exchange === "binance") {
-          setTestnet(creds.environment === "testnet");
-        } else {
-          setBybitEnv(creds.environment || "demo");
+        if (data.success && data.credentials) {
+          const creds = data.credentials;
+          if (creds.apiKey) {
+            setExchange(creds.exchange || "binance");
+            setApiKey(creds.apiKey || "");
+            setApiSecret(creds.apiSecret || "");
+            
+            if (creds.exchange === "binance") {
+              setTestnet(creds.environment === "testnet");
+            } else {
+              setBybitEnv(creds.environment || "demo");
+            }
+            console.log("✅ Credentials loaded from database");
+            return;
+          }
+        }
+        
+        // Fallback to localStorage if database is empty
+        const stored = localStorage.getItem("exchange_credentials");
+        if (stored) {
+          const creds = JSON.parse(stored);
+          setExchange(creds.exchange || "binance");
+          setApiKey(creds.apiKey || "");
+          setApiSecret(creds.apiSecret || "");
+          
+          if (creds.exchange === "binance") {
+            setTestnet(creds.environment === "testnet");
+          } else {
+            setBybitEnv(creds.environment || "demo");
+          }
+          console.log("✅ Credentials loaded from localStorage");
         }
       } catch (error) {
-        console.error("Failed to load saved credentials:", error);
+        console.error("Failed to load credentials:", error);
       }
-    }
+    };
+    
+    loadCredentials();
   }, []);
 
   const testConnection = async () => {
@@ -88,14 +115,14 @@ export default function ExchangeTestPage() {
     }
   };
 
-  const saveWithoutTesting = () => {
+  const saveWithoutTesting = async () => {
     setSavedWithoutTest(true);
     setResult({
       success: true,
       message: "✅ Klucze API zostały zapisane bez testowania. Upewnij się, że klucze są poprawne przed rozpoczęciem tradingu.",
     });
     
-    // Save keys to localStorage
+    // Save keys to localStorage AND database
     const credentials = {
       exchange,
       apiKey,
@@ -103,7 +130,32 @@ export default function ExchangeTestPage() {
       environment: exchange === "binance" ? (testnet ? "testnet" : "mainnet") : bybitEnv,
       savedAt: new Date().toISOString()
     };
+    
+    // Save to localStorage (for client-side dashboard)
     localStorage.setItem("exchange_credentials", JSON.stringify(credentials));
+    
+    // CRITICAL: Save to database (for server-side webhook)
+    try {
+      const response = await fetch("/api/bot/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: credentials.apiKey,
+          apiSecret: credentials.apiSecret,
+          exchange: credentials.exchange,
+          environment: credentials.environment
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        console.log("✅ Credentials saved to database successfully");
+      } else {
+        console.error("❌ Failed to save credentials to database:", data.error);
+      }
+    } catch (error) {
+      console.error("❌ Error saving credentials to database:", error);
+    }
     
     // Redirect to dashboard after 2 seconds
     setTimeout(() => {

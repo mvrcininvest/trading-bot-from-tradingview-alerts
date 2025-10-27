@@ -341,6 +341,41 @@ export async function POST(request: Request) {
 
     const botConfig = settings[0];
 
+    // CRITICAL: Check if API credentials are configured in database
+    if (!botConfig.apiKey || !botConfig.apiSecret) {
+      console.log("❌ API credentials not configured in database");
+      
+      await db.update(alerts)
+        .set({ 
+          executionStatus: 'rejected',
+          rejectionReason: 'api_credentials_not_configured'
+        })
+        .where(eq(alerts.id, alert.id));
+      
+      await logToBot(
+        'error',
+        'alert_rejected',
+        'API credentials not configured - please save your API keys in Exchange Test page',
+        { reason: 'api_credentials_not_configured' },
+        alert.id
+      );
+      
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id,
+        message: "Alert saved, but API credentials not configured"
+      });
+    }
+
+    // Use API credentials from database (NOT from .env)
+    const apiKey = botConfig.apiKey;
+    const apiSecret = botConfig.apiSecret;
+    const environment = botConfig.environment || "demo";
+    const exchange = botConfig.exchange || "bybit";
+
+    console.log(`🔑 Using API credentials from database: ${exchange} (${environment})`);
+    console.log(`🔑 API Key preview: ${apiKey.substring(0, 8)}...`);
+
     // Check if bot is enabled
     if (!botConfig.botEnabled) {
       console.log("🛑 Bot is disabled");
@@ -484,11 +519,8 @@ export async function POST(request: Request) {
             existingPosition.id
           );
           
-          // Close existing position using direct Bybit API call
+          // CRITICAL FIX: Use API credentials from database (not .env)
           try {
-            const apiKey = process.env.BYBIT_API_KEY!;
-            const apiSecret = process.env.BYBIT_API_SECRET!;
-            const environment = process.env.BYBIT_ENVIRONMENT || "demo";
             const baseUrl = getBybitBaseUrl(environment);
 
             const closeTimestamp = Date.now();
@@ -779,14 +811,6 @@ export async function POST(request: Request) {
     // ============================================
 
     try {
-      const apiKey = process.env.BYBIT_API_KEY;
-      const apiSecret = process.env.BYBIT_API_SECRET;
-      const environment = process.env.BYBIT_ENVIRONMENT || "demo";
-
-      if (!apiKey || !apiSecret) {
-        throw new Error("Bybit API credentials not configured in .env");
-      }
-
       console.log(`🔧 Using Bybit environment: ${environment}`);
       console.log(`🔑 API Key preview: ${apiKey.substring(0, 8)}...`);
 
@@ -1039,7 +1063,7 @@ export async function POST(request: Request) {
           symbol: data.symbol,
           side: data.side,
           tier: data.tier,
-          environment: process.env.BYBIT_ENVIRONMENT
+          environment
         },
         alert.id
       );
