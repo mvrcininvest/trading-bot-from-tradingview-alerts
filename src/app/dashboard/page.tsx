@@ -161,6 +161,35 @@ export default function DashboardPage() {
     return hashHex;
   };
 
+  const signOkxRequest = async (
+    timestamp: string,
+    method: string,
+    requestPath: string,
+    queryString: string,
+    body: string,
+    apiSecret: string
+  ) => {
+    const message = timestamp + method + requestPath + queryString + body;
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiSecret);
+    const messageData = encoder.encode(message);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+    const hashArray = Array.from(new Uint8Array(signature));
+    const base64Signature = btoa(String.fromCharCode(...hashArray));
+    
+    return base64Signature;
+  };
+
   const fetchBotPositions = async (silent = false) => {
     if (!silent) {
       setLoadingBotPositions(true);
@@ -259,9 +288,64 @@ export default function DashboardPage() {
           setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
         }
       } else if (credsToUse.exchange === "okx") {
-        setPositionsError("Pobieranie pozycji OKX będzie wkrótce dostępne");
+        const timestamp = new Date().toISOString();
+        const method = "GET";
+        const requestPath = "/api/v5/account/positions";
+        const queryString = "?instType=SWAP";
+        const body = "";
+        
+        const signature = await signOkxRequest(
+          timestamp,
+          method,
+          requestPath,
+          queryString,
+          body,
+          credsToUse.apiSecret
+        );
+        
+        const baseUrl = credsToUse.environment === "demo"
+          ? "https://www.okx.com"
+          : "https://www.okx.com";
+        
+        const url = `${baseUrl}${requestPath}${queryString}`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "OK-ACCESS-KEY": credsToUse.apiKey,
+            "OK-ACCESS-SIGN": signature,
+            "OK-ACCESS-TIMESTAMP": timestamp,
+            "OK-ACCESS-PASSPHRASE": credsToUse.passphrase || "",
+            "Content-Type": "application/json",
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.code === "0" && data.data) {
+          const openPositions = data.data
+            .filter((p: any) => parseFloat(p.pos) !== 0)
+            .map((p: any) => ({
+              symbol: p.instId,
+              side: parseFloat(p.pos) > 0 ? "Buy" : "Sell",
+              size: Math.abs(parseFloat(p.pos)).toString(),
+              entryPrice: p.avgPx,
+              markPrice: p.markPx,
+              leverage: p.lever,
+              unrealisedPnl: p.upl,
+              takeProfit: "0",
+              stopLoss: "0",
+              positionValue: Math.abs(parseFloat(p.notionalUsd)).toString()
+            }));
+          
+          setPositions(openPositions);
+          setLastPositionsUpdate(new Date().toLocaleString("pl-PL"));
+          setPositionsError(null);
+        } else {
+          setPositionsError(`OKX API error: ${data.msg || "Nieznany błąd"}`);
+        }
       } else {
-        setPositionsError("Pobieranie pozycji jest obecnie wspierane tylko dla Bybit");
+        setPositionsError("Pobieranie pozycji jest obecnie wspierane tylko dla Bybit i OKX");
       }
     } catch (err) {
       setPositionsError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
