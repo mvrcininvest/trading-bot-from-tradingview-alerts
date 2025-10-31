@@ -823,13 +823,54 @@ export async function POST(request: Request) {
         alert.id
       );
 
-      // CRITICAL FIX: Remove leverage setting step - Bybit uses last set leverage automatically
-      // CloudFlare/WAF blocks server-side leverage changes
-      // Set leverage once client-side (in exchange-test), then it stays set for that symbol
+      // CRITICAL FIX: SET LEVERAGE FROM ALERT BEFORE OPENING POSITION
+      // Use makeBybitRequest() helper which works (same headers as market order)
+      // This ensures position uses the CORRECT leverage from the alert
       
-      console.log(`ℹ️ Using existing leverage for ${symbol} (Bybit remembers last leverage setting)`);
+      console.log(`🔧 Setting leverage ${leverage}x for ${symbol} (from alert)`);
+      
+      try {
+        const { data: leverageData } = await makeBybitRequest(
+          `${baseUrl}/v5/position/set-leverage`,
+          apiKey,
+          apiSecret,
+          {
+            category: "linear",
+            symbol,
+            buyLeverage: leverage.toString(),
+            sellLeverage: leverage.toString()
+          },
+          alert.id
+        );
 
-      // Step 1: Open Position (Market Order) - Bybit uses existing leverage
+        if (leverageData.retCode === 0) {
+          console.log(`✅ Leverage set successfully: ${leverage}x`);
+        } else if (leverageData.retCode === 110043) {
+          // Leverage already set to this value - not an error
+          console.log(`ℹ️ Leverage already set to ${leverage}x (code 110043)`);
+        } else {
+          console.warn(`⚠️ Leverage setting warning (code ${leverageData.retCode}): ${leverageData.retMsg}`);
+          await logToBot(
+            'warning',
+            'leverage_set_warning',
+            `Leverage setting warning: ${leverageData.retMsg}`,
+            { retCode: leverageData.retCode, retMsg: leverageData.retMsg, leverage },
+            alert.id
+          );
+        }
+      } catch (leverageError: any) {
+        // Log warning but continue - position will use existing leverage
+        console.warn(`⚠️ Failed to set leverage: ${leverageError.message}`);
+        await logToBot(
+          'warning',
+          'leverage_set_failed',
+          `Failed to set leverage ${leverage}x: ${leverageError.message}`,
+          { error: leverageError.message, leverage, symbol },
+          alert.id
+        );
+      }
+
+      // Step 1: Open Position (Market Order) - now with correct leverage
       const { data: orderData } = await makeBybitRequest(
         `${baseUrl}/v5/order/create`,
         apiKey,
