@@ -116,6 +116,65 @@ export default function ExchangeTestPage() {
 
       const data = await response.json();
       setResult(data);
+      
+      // CRITICAL FIX: Save credentials to database after successful test
+      if (data.success) {
+        let environment: string;
+        if (exchange === "binance") {
+          environment = testnet ? "testnet" : "mainnet";
+        } else if (exchange === "bybit") {
+          environment = bybitEnv;
+        } else {
+          environment = okxEnv;
+        }
+
+        const credentials = {
+          exchange,
+          apiKey,
+          apiSecret,
+          passphrase: exchange === "okx" ? passphrase : undefined,
+          environment,
+          savedAt: new Date().toISOString()
+        };
+        
+        // Save to localStorage (for client-side dashboard)
+        localStorage.setItem("exchange_credentials", JSON.stringify(credentials));
+        
+        // CRITICAL: Save to database (for server-side webhook)
+        try {
+          const dbResponse = await fetch("/api/bot/credentials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey: credentials.apiKey,
+              apiSecret: credentials.apiSecret,
+              passphrase: credentials.passphrase,
+              exchange: credentials.exchange,
+              environment: credentials.environment
+            })
+          });
+          
+          const dbData = await dbResponse.json();
+          if (dbData.success) {
+            console.log("✅ Credentials saved to database successfully");
+          } else {
+            console.error("❌ Failed to save credentials to database:", dbData.error);
+          }
+        } catch (error) {
+          console.error("❌ Error saving credentials to database:", error);
+        }
+        
+        // Update success message to mention database save
+        setResult({
+          ...data,
+          message: data.message + "\n\n✅ Credentials zostały automatycznie zapisane do localStorage i bazy danych."
+        });
+        
+        // Redirect to dashboard after 2 seconds
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 2000);
+      }
     } catch (error) {
       setResult({
         success: false,
