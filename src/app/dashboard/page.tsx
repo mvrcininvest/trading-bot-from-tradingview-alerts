@@ -90,22 +90,6 @@ export default function DashboardPage() {
     if (stored) {
       const creds = JSON.parse(stored);
       
-      // 🔍 VALIDATION: Check if apiKey is UUID (invalid)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRegex.test(creds.apiKey)) {
-        toast.error("⚠️ Wykryto błędne dane w localStorage! Klucz API to UUID zamiast prawdziwego klucza. Kliknij przycisk poniżej aby przejść do konfiguracji.", {
-          duration: 10000,
-          action: {
-            label: "Idź do Konfiguracji",
-            onClick: () => router.push("/exchange-test")
-          }
-        });
-        console.error("❌ Invalid API key detected (UUID):", creds.apiKey);
-        // Show warning card but don't block completely
-        setCredentials(null);
-        return;
-      }
-      
       setCredentials(creds);
       // Auto-fetch balance and positions on mount
       fetchBalance(creds);
@@ -144,13 +128,7 @@ export default function DashboardPage() {
       return;
     }
 
-    // 🔍 VALIDATION: Check if apiKey is UUID (invalid)
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidRegex.test(credentials.apiKey)) {
-      toast.error("❌ Błąd: API Key wygląda na UUID! Przejdź do Konfiguracji API i wprowadź PRAWDZIWE klucze OKX.");
-      console.error("❌ Cannot sync - API key is UUID:", credentials.apiKey);
-      return;
-    }
+    // Removed UUID validation - OKX demo keys can look like UUIDs!
 
     setSyncingCredentials(true);
     try {
