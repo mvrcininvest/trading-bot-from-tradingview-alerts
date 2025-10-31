@@ -71,11 +71,24 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (existingSettings.length === 0) {
+      console.log('⚠️ No botSettings found, creating new record...');
+      
+      await db.insert(botSettings).values({
+        botEnabled: false,
+        apiKey: apiKey || null,
+        apiSecret: apiSecret || null,
+        exchange: exchange || 'bybit',
+        environment: environment || 'demo',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      console.log('✅ New botSettings record created with API credentials');
+
       return NextResponse.json({
-        success: false,
-        error: 'Bot settings not found',
-        code: 'SETTINGS_NOT_FOUND'
-      }, { status: 404 });
+        success: true,
+        message: 'API credentials saved successfully (new record created)'
+      }, { status: 200 });
     }
 
     const settingsId = existingSettings[0].id;
@@ -103,6 +116,8 @@ export async function POST(request: NextRequest) {
     await db.update(botSettings)
       .set(updateData)
       .where(eq(botSettings.id, settingsId));
+
+    console.log('✅ API credentials updated successfully');
 
     return NextResponse.json({
       success: true,
