@@ -823,39 +823,13 @@ export async function POST(request: Request) {
         alert.id
       );
 
-      // Step 1: Set Leverage
-      if (leverage) {
-        try {
-          const { data: leverageData } = await makeBybitRequest(
-            `${baseUrl}/v5/position/set-leverage`,
-            apiKey,
-            apiSecret,
-            {
-              category: "linear",
-              symbol,
-              buyLeverage: leverage.toString(),
-              sellLeverage: leverage.toString()
-            },
-            alert.id
-          );
+      // CRITICAL FIX: Remove leverage setting step - Bybit uses last set leverage automatically
+      // CloudFlare/WAF blocks server-side leverage changes
+      // Set leverage once client-side (in exchange-test), then it stays set for that symbol
+      
+      console.log(`ℹ️ Using existing leverage for ${symbol} (Bybit remembers last leverage setting)`);
 
-          if (leverageData.retCode !== 0 && leverageData.retCode !== 110043) {
-            console.warn("⚠️ Leverage setting warning:", leverageData.retMsg);
-            await logToBot(
-              'warning',
-              'leverage_set_warning',
-              `Leverage setting warning: ${leverageData.retMsg}`,
-              { retCode: leverageData.retCode, retMsg: leverageData.retMsg },
-              alert.id
-            );
-          }
-        } catch (leverageError: any) {
-          console.warn("⚠️ Leverage setting failed:", leverageError.message);
-          // Non-critical, continue with trade
-        }
-      }
-
-      // Step 2: Open Position (Market Order)
+      // Step 1: Open Position (Market Order) - Bybit uses existing leverage
       const { data: orderData } = await makeBybitRequest(
         `${baseUrl}/v5/order/create`,
         apiKey,
