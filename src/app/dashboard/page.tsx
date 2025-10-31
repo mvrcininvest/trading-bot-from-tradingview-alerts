@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 
 interface Balance {
   asset: string;
@@ -81,6 +82,7 @@ export default function DashboardPage() {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [lastPositionsUpdate, setLastPositionsUpdate] = useState<string | null>(null);
   const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
+  const [syncingCredentials, setSyncingCredentials] = useState(false);
 
   useEffect(() => {
     // Load credentials from localStorage
@@ -118,6 +120,49 @@ export default function DashboardPage() {
 
     return () => clearInterval(interval);
   }, [credentials]);
+
+  const syncCredentialsToDatabase = async () => {
+    if (!credentials) {
+      toast.error("Brak credentials do synchronizacji");
+      return;
+    }
+
+    setSyncingCredentials(true);
+    try {
+      console.log("🔄 Syncing credentials to database:", {
+        exchange: credentials.exchange,
+        environment: credentials.environment,
+        apiKeyPreview: credentials.apiKey.substring(0, 8) + "..."
+      });
+
+      const response = await fetch("/api/bot/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: credentials.apiKey,
+          apiSecret: credentials.apiSecret,
+          passphrase: credentials.passphrase,
+          exchange: credentials.exchange,
+          environment: credentials.environment
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`✅ Credentials ${credentials.exchange.toUpperCase()} zapisane do bazy danych!`);
+        console.log("✅ Database sync successful");
+      } else {
+        toast.error(`❌ Błąd zapisu: ${data.error}`);
+        console.error("❌ Database sync failed:", data);
+      }
+    } catch (error) {
+      toast.error(`❌ Błąd połączenia: ${error instanceof Error ? error.message : "Nieznany błąd"}`);
+      console.error("❌ Sync error:", error);
+    } finally {
+      setSyncingCredentials(false);
+    }
+  };
 
   const fetchBotStatus = async (silent = false) => {
     try {
@@ -560,6 +605,39 @@ export default function DashboardPage() {
             </AlertDescription>
           </Alert>
         )}
+
+        {/* NEW: Credentials Sync Alert */}
+        <Alert className="border-2 border-blue-600/50 bg-gradient-to-r from-blue-600/20 to-purple-600/20 backdrop-blur-sm">
+          <AlertTriangle className="h-5 w-5 text-blue-400" />
+          <AlertDescription className="text-sm text-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <strong className="text-blue-300 text-base">🔄 Synchronizacja Credentials</strong>
+                <p className="mt-2">
+                  Dashboard czyta z <strong>localStorage</strong>, ale webhook czyta z <strong>bazy danych</strong>.
+                  Jeśli webhook używa niewłaściwej giełdy, kliknij przycisk aby zsynchronizować:
+                </p>
+              </div>
+              <Button
+                onClick={syncCredentialsToDatabase}
+                disabled={syncingCredentials}
+                className="ml-4 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {syncingCredentials ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Sync do Bazy
+                  </>
+                )}
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
 
         {/* Header with Quick Stats */}
         <div className="space-y-6">
