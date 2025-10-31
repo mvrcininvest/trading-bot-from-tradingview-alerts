@@ -4,7 +4,10 @@ import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/sch
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
-// CRITICAL FIX: For POST requests, sign with the EXACT JSON string sent in body
+// ============================================
+// 🔐 SIGNATURE HELPERS
+// ============================================
+
 function createBybitSignature(
   apiKey: string,
   apiSecret: string,
@@ -15,7 +18,21 @@ function createBybitSignature(
   return crypto.createHmac("sha256", apiSecret).update(paramString).digest("hex");
 }
 
-// Helper function to convert snake_case to camelCase
+function createOkxSignature(
+  timestamp: string,
+  method: string,
+  requestPath: string,
+  body: string,
+  apiSecret: string
+): string {
+  const message = timestamp + method + requestPath + body;
+  return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
+}
+
+// ============================================
+// 🛠️ UTILITY FUNCTIONS
+// ============================================
+
 function snakeToCamel(obj: any): any {
   if (Array.isArray(obj)) {
     return obj.map(v => snakeToCamel(v));
@@ -29,7 +46,6 @@ function snakeToCamel(obj: any): any {
   return obj;
 }
 
-// Helper function to log to botLogs
 async function logToBot(
   level: 'error' | 'warning' | 'info' | 'success',
   action: string,
@@ -55,33 +71,61 @@ async function logToBot(
   }
 }
 
-// GET endpoint for testing webhook connectivity
-export async function GET(request: Request) {
+// ============================================
+// 🏦 EXCHANGE API HELPERS
+// ============================================
+
+async function makeOkxRequest(
+  method: string,
+  endpoint: string,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  body?: any,
+  alertId?: number
+) {
   const timestamp = new Date().toISOString();
+  const baseUrl = 'https://www.okx.com';
+  const requestPath = endpoint;
+  const bodyString = body ? JSON.stringify(body) : '';
   
-  await logToBot(
-    'info',
-    'webhook_test',
-    'Webhook endpoint tested via GET request',
-    { timestamp, url: request.url }
-  );
-  
-  return NextResponse.json({ 
-    status: 'online',
-    message: 'TradingView Webhook Endpoint is working!',
-    timestamp,
-    endpoint: '/api/webhook/tradingview',
-    methods: ['GET (test)', 'POST (receive alerts)']
+  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
+
+  const headers: Record<string, string> = {
+    'OK-ACCESS-KEY': apiKey,
+    'OK-ACCESS-SIGN': signature,
+    'OK-ACCESS-TIMESTAMP': timestamp,
+    'OK-ACCESS-PASSPHRASE': passphrase,
+    'Content-Type': 'application/json',
+  };
+
+  if (demo) {
+    headers['x-simulated-trading'] = '1';
+  }
+
+  console.log(`🔑 OKX ${method} ${endpoint}`, { timestamp, demo, bodyPreview: bodyString.substring(0, 100) });
+
+  const response = await fetch(`${baseUrl}${requestPath}`, {
+    method,
+    headers,
+    body: bodyString || undefined,
   });
+
+  const responseText = await response.text();
+  console.log(`📥 OKX Response (${response.status}):`, responseText.substring(0, 500));
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    await logToBot('error', 'okx_parse_error', `OKX returned non-JSON: ${responseText.substring(0, 200)}`, { responseText: responseText.substring(0, 500) }, alertId);
+    throw new Error(`OKX API returned invalid JSON: ${responseText.substring(0, 200)}`);
+  }
+
+  return { response, data };
 }
 
-function getBybitBaseUrl(environment: string): string {
-  if (environment === "demo") return "https://api-demo.bybit.com";
-  if (environment === "testnet") return "https://api-testnet.bybit.com";
-  return "https://api.bybit.com";
-}
-
-// Helper function to make Bybit API calls with proper error handling
 async function makeBybitRequest(
   url: string,
   apiKey: string,
@@ -93,15 +137,8 @@ async function makeBybitRequest(
   const payloadString = JSON.stringify(payload);
   const signature = createBybitSignature(apiKey, apiSecret, timestamp, payloadString);
 
-  console.log("🔑 Bybit Request:", {
-    url,
-    timestamp,
-    payload: payloadString,
-    apiKeyPreview: apiKey.substring(0, 8) + '...'
-  });
+  console.log(`🔑 Bybit POST ${url}`, { timestamp, payload: payloadString.substring(0, 100) });
 
-  // CRITICAL FIX: Use MINIMAL headers - exactly like working client-side code
-  // Remove fake browser headers (Origin, Referer) that trigger CloudFlare
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -117,197 +154,391 @@ async function makeBybitRequest(
   const responseText = await response.text();
   console.log(`📥 Bybit Response (${response.status}):`, responseText.substring(0, 500));
 
-  // Check if response is HTML (CloudFlare block or error)
   if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
-    console.error("❌ Bybit returned HTML instead of JSON");
-    
-    await logToBot(
-      'error',
-      'bybit_html_response',
-      'Bybit API returned HTML (CloudFlare/WAF block)',
-      { 
-        status: response.status,
-        url,
-        apiKeyPreview: apiKey.substring(0, 8) + '...',
-        responsePreview: responseText.substring(0, 300)
-      },
-      alertId
-    );
-
-    throw new Error(
-      'Bybit CloudFlare/WAF block - spróbuj ponownie za chwilę lub użyj Testnet zamiast Demo'
-    );
+    await logToBot('error', 'bybit_html_response', 'Bybit API returned HTML (CloudFlare/WAF block)', { 
+      status: response.status,
+      url,
+      apiKeyPreview: apiKey.substring(0, 8) + '...',
+      responsePreview: responseText.substring(0, 300)
+    }, alertId);
+    throw new Error('Bybit CloudFlare/WAF block - użyj Testnet zamiast Demo');
   }
 
   let data;
   try {
     data = JSON.parse(responseText);
   } catch (parseError) {
-    console.error("❌ Failed to parse Bybit response:", responseText.substring(0, 500));
-    throw new Error(`Invalid JSON response from Bybit: ${responseText.substring(0, 200)}`);
+    await logToBot('error', 'bybit_parse_error', `Bybit returned non-JSON: ${responseText.substring(0, 200)}`, { responseText: responseText.substring(0, 500) }, alertId);
+    throw new Error(`Bybit API returned invalid JSON: ${responseText.substring(0, 200)}`);
   }
 
   return { response, data };
 }
 
-// Helper function for OKX API calls
-async function makeOkxRequest(
-  url: string,
-  method: string,
+function getBybitBaseUrl(environment: string): string {
+  if (environment === "demo") return "https://api-demo.bybit.com";
+  if (environment === "testnet") return "https://api-testnet.bybit.com";
+  return "https://api.bybit.com";
+}
+
+// ============================================
+// 🎯 EXCHANGE-SPECIFIC POSITION HANDLERS
+// ============================================
+
+async function closeOkxPosition(
+  symbol: string,
+  positionSide: string,
+  quantity: number,
   apiKey: string,
   apiSecret: string,
   passphrase: string,
   demo: boolean,
-  body?: any,
-  alertId?: number
+  alertId?: number,
+  positionId?: number
 ) {
-  const timestamp = new Date().toISOString();
-  const requestPath = url.replace('https://www.okx.com', '');
-  const bodyString = body ? JSON.stringify(body) : '';
-  
-  const signString = timestamp + method + requestPath + bodyString;
-  const signature = crypto
-    .createHmac('sha256', apiSecret)
-    .update(signString)
-    .digest('base64');
+  console.log(`🔄 Closing OKX position: ${symbol} ${positionSide} qty=${quantity}`);
 
-  const headers: Record<string, string> = {
-    'OK-ACCESS-KEY': apiKey,
-    'OK-ACCESS-SIGN': signature,
-    'OK-ACCESS-TIMESTAMP': timestamp,
-    'OK-ACCESS-PASSPHRASE': passphrase,
-    'Content-Type': 'application/json',
+  const orderPayload = {
+    instId: symbol,
+    tdMode: 'cross',
+    side: positionSide === 'BUY' ? 'sell' : 'buy',
+    ordType: 'market',
+    sz: quantity.toFixed(4),
   };
 
-  if (demo) {
-    headers['x-simulated-trading'] = '1';
+  const { data } = await makeOkxRequest(
+    'POST',
+    '/api/v5/trade/order',
+    apiKey,
+    apiSecret,
+    passphrase,
+    demo,
+    orderPayload,
+    alertId
+  );
+
+  if (data.code !== '0') {
+    throw new Error(`OKX close failed: ${data.msg}`);
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: bodyString || undefined,
-  });
+  const orderId = data.data?.[0]?.ordId || 'unknown';
+  console.log('✅ OKX position closed:', orderId);
 
-  const responseText = await response.text();
-  console.log(`📥 OKX Response (${response.status}):`, responseText.substring(0, 500));
+  await logToBot('success', 'position_closed', `OKX position closed: ${symbol}`, { orderId, symbol }, alertId, positionId);
 
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch (parseError) {
-    throw new Error(`Nieprawidłowa odpowiedź JSON od OKX: ${responseText.substring(0, 200)}`);
-  }
-
-  return { response, data };
+  return orderId;
 }
+
+async function closeBybitPosition(
+  symbol: string,
+  positionSide: string,
+  quantity: number,
+  apiKey: string,
+  apiSecret: string,
+  environment: string,
+  alertId?: number,
+  positionId?: number
+) {
+  console.log(`🔄 Closing Bybit position: ${symbol} ${positionSide} qty=${quantity}`);
+
+  const baseUrl = getBybitBaseUrl(environment);
+
+  const closePayload = {
+    category: "linear",
+    symbol,
+    side: positionSide === "BUY" ? "Sell" : "Buy",
+    orderType: "Market",
+    qty: quantity.toString(),
+    timeInForce: "GTC",
+    reduceOnly: true,
+    closeOnTrigger: false
+  };
+
+  const { data } = await makeBybitRequest(
+    `${baseUrl}/v5/order/create`,
+    apiKey,
+    apiSecret,
+    closePayload,
+    alertId
+  );
+
+  if (data.retCode !== 0) {
+    throw new Error(`Bybit close failed: ${data.retMsg}`);
+  }
+
+  const orderId = data.result?.orderId || 'unknown';
+  console.log('✅ Bybit position closed:', orderId);
+
+  await logToBot('success', 'position_closed', `Bybit position closed: ${symbol}`, { orderId, symbol }, alertId, positionId);
+
+  return orderId;
+}
+
+async function openOkxPosition(
+  symbol: string,
+  side: string,
+  quantity: number,
+  leverage: number,
+  slPrice: number | null,
+  tp1Price: number | null,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  alertId?: number
+) {
+  console.log(`🚀 Opening OKX position: ${symbol} ${side} ${leverage}x qty=${quantity}`);
+
+  // Step 1: Set leverage
+  try {
+    const { data: leverageData } = await makeOkxRequest(
+      'POST',
+      '/api/v5/account/set-leverage',
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+      {
+        instId: symbol,
+        lever: leverage.toString(),
+        mgnMode: 'cross'
+      },
+      alertId
+    );
+
+    if (leverageData.code !== '0') {
+      console.warn('⚠️ OKX leverage warning:', leverageData.msg);
+      await logToBot('warning', 'leverage_warning', `OKX leverage: ${leverageData.msg}`, { leverageData }, alertId);
+    } else {
+      console.log(`✅ OKX leverage set: ${leverage}x`);
+    }
+  } catch (leverageError: any) {
+    console.warn('⚠️ OKX leverage failed:', leverageError.message);
+    await logToBot('warning', 'leverage_failed', `OKX leverage failed: ${leverageError.message}`, { error: leverageError.message }, alertId);
+  }
+
+  // Step 2: Open position
+  const orderPayload: any = {
+    instId: symbol,
+    tdMode: 'cross',
+    side: side.toLowerCase(),
+    ordType: 'market',
+    sz: quantity.toFixed(4),
+  };
+
+  if (slPrice) {
+    orderPayload.slTriggerPx = slPrice.toFixed(2);
+    orderPayload.slOrdPx = '-1';
+  }
+
+  if (tp1Price) {
+    orderPayload.tpTriggerPx = tp1Price.toFixed(2);
+    orderPayload.tpOrdPx = '-1';
+  }
+
+  const { data: orderData } = await makeOkxRequest(
+    'POST',
+    '/api/v5/trade/order',
+    apiKey,
+    apiSecret,
+    passphrase,
+    demo,
+    orderPayload,
+    alertId
+  );
+
+  if (orderData.code !== '0') {
+    throw new Error(`OKX order failed: ${orderData.msg}`);
+  }
+
+  const orderId = orderData.data?.[0]?.ordId || 'unknown';
+  console.log('✅ OKX position opened:', orderId);
+
+  await logToBot('success', 'position_opened', `OKX position opened: ${symbol} ${side} ${leverage}x`, { orderId, symbol, side, leverage, quantity, sl: slPrice, tp: tp1Price }, alertId);
+
+  return orderId;
+}
+
+async function openBybitPosition(
+  symbol: string,
+  side: string,
+  quantity: number,
+  leverage: number,
+  slPrice: number | null,
+  tp1Price: number | null,
+  apiKey: string,
+  apiSecret: string,
+  environment: string,
+  tpMode: string,
+  alertId?: number
+) {
+  console.log(`🚀 Opening Bybit position: ${symbol} ${side} ${leverage}x qty=${quantity}`);
+
+  const baseUrl = getBybitBaseUrl(environment);
+
+  // Step 1: Set leverage
+  try {
+    const { data: leverageData } = await makeBybitRequest(
+      `${baseUrl}/v5/position/set-leverage`,
+      apiKey,
+      apiSecret,
+      {
+        category: "linear",
+        symbol,
+        buyLeverage: leverage.toString(),
+        sellLeverage: leverage.toString()
+      },
+      alertId
+    );
+
+    if (leverageData.retCode === 0 || leverageData.retCode === 110043) {
+      console.log(`✅ Bybit leverage set: ${leverage}x`);
+    } else {
+      console.warn(`⚠️ Bybit leverage warning (${leverageData.retCode}):`, leverageData.retMsg);
+      await logToBot('warning', 'leverage_warning', `Bybit leverage: ${leverageData.retMsg}`, { retCode: leverageData.retCode }, alertId);
+    }
+  } catch (leverageError: any) {
+    console.warn('⚠️ Bybit leverage failed:', leverageError.message);
+    await logToBot('warning', 'leverage_failed', `Bybit leverage failed: ${leverageError.message}`, { error: leverageError.message }, alertId);
+  }
+
+  // Step 2: Open position
+  const { data: orderData } = await makeBybitRequest(
+    `${baseUrl}/v5/order/create`,
+    apiKey,
+    apiSecret,
+    {
+      category: "linear",
+      symbol,
+      side: side === "BUY" ? "Buy" : "Sell",
+      orderType: "Market",
+      qty: quantity.toFixed(4),
+      timeInForce: "GTC"
+    },
+    alertId
+  );
+
+  if (orderData.retCode !== 0) {
+    throw new Error(`Bybit order failed: ${orderData.retMsg}`);
+  }
+
+  const orderId = orderData.result?.orderId || 'unknown';
+  console.log('✅ Bybit position opened:', orderId);
+
+  // Step 3: Set SL/TP
+  if (slPrice || tp1Price) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const tpslParams: any = {
+      category: "linear",
+      symbol,
+      positionIdx: 0
+    };
+
+    if (slPrice) tpslParams.stopLoss = slPrice.toFixed(2);
+    if (tp1Price) tpslParams.takeProfit = tp1Price.toFixed(2);
+
+    try {
+      const { data: tpslData } = await makeBybitRequest(
+        `${baseUrl}/v5/position/trading-stop`,
+        apiKey,
+        apiSecret,
+        tpslParams,
+        alertId
+      );
+
+      if (tpslData.retCode !== 0) {
+        console.warn("⚠️ Bybit SL/TP warning:", tpslData.retMsg);
+        await logToBot('warning', 'sl_tp_warning', `Bybit SL/TP: ${tpslData.retMsg}`, { retCode: tpslData.retCode }, alertId);
+      }
+    } catch (tpslError: any) {
+      console.warn("⚠️ Bybit SL/TP failed:", tpslError.message);
+    }
+  }
+
+  await logToBot('success', 'position_opened', `Bybit position opened: ${symbol} ${side} ${leverage}x`, { orderId, symbol, side, leverage, quantity, sl: slPrice, tp: tp1Price }, alertId);
+
+  return orderId;
+}
+
+// ============================================
+// 🌐 GET ENDPOINT (TEST)
+// ============================================
+
+export async function GET(request: Request) {
+  const timestamp = new Date().toISOString();
+  
+  await logToBot('info', 'webhook_test', 'Webhook endpoint tested via GET', { timestamp, url: request.url });
+  
+  return NextResponse.json({ 
+    status: 'online',
+    message: 'TradingView Webhook Endpoint is working!',
+    timestamp,
+    endpoint: '/api/webhook/tradingview',
+    methods: ['GET (test)', 'POST (receive alerts)']
+  });
+}
+
+// ============================================
+// 📨 POST ENDPOINT (RECEIVE ALERTS)
+// ============================================
 
 export async function POST(request: Request) {
   try {
-    // KROK 1: Sprawdź raw body dla debugowania
+    // Parse request body
     const rawBody = await request.text();
-    console.log("📨 RAW REQUEST BODY:", rawBody);
+    console.log("📨 RAW WEBHOOK BODY:", rawBody);
     
-    // Spróbuj sparsować JSON
     let rawData;
     try {
       rawData = JSON.parse(rawBody);
-      console.log("✅ JSON parsed successfully:", JSON.stringify(rawData, null, 2));
     } catch (parseError) {
-      console.error("❌ JSON PARSE ERROR:", parseError);
-      
-      await logToBot(
-        'error',
-        'webhook_parse_error',
-        'Failed to parse TradingView alert JSON',
-        { 
-          error: parseError instanceof Error ? parseError.message : String(parseError),
-          rawBodyPreview: rawBody.substring(0, 500),
-          contentType: request.headers.get('content-type')
-        }
-      );
-      
-      return NextResponse.json(
-        { error: "Invalid JSON format", received: rawBody.substring(0, 200) },
-        { status: 400 }
-      );
+      await logToBot('error', 'parse_error', 'Failed to parse JSON', { error: String(parseError), rawBodyPreview: rawBody.substring(0, 500) });
+      return NextResponse.json({ error: "Invalid JSON format" }, { status: 400 });
     }
 
-    // KROK 2: Normalize snake_case to camelCase
     const data = snakeToCamel(rawData);
-    console.log("🔄 Normalized data:", JSON.stringify(data, null, 2));
+    console.log("🔄 Normalized alert data:", JSON.stringify(data, null, 2));
 
-    // KROK 2.5: NORMALIZE SYMBOL - Remove .P suffix for Bybit API
+    // Normalize symbol (remove .P suffix)
     const originalSymbol = data.symbol;
     const normalizedSymbol = data.symbol.replace(/\.P$/, '');
     data.symbol = normalizedSymbol;
-    
-    console.log(`🔧 Symbol normalization: ${originalSymbol} → ${normalizedSymbol}`);
+    console.log(`🔧 Symbol: ${originalSymbol} → ${normalizedSymbol}`);
 
-    // KROK 3: Validate basic required fields (now in camelCase)
-    const requiredFields = [
-      "symbol",
-      "side",
-      "tier",
-      "entryPrice",
-    ];
-
-    // Check basic required fields
+    // Validate required fields
+    const requiredFields = ["symbol", "side", "tier", "entryPrice"];
     for (const field of requiredFields) {
       if (!(field in data)) {
-        await logToBot('error', 'webhook_validation_failed', `Missing required field: ${field}`, { field, data });
-        return NextResponse.json(
-          { error: `Missing required field: ${field}` },
-          { status: 400 }
-        );
+        await logToBot('error', 'validation_failed', `Missing field: ${field}`, { field, data });
+        return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 });
       }
     }
 
-    // KROK 3.5: OBLICZ LATENCJĘ
+    // Calculate latency
     const receivedAt = Date.now();
     const alertTimestamp = data.timestamp || data.tvTs || Math.floor(receivedAt / 1000);
-    const latency = receivedAt - (alertTimestamp * 1000); // Convert to ms
-    console.log(`⏱️ Latency calculated: ${latency}ms`);
+    const latency = Math.max(0, receivedAt - (alertTimestamp * 1000));
 
-    // KROK 3.6: IDEMPOTENCY CHECK - użyj timestamp + symbol jako unique key
-    const idempotencyKey = `${data.symbol}_${data.side}_${data.tier}_${alertTimestamp}`;
-    const idempotencyWindow = 60; // 60 sekund
-    const recentTimestamp = alertTimestamp - idempotencyWindow;
-    
+    // Idempotency check
     const duplicateCheck = await db.select()
       .from(alerts)
-      .where(
-        and(
-          eq(alerts.symbol, data.symbol),
-          eq(alerts.side, data.side),
-          eq(alerts.tier, data.tier)
-        )
-      )
+      .where(and(
+        eq(alerts.symbol, data.symbol),
+        eq(alerts.side, data.side),
+        eq(alerts.tier, data.tier)
+      ))
       .limit(10);
     
-    // Sprawdź czy jest dokładnie ten sam timestamp (duplikat)
-    const isDuplicate = duplicateCheck.some(alert => {
-      const timeDiff = Math.abs(alert.timestamp - alertTimestamp);
-      return timeDiff < 5; // Dokładnie ten sam alert (różnica < 5 sekund)
-    });
+    const isDuplicate = duplicateCheck.some(alert => Math.abs(alert.timestamp - alertTimestamp) < 5);
     
     if (isDuplicate) {
-      console.log("⚠️ Duplicate alert detected (same timestamp), ignoring");
-      await logToBot(
-        'warning',
-        'duplicate_alert_ignored',
-        `Duplicate alert ignored: ${data.symbol} ${data.side} ${data.tier}`,
-        { symbol: data.symbol, side: data.side, tier: data.tier, timestamp: alertTimestamp }
-      );
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: "Duplicate alert ignored",
-        duplicate: true
-      });
+      console.log("⚠️ Duplicate alert ignored");
+      await logToBot('warning', 'duplicate_ignored', `Duplicate: ${data.symbol} ${data.side}`, { symbol: data.symbol, side: data.side });
+      return NextResponse.json({ success: true, message: "Duplicate alert ignored", duplicate: true });
     }
 
-    // Save alert to database with pending status
+    // Save alert to database
     const [alert] = await db.insert(alerts).values({
       timestamp: alertTimestamp,
       symbol: data.symbol,
@@ -335,293 +566,116 @@ export async function POST(request: Request) {
       institutionalFlow: data.institutionalFlow || null,
       accumulation: data.accumulation || null,
       volumeClimax: data.volumeClimax || null,
-      latency: Math.max(0, latency), // Obliczona latencja
+      latency,
       rawJson: JSON.stringify(data),
       executionStatus: 'pending',
       rejectionReason: null,
       createdAt: new Date().toISOString(),
     }).returning();
 
-    console.log("✅ Alert saved to database:", alert.id);
-    
-    // LOG: Alert received and saved
-    await logToBot(
-      'info',
-      'webhook_received',
-      `✅ TradingView alert received: ${data.symbol} ${data.side} ${data.tier}`,
-      { symbol: data.symbol, side: data.side, tier: data.tier, entryPrice: data.entryPrice },
-      alert.id
-    );
+    console.log("✅ Alert saved:", alert.id);
+    await logToBot('info', 'alert_received', `Alert received: ${data.symbol} ${data.side} ${data.tier}`, { symbol: data.symbol, side: data.side, tier: data.tier }, alert.id);
 
     // ============================================
-    // 🤖 BOT LOGIC - Automatic Trading
+    // 🤖 BOT TRADING LOGIC
     // ============================================
 
-    // Get bot settings
     const settings = await db.select().from(botSettings).limit(1);
     if (settings.length === 0) {
-      console.log("⚠️ No bot settings found, skipping trade");
-      
-      // Update alert status to rejected
-      await db.update(alerts)
-        .set({ 
-          executionStatus: 'rejected',
-          rejectionReason: 'bot_settings_not_configured'
-        })
-        .where(eq(alerts.id, alert.id));
-      
-      // LOG: Settings not found
-      await logToBot(
-        'error',
-        'alert_rejected',
-        'Bot settings not configured',
-        { reason: 'bot_settings_not_configured' },
-        alert.id
-      );
-      
-      // Zwróć 200 aby TradingView nie retry
-      return NextResponse.json({ 
-        success: true, 
-        alert_id: alert.id,
-        message: "Alert saved, but bot settings not configured"
-      });
+      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_bot_settings' }).where(eq(alerts.id, alert.id));
+      await logToBot('error', 'rejected', 'Bot settings not configured', { reason: 'no_bot_settings' }, alert.id);
+      return NextResponse.json({ success: true, alert_id: alert.id, message: "Alert saved, bot settings missing" });
     }
 
     const botConfig = settings[0];
 
-    // CRITICAL: Check if API credentials are configured in database
+    // Check API credentials
     if (!botConfig.apiKey || !botConfig.apiSecret) {
-      console.log("❌ API credentials not configured in database");
-      
-      await db.update(alerts)
-        .set({ 
-          executionStatus: 'rejected',
-          rejectionReason: 'api_credentials_not_configured'
-        })
-        .where(eq(alerts.id, alert.id));
-      
-      await logToBot(
-        'error',
-        'alert_rejected',
-        'API credentials not configured - please save your API keys in Exchange Test page',
-        { reason: 'api_credentials_not_configured' },
-        alert.id
-      );
-      
-      return NextResponse.json({ 
-        success: true, 
-        alert_id: alert.id,
-        message: "Alert saved, but API credentials not configured"
-      });
+      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_api_credentials' }).where(eq(alerts.id, alert.id));
+      await logToBot('error', 'rejected', 'API credentials not configured', { reason: 'no_api_credentials' }, alert.id);
+      return NextResponse.json({ success: true, alert_id: alert.id, message: "Alert saved, API credentials missing" });
     }
 
-    // Use API credentials from database (NOT from .env)
     const apiKey = botConfig.apiKey;
     const apiSecret = botConfig.apiSecret;
+    const passphrase = botConfig.passphrase || '';
     const environment = botConfig.environment || "demo";
-    const exchange = botConfig.exchange || "bybit";
+    const exchange = botConfig.exchange || "okx";
 
-    console.log(`🔑 Using API credentials from database: ${exchange} (${environment})`);
-    console.log(`🔑 API Key preview: ${apiKey.substring(0, 8)}...`);
+    console.log(`🔑 Using ${exchange.toUpperCase()} (${environment}) - API Key: ${apiKey.substring(0, 8)}...`);
 
-    // Check if bot is enabled
+    // Check if bot enabled
     if (!botConfig.botEnabled) {
-      console.log("🛑 Bot is disabled");
-      
-      // Update alert status to rejected
-      await db.update(alerts)
-        .set({ 
-          executionStatus: 'rejected',
-          rejectionReason: 'bot_disabled'
-        })
-        .where(eq(alerts.id, alert.id));
-      
-      // LOG: Bot disabled
-      await logToBot(
-        'warning',
-        'alert_rejected',
-        `Bot is disabled - alert ignored: ${data.symbol} ${data.side}`,
-        { reason: 'bot_disabled', symbol: data.symbol, side: data.side },
-        alert.id
-      );
-      
-      return NextResponse.json({ 
-        success: true, 
-        alert_id: alert.id,
-        message: "Alert saved, but bot is disabled"
-      });
+      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'bot_disabled' }).where(eq(alerts.id, alert.id));
+      await logToBot('warning', 'rejected', 'Bot is disabled', { reason: 'bot_disabled' }, alert.id);
+      return NextResponse.json({ success: true, alert_id: alert.id, message: "Bot is disabled" });
     }
 
     // Tier filtering
     const disabledTiers = JSON.parse(botConfig.disabledTiers || '[]');
     if (disabledTiers.includes(data.tier)) {
-      console.log(`⚠️ Alert tier ${data.tier} is disabled`);
-      
-      // Update alert status to rejected
-      await db.update(alerts)
-        .set({ 
-          executionStatus: 'rejected',
-          rejectionReason: 'tier_disabled'
-        })
-        .where(eq(alerts.id, alert.id));
-      
-      await db.insert(botActions).values({
-        actionType: "alert_filtered",
-        symbol: data.symbol,
-        side: data.side,
-        tier: data.tier,
-        alertId: alert.id,
-        reason: "tier_disabled",
-        details: JSON.stringify({ tier: data.tier }),
-        success: false,
-        createdAt: new Date().toISOString(),
-      });
-      
-      // LOG: Tier disabled
-      await logToBot(
-        'warning',
-        'alert_rejected',
-        `Tier ${data.tier} is disabled - alert ignored: ${data.symbol}`,
-        { reason: 'tier_disabled', tier: data.tier, symbol: data.symbol },
-        alert.id
-      );
-      
-      return NextResponse.json({ 
-        success: true, 
-        alert_id: alert.id,
-        message: `Alert tier ${data.tier} is disabled`
-      });
+      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'tier_disabled' }).where(eq(alerts.id, alert.id));
+      await logToBot('warning', 'rejected', `Tier ${data.tier} disabled`, { tier: data.tier }, alert.id);
+      return NextResponse.json({ success: true, alert_id: alert.id, message: `Tier ${data.tier} disabled` });
     }
 
-    // Check for existing positions on same symbol
-    const existingPositions = await db
-      .select()
-      .from(botPositions)
-      .where(
-        and(
-          eq(botPositions.symbol, data.symbol),
-          eq(botPositions.status, "open")
-        )
-      );
+    // Check for existing positions
+    const existingPositions = await db.select().from(botPositions).where(and(
+      eq(botPositions.symbol, data.symbol),
+      eq(botPositions.status, "open")
+    ));
 
-    // Same Symbol Logic
     if (existingPositions.length > 0) {
       const existingPosition = existingPositions[0];
-      
+
       if (botConfig.sameSymbolBehavior === "ignore") {
-        console.log(`⚠️ Position already exists on ${data.symbol}, ignoring`);
-        
-        // Update alert status to rejected
-        await db.update(alerts)
-          .set({ 
-            executionStatus: 'rejected',
-            rejectionReason: 'same_symbol_position_exists'
-          })
-          .where(eq(alerts.id, alert.id));
-        
-        await db.insert(botActions).values({
-          actionType: "alert_ignored",
-          symbol: data.symbol,
-          side: data.side,
-          tier: data.tier,
-          alertId: alert.id,
-          reason: "same_symbol_ignore",
-          details: JSON.stringify({ reason: "same_symbol_ignore" }),
-          success: false,
-          createdAt: new Date().toISOString(),
-        });
-        
-        // LOG: Same symbol ignored
-        await logToBot(
-          'info',
-          'alert_rejected',
-          `Position already exists on ${data.symbol} - alert ignored`,
-          { reason: 'same_symbol_position_exists', symbol: data.symbol, existingPositionId: existingPosition.id },
-          alert.id,
-          existingPosition.id
-        );
-        
-        return NextResponse.json({ 
-          success: true, 
-          alert_id: alert.id,
-          message: "Same symbol position exists, ignoring alert"
-        });
+        await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'same_symbol_exists' }).where(eq(alerts.id, alert.id));
+        await logToBot('info', 'rejected', `Position exists on ${data.symbol}`, { reason: 'same_symbol_exists' }, alert.id, existingPosition.id);
+        return NextResponse.json({ success: true, alert_id: alert.id, message: "Same symbol position exists" });
       }
 
-      // Check if opposite direction
       const isOpposite = 
         (existingPosition.side === "BUY" && data.side === "SELL") ||
         (existingPosition.side === "SELL" && data.side === "BUY");
 
       if (isOpposite) {
         if (botConfig.oppositeDirectionStrategy === "market_reversal") {
-          console.log(`🔄 Closing opposite position and reversing on ${data.symbol}`);
-          
-          // LOG: Attempting reversal
-          await logToBot(
-            'info',
-            'position_reversal_attempt',
-            `Attempting to close opposite position and reverse: ${data.symbol}`,
-            { existingPosition: existingPosition.side, newPosition: data.side, positionId: existingPosition.id },
-            alert.id,
-            existingPosition.id
-          );
-          
-          // CRITICAL FIX: Use API credentials from database (not .env)
+          console.log(`🔄 Reversing position on ${data.symbol}`);
+          await logToBot('info', 'reversal_attempt', `Reversing ${data.symbol}`, { existingPosition: existingPosition.side, newPosition: data.side }, alert.id, existingPosition.id);
+
           try {
-            const baseUrl = getBybitBaseUrl(environment);
+            let closeOrderId: string;
 
-            const closeTimestamp = Date.now();
-            const closePayload = JSON.stringify({
-              category: "linear",
-              symbol: data.symbol,
-              side: existingPosition.side === "BUY" ? "Sell" : "Buy",
-              orderType: "Market",
-              qty: existingPosition.quantity.toString(),
-              timeInForce: "GTC",
-              reduceOnly: true,
-              closeOnTrigger: false
-            });
-
-            const closeSignature = createBybitSignature(apiKey, apiSecret, closeTimestamp, closePayload);
-
-            const closeResponse = await fetch(`${baseUrl}/v5/order/create`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-BAPI-API-KEY": apiKey,
-                "X-BAPI-TIMESTAMP": closeTimestamp.toString(),
-                "X-BAPI-SIGN": closeSignature,
-                "X-BAPI-RECV-WINDOW": "5000",
-              },
-              body: closePayload
-            });
-
-            // CRITICAL: Check if response is JSON before parsing
-            const closeResponseText = await closeResponse.text();
-            console.log("📥 Bybit Close Response (raw):", closeResponseText);
-            
-            let closeData;
-            try {
-              closeData = JSON.parse(closeResponseText);
-            } catch (parseError) {
-              console.error("❌ Bybit returned non-JSON response:", closeResponseText.substring(0, 500));
-              throw new Error(`Bybit API returned HTML/non-JSON response. Check API keys! Response: ${closeResponseText.substring(0, 200)}`);
+            if (exchange === "okx") {
+              closeOrderId = await closeOkxPosition(
+                data.symbol,
+                existingPosition.side,
+                existingPosition.quantity,
+                apiKey,
+                apiSecret,
+                passphrase,
+                environment === "demo",
+                alert.id,
+                existingPosition.id
+              );
+            } else {
+              closeOrderId = await closeBybitPosition(
+                data.symbol,
+                existingPosition.side,
+                existingPosition.quantity,
+                apiKey,
+                apiSecret,
+                environment,
+                alert.id,
+                existingPosition.id
+              );
             }
 
-            if (closeData.retCode !== 0) {
-              throw new Error(`Bybit close failed: ${closeData.retMsg}`);
-            }
-
-            // Update database
-            await db
-              .update(botPositions)
-              .set({ 
-                status: "closed",
-                closeReason: "opposite_signal",
-                closedAt: new Date().toISOString(),
-              })
-              .where(eq(botPositions.id, existingPosition.id));
+            await db.update(botPositions).set({ 
+              status: "closed",
+              closeReason: "opposite_signal",
+              closedAt: new Date().toISOString(),
+            }).where(eq(botPositions.id, existingPosition.id));
 
             await db.insert(botActions).values({
               actionType: "position_closed",
@@ -630,150 +684,55 @@ export async function POST(request: Request) {
               tier: existingPosition.tier,
               positionId: existingPosition.id,
               reason: "opposite_signal",
-              details: JSON.stringify({ reason: "opposite_signal" }),
+              details: JSON.stringify({ closeOrderId }),
               success: true,
               createdAt: new Date().toISOString(),
             });
 
-            // LOG: Reversal success
-            await logToBot(
-              'success',
-              'position_closed',
-              `Opposite position closed successfully: ${data.symbol}`,
-              { reason: 'opposite_signal', orderId: closeData.result?.orderId },
-              alert.id,
-              existingPosition.id
-            );
-
             console.log("✅ Opposite position closed, proceeding with new trade");
-          } catch (error) {
-            console.error("❌ Failed to close opposite position:", error);
-            
-            // Update alert status to rejected
-            await db.update(alerts)
-              .set({ 
-                executionStatus: 'rejected',
-                rejectionReason: 'failed_to_close_opposite_position'
-              })
-              .where(eq(alerts.id, alert.id));
-            
-            // LOG: Reversal failed
-            await logToBot(
-              'error',
-              'position_close_failed',
-              `Failed to close opposite position: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              { error: error instanceof Error ? error.message : String(error) },
-              alert.id,
-              existingPosition.id
-            );
-            
-            // Zwróć 200 aby TradingView nie retry
-            return NextResponse.json({ 
-              success: true, 
-              alert_id: alert.id,
-              error: "Failed to close opposite position",
-              message: "Alert saved but position opening failed"
-            });
+          } catch (error: any) {
+            await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'failed_close_opposite' }).where(eq(alerts.id, alert.id));
+            await logToBot('error', 'close_failed', `Failed to close opposite: ${error.message}`, { error: error.message }, alert.id, existingPosition.id);
+            return NextResponse.json({ success: true, alert_id: alert.id, error: "Failed to close opposite position" });
           }
         } else {
-          console.log(`⚠️ Opposite direction signal on ${data.symbol}, ignoring`);
-          
-          // Update alert status to rejected
-          await db.update(alerts)
-            .set({ 
-              executionStatus: 'rejected',
-              rejectionReason: 'opposite_direction_ignored'
-            })
-            .where(eq(alerts.id, alert.id));
-          
-          await db.insert(botActions).values({
-            actionType: "alert_ignored",
-            symbol: data.symbol,
-            side: data.side,
-            tier: data.tier,
-            alertId: alert.id,
-            reason: "opposite_direction_ignore",
-            details: JSON.stringify({ reason: "opposite_direction_ignore" }),
-            success: false,
-            createdAt: new Date().toISOString(),
-          });
-          
-          // LOG: Opposite ignored
-          await logToBot(
-            'info',
-            'alert_rejected',
-            `Opposite direction signal ignored: ${data.symbol}`,
-            { reason: 'opposite_direction_ignored', existingPositionSide: existingPosition.side, newSide: data.side },
-            alert.id,
-            existingPosition.id
-          );
-          
-          return NextResponse.json({ 
-            success: true, 
-            alert_id: alert.id,
-            message: "Opposite direction signal, ignoring alert"
-          });
+          await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'opposite_ignored' }).where(eq(alerts.id, alert.id));
+          await logToBot('info', 'rejected', 'Opposite direction ignored', { reason: 'opposite_ignored' }, alert.id, existingPosition.id);
+          return NextResponse.json({ success: true, alert_id: alert.id, message: "Opposite direction ignored" });
         }
       } else {
-        // Same direction - track confirmations
         if (botConfig.sameSymbolBehavior === "track_confirmations") {
-          console.log(`➕ Tracking confirmation for ${data.symbol}`);
-          await db
-            .update(botPositions)
-            .set({ 
-              confirmationCount: existingPosition.confirmationCount + 1,
-              lastUpdated: new Date().toISOString(),
-            })
-            .where(eq(botPositions.id, existingPosition.id));
+          await db.update(botPositions).set({ 
+            confirmationCount: existingPosition.confirmationCount + 1,
+            lastUpdated: new Date().toISOString(),
+          }).where(eq(botPositions.id, existingPosition.id));
           
-          // Update alert status to executed (confirmation tracked)
-          await db.update(alerts)
-            .set({ executionStatus: 'executed' })
-            .where(eq(alerts.id, alert.id));
-          
-          // LOG: Confirmation tracked
-          await logToBot(
-            'info',
-            'confirmation_tracked',
-            `Confirmation tracked for ${data.symbol}: count=${existingPosition.confirmationCount + 1}`,
-            { confirmationCount: existingPosition.confirmationCount + 1 },
-            alert.id,
-            existingPosition.id
-          );
-          
-          return NextResponse.json({ 
-            success: true, 
-            alert_id: alert.id,
-            message: "Confirmation tracked"
-          });
+          await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
+          await logToBot('info', 'confirmation_tracked', `Confirmation tracked for ${data.symbol}`, { count: existingPosition.confirmationCount + 1 }, alert.id, existingPosition.id);
+          return NextResponse.json({ success: true, alert_id: alert.id, message: "Confirmation tracked" });
         }
       }
     }
 
     // ============================================
-    // 🎯 CALCULATE SL/TP VALUES
+    // 🎯 CALCULATE SL/TP
     // ============================================
-    
-    const entryPrice = parseFloat(data.entryPrice || data.price);
+
+    const entryPrice = parseFloat(data.entryPrice);
     let slPrice: number | null = null;
     let tp1Price: number | null = null;
     let tp2Price: number | null = null;
     let tp3Price: number | null = null;
 
-    // Check if alert contains SL/TP values
     const hasSlTpInAlert = data.sl && data.tp1;
 
     if (hasSlTpInAlert) {
-      // Use values from alert (priority)
-      console.log("✅ Using SL/TP from alert");
       slPrice = parseFloat(data.sl);
       tp1Price = parseFloat(data.tp1);
       tp2Price = data.tp2 ? parseFloat(data.tp2) : null;
       tp3Price = data.tp3 ? parseFloat(data.tp3) : null;
+      console.log("✅ Using SL/TP from alert");
     } else if (botConfig.useDefaultSlTp) {
-      // Calculate default SL/TP based on entry price
-      console.log("🛡️ Using default SL/TP from settings");
-      
       const slPercent = botConfig.defaultSlPercent / 100;
       const tp1Percent = botConfig.defaultTp1Percent / 100;
       const tp2Percent = botConfig.defaultTp2Percent / 100;
@@ -790,46 +749,11 @@ export async function POST(request: Request) {
         tp2Price = entryPrice * (1 - tp2Percent);
         tp3Price = entryPrice * (1 - tp3Percent);
       }
-
-      console.log(`📊 Calculated SL/TP: SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`);
+      console.log(`🛡️ Using default SL/TP: SL=${slPrice}, TP1=${tp1Price}`);
     } else {
-      // No SL/TP in alert and default SL/TP not enabled
-      console.log("❌ No SL/TP provided and default SL/TP not enabled");
-      
-      // Update alert status to rejected
-      await db.update(alerts)
-        .set({ 
-          executionStatus: 'rejected',
-          rejectionReason: 'no_sl_tp_provided'
-        })
-        .where(eq(alerts.id, alert.id));
-      
-      await db.insert(botActions).values({
-        actionType: "alert_ignored",
-        symbol: data.symbol,
-        side: data.side,
-        tier: data.tier,
-        alertId: alert.id,
-        reason: "no_sl_tp_provided",
-        details: JSON.stringify({ reason: "no_sl_tp_provided" }),
-        success: false,
-        createdAt: new Date().toISOString(),
-      });
-      
-      // LOG: No SL/TP
-      await logToBot(
-        'error',
-        'alert_rejected',
-        `No SL/TP provided and default SL/TP not enabled: ${data.symbol}`,
-        { reason: 'no_sl_tp_provided' },
-        alert.id
-      );
-      
-      return NextResponse.json({ 
-        success: true, 
-        alert_id: alert.id,
-        message: "No SL/TP provided and default SL/TP not enabled"
-      });
+      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_sl_tp' }).where(eq(alerts.id, alert.id));
+      await logToBot('error', 'rejected', 'No SL/TP provided', { reason: 'no_sl_tp' }, alert.id);
+      return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP provided" });
     }
 
     // ============================================
@@ -837,229 +761,65 @@ export async function POST(request: Request) {
     // ============================================
 
     let positionSizeUsd = botConfig.positionSizeFixed;
-
-    if (botConfig.positionSizeMode === "percent") {
-      // Get account balance and calculate percentage
-      // For now, use fixed size
-      positionSizeUsd = botConfig.positionSizeFixed;
-    }
-
-    // Calculate quantity
     const quantity = positionSizeUsd / entryPrice;
+    const leverage = botConfig.leverageMode === "from_alert" ? (data.leverage || botConfig.leverageFixed) : botConfig.leverageFixed;
 
-    // Get leverage
-    const leverage = botConfig.leverageMode === "from_alert" 
-      ? (data.leverage || botConfig.leverageFixed) 
-      : botConfig.leverageFixed;
-
-    console.log(`💰 Position size: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
+    console.log(`💰 Position: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
 
     // ============================================
-    // 🚀 OPEN POSITION ON EXCHANGE
+    // 🚀 OPEN POSITION
     // ============================================
 
     try {
-      console.log(`🔧 Using ${exchange} environment: ${environment}`);
-      console.log(`🔑 API Key preview: ${apiKey.substring(0, 8)}...`);
-
       const symbol = data.symbol;
-      const side = data.side === "BUY" ? "Buy" : "Sell";
+      const side = data.side;
       const tpMode = botConfig.tpStrategy || "main_only";
-      
-      await logToBot(
-        'info',
-        'position_opening',
-        `Opening position: ${symbol} ${side} ${leverage}x (env: ${environment}, exchange: ${exchange})`,
-        { symbol, side, leverage, quantity, entryPrice, sl: slPrice, tp1: tp1Price, environment, exchange },
-        alert.id
-      );
+
+      await logToBot('info', 'opening_position', `Opening ${symbol} ${side} ${leverage}x on ${exchange.toUpperCase()}`, { symbol, side, leverage, quantity, exchange, environment }, alert.id);
 
       let orderId: string;
 
-      // ============================================
-      // Handle OKX
-      // ============================================
       if (exchange === "okx") {
-        const baseUrl = 'https://www.okx.com';
-        
-        // Step 1: Set leverage if provided
-        if (leverage) {
-          try {
-            const { data: leverageData } = await makeOkxRequest(
-              `${baseUrl}/api/v5/account/set-leverage`,
-              'POST',
-              apiKey,
-              apiSecret,
-              botConfig.passphrase || '',
-              environment === "demo",
-              {
-                instId: symbol,
-                lever: leverage.toString(),
-                mgnMode: 'cross'
-              },
-              alert.id
-            );
-
-            if (leverageData.code !== '0') {
-              console.warn('OKX leverage setting warning:', leverageData.msg);
-              await logToBot('warning', 'leverage_set_warning', `OKX leverage warning: ${leverageData.msg}`, { leverageData }, alert.id);
-            }
-          } catch (leverageError: any) {
-            console.warn('⚠️ OKX leverage setting failed:', leverageError.message);
-            await logToBot('warning', 'leverage_set_failed', `OKX leverage failed: ${leverageError.message}`, { error: leverageError.message }, alert.id);
-          }
-        }
-
-        // Step 2: Open position (market order)
-        const orderPayload: any = {
-          instId: symbol,
-          tdMode: 'cross',
-          side: data.side.toLowerCase(),
-          ordType: 'market',
-          sz: quantity.toFixed(4),
-        };
-
-        // Add SL/TP if provided
-        if (slPrice) {
-          orderPayload.slTriggerPx = slPrice.toFixed(2);
-          orderPayload.slOrdPx = '-1'; // Market order for SL
-        }
-
-        if (tp1Price) {
-          orderPayload.tpTriggerPx = tp1Price.toFixed(2);
-          orderPayload.tpOrdPx = '-1'; // Market order for TP
-        }
-
-        const { data: orderData } = await makeOkxRequest(
-          `${baseUrl}/api/v5/trade/order`,
-          'POST',
+        orderId = await openOkxPosition(
+          symbol,
+          side,
+          quantity,
+          leverage,
+          slPrice,
+          tp1Price,
           apiKey,
           apiSecret,
-          botConfig.passphrase || '',
+          passphrase,
           environment === "demo",
-          orderPayload,
           alert.id
         );
-
-        if (orderData.code !== '0') {
-          throw new Error(`OKX order failed (code ${orderData.code}): ${orderData.msg}`);
-        }
-
-        orderId = orderData.data?.[0]?.ordId || 'unknown';
-        console.log('✅ OKX position opened:', orderId);
-      }
-      // ============================================
-      // Handle Bybit
-      // ============================================
-      else {
-        const baseUrl = getBybitBaseUrl(environment);
-        
-        // CRITICAL FIX: SET LEVERAGE FROM ALERT BEFORE OPENING POSITION
-        console.log(`🔧 Setting leverage ${leverage}x for ${symbol} (from alert)`);
-        
-        try {
-          const { data: leverageData } = await makeBybitRequest(
-            `${baseUrl}/v5/position/set-leverage`,
-            apiKey,
-            apiSecret,
-            {
-              category: "linear",
-              symbol,
-              buyLeverage: leverage.toString(),
-              sellLeverage: leverage.toString()
-            },
-            alert.id
-          );
-
-          if (leverageData.retCode === 0) {
-            console.log(`✅ Leverage set successfully: ${leverage}x`);
-          } else if (leverageData.retCode === 110043) {
-            console.log(`ℹ️ Leverage already set to ${leverage}x (code 110043)`);
-          } else {
-            console.warn(`⚠️ Leverage setting warning (code ${leverageData.retCode}): ${leverageData.retMsg}`);
-            await logToBot('warning', 'leverage_set_warning', `Leverage setting warning: ${leverageData.retMsg}`, { retCode: leverageData.retCode, retMsg: leverageData.retMsg, leverage }, alert.id);
-          }
-        } catch (leverageError: any) {
-          console.warn(`⚠️ Failed to set leverage: ${leverageError.message}`);
-          await logToBot('warning', 'leverage_set_failed', `Failed to set leverage ${leverage}x: ${leverageError.message}`, { error: leverageError.message, leverage, symbol }, alert.id);
-        }
-
-        // Step 1: Open Position (Market Order) - now with correct leverage
-        const { data: orderData } = await makeBybitRequest(
-          `${baseUrl}/v5/order/create`,
+      } else {
+        orderId = await openBybitPosition(
+          symbol,
+          side,
+          quantity,
+          leverage,
+          slPrice,
+          tp1Price,
           apiKey,
           apiSecret,
-          {
-            category: "linear",
-            symbol,
-            side,
-            orderType: "Market",
-            qty: quantity.toFixed(4),
-            timeInForce: "GTC"
-          },
+          environment,
+          tpMode,
           alert.id
         );
-
-        if (orderData.retCode !== 0) {
-          throw new Error(`Bybit order failed (retCode ${orderData.retCode}): ${orderData.retMsg}`);
-        }
-
-        orderId = orderData.result?.orderId || 'unknown';
-        console.log("✅ Position opened on Bybit:", orderId);
-
-        // Step 3: Set SL/TP for Bybit
-        if (slPrice || tp1Price) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-          const tpslParams: any = {
-            category: "linear",
-            symbol,
-            positionIdx: 0
-          };
-
-          if (slPrice) {
-            tpslParams.stopLoss = slPrice.toFixed(2);
-          }
-
-          if (tpMode === "multiple" && tp1Price) {
-            tpslParams.takeProfit = tp1Price.toFixed(2);
-          } else if (tp1Price) {
-            tpslParams.takeProfit = tp1Price.toFixed(2);
-          }
-
-          try {
-            const { data: tpslData } = await makeBybitRequest(
-              `${baseUrl}/v5/position/trading-stop`,
-              apiKey,
-              apiSecret,
-              tpslParams,
-              alert.id
-            );
-
-            if (tpslData.retCode !== 0) {
-              console.warn("⚠️ SL/TP setting warning:", tpslData.retMsg);
-              await logToBot('warning', 'sl_tp_set_warning', `SL/TP setting warning: ${tpslData.retMsg}`, { retCode: tpslData.retCode, retMsg: tpslData.retMsg, sl: slPrice, tp: tp1Price }, alert.id);
-            }
-          } catch (tpslError: any) {
-            console.warn("⚠️ SL/TP setting failed:", tpslError.message);
-          }
-        }
       }
 
-      // ============================================
-      // 💾 SAVE POSITION TO DATABASE
-      // ============================================
-
+      // Save position to database
       const [botPosition] = await db.insert(botPositions).values({
         symbol: data.symbol,
         side: data.side,
-        entryPrice: entryPrice,
-        quantity: quantity,
-        leverage: leverage,
+        entryPrice,
+        quantity,
+        leverage,
         stopLoss: slPrice || 0,
-        tp1Price: tp1Price,
-        tp2Price: tp2Price,
-        tp3Price: tp3Price,
+        tp1Price,
+        tp2Price,
+        tp3Price,
         mainTpPrice: tp1Price || 0,
         tier: data.tier,
         confidenceScore: data.strength || 0.5,
@@ -1078,14 +838,8 @@ export async function POST(request: Request) {
         lastUpdated: new Date().toISOString(),
       }).returning();
 
-      console.log("✅ Position saved to database:", botPosition.id);
+      await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
 
-      // Update alert status to executed
-      await db.update(alerts)
-        .set({ executionStatus: 'executed' })
-        .where(eq(alerts.id, alert.id));
-
-      // Save action
       await db.insert(botActions).values({
         actionType: "position_opened",
         symbol: data.symbol,
@@ -1094,72 +848,39 @@ export async function POST(request: Request) {
         alertId: alert.id,
         positionId: botPosition.id,
         reason: "new_signal",
-        details: JSON.stringify({
-          tier: data.tier,
-          confidence: data.strength,
-          entry: entryPrice,
-          quantity: quantity,
-          leverage: leverage,
-          exchange
-        }),
+        details: JSON.stringify({ orderId, exchange, environment }),
         success: true,
         createdAt: new Date().toISOString(),
       });
-      
-      // LOG: Position opened successfully
-      await logToBot(
-        'success',
-        'position_opened',
-        `✅ Position opened: ${symbol} ${side} ${leverage}x | Entry: ${entryPrice} (${exchange})`,
-        {
-          positionId: botPosition.id,
-          orderId,
-          symbol,
-          side,
-          leverage,
-          quantity,
-          entryPrice,
-          sl: slPrice,
-          tp1: tp1Price,
-          tp2: tp2Price,
-          tp3: tp3Price,
-          tier: data.tier,
-          environment,
-          exchange
-        },
-        alert.id,
-        botPosition.id
-      );
+
+      await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x on ${exchange.toUpperCase()}`, {
+        positionId: botPosition.id,
+        orderId,
+        symbol,
+        side,
+        leverage,
+        quantity,
+        entryPrice,
+        sl: slPrice,
+        tp: tp1Price,
+        exchange,
+        environment
+      }, alert.id, botPosition.id);
 
       return NextResponse.json({
         success: true,
         alert_id: alert.id,
         position_id: botPosition.id,
-        message: "Alert received and position opened successfully",
-        position: {
-          symbol: data.symbol,
-          side: data.side,
-          entry: entryPrice,
-          quantity: quantity,
-          sl: slPrice,
-          tp1: tp1Price,
-          tp2: tp2Price,
-          tp3: tp3Price,
-          exchange
-        },
+        message: "Position opened successfully",
+        exchange,
+        environment,
+        position: { symbol, side, entry: entryPrice, quantity, sl: slPrice, tp: tp1Price }
       });
     } catch (error: any) {
-      console.error("❌ Failed to open position:", error);
+      console.error("❌ Position opening failed:", error);
 
-      // Update alert status to rejected
-      await db.update(alerts)
-        .set({ 
-          executionStatus: 'rejected',
-          rejectionReason: 'exchange_error'
-        })
-        .where(eq(alerts.id, alert.id));
+      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'exchange_error' }).where(eq(alerts.id, alert.id));
 
-      // Save failed action
       await db.insert(botActions).values({
         actionType: "position_failed",
         symbol: data.symbol,
@@ -1172,45 +893,14 @@ export async function POST(request: Request) {
         errorMessage: error.message,
         createdAt: new Date().toISOString(),
       });
-      
-      // LOG: Position opening failed
-      await logToBot(
-        'error',
-        'order_failed',
-        `❌ Failed to open position: ${error.message}`,
-        {
-          error: error.message,
-          symbol: data.symbol,
-          side: data.side,
-          tier: data.tier,
-          environment,
-          exchange
-        },
-        alert.id
-      );
 
-      // CRITICAL: Zwróć 200 aby TradingView nie retry
-      return NextResponse.json({
-        success: true,
-        alert_id: alert.id,
-        error: error.message,
-        message: "Alert saved but position opening failed"
-      });
+      await logToBot('error', 'position_failed', `❌ Position opening failed: ${error.message}`, { error: error.message, symbol: data.symbol, exchange }, alert.id);
+
+      return NextResponse.json({ success: true, alert_id: alert.id, error: error.message, message: "Alert saved but position opening failed" });
     }
   } catch (error: any) {
     console.error("❌ Webhook error:", error);
-    
-    // LOG: Critical webhook error
-    await logToBot(
-      'error',
-      'webhook_error',
-      `Critical webhook error: ${error.message}`,
-      { error: error.message, stack: error.stack }
-    );
-    
-    return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: 500 }
-    );
+    await logToBot('error', 'webhook_error', `Critical error: ${error.message}`, { error: error.message, stack: error.stack });
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }
