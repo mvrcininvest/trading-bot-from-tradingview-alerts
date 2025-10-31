@@ -93,9 +93,16 @@ export default function DashboardPage() {
       // 🔍 VALIDATION: Check if apiKey is UUID (invalid)
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (uuidRegex.test(creds.apiKey)) {
-        toast.error("⚠️ Wykryto błędne dane w localStorage! Klucz API to UUID zamiast prawdziwego klucza. Przejdź do Konfiguracji API i wprowadź prawdziwe klucze.");
+        toast.error("⚠️ Wykryto błędne dane w localStorage! Klucz API to UUID zamiast prawdziwego klucza. Kliknij przycisk poniżej aby przejść do konfiguracji.", {
+          duration: 10000,
+          action: {
+            label: "Idź do Konfiguracji",
+            onClick: () => router.push("/exchange-test")
+          }
+        });
         console.error("❌ Invalid API key detected (UUID):", creds.apiKey);
-        // Don't set credentials - force user to reconfigure
+        // Show warning card but don't block completely
+        setCredentials(null);
         return;
       }
       
@@ -581,21 +588,68 @@ export default function DashboardPage() {
   if (!credentials) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
-        <Card className="max-w-md border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        <Card className="max-w-2xl border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-yellow-500" />
-              Brak konfiguracji API
+            <CardTitle className="flex items-center gap-2 text-red-400">
+              <AlertCircle className="h-6 w-6" />
+              ⚠️ Błędne dane w localStorage!
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-400">
-              Nie znaleziono zapisanych kluczy API lub wykryto błędne dane. Najpierw skonfiguruj połączenie z giełdą.
-            </p>
-            <Button onClick={() => router.push("/exchange-test")} className="w-full">
-              <Settings className="mr-2 h-4 w-4" />
-              Skonfiguruj API
-            </Button>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-red-900/40 border-2 border-red-700">
+                <p className="text-lg font-bold text-red-300 mb-2">
+                  🔍 Wykryto UUID zamiast prawdziwego klucza API
+                </p>
+                <p className="text-sm text-gray-300">
+                  Twój klucz API w localStorage wygląda na UUID (placeholder) zamiast prawdziwego klucza OKX.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-blue-900/40 border-2 border-blue-700">
+                <p className="text-base font-bold text-blue-300 mb-3">
+                  💡 CO ROBIĆ:
+                </p>
+                <ol className="space-y-2 text-sm text-gray-300 list-decimal list-inside">
+                  <li>Kliknij przycisk <strong className="text-white">"Konfiguracja API"</strong> poniżej</li>
+                  <li>Wprowadź <strong className="text-white">PRAWDZIWE klucze OKX</strong> (nie UUID!)</li>
+                  <li>Kliknij <strong className="text-white">"Test Connection"</strong> aby sprawdzić czy działają</li>
+                  <li>Kliknij <strong className="text-white">"Save Credentials"</strong></li>
+                  <li>Wróć tutaj i kliknij <strong className="text-white">"Sync do Bazy"</strong></li>
+                </ol>
+              </div>
+
+              <div className="p-4 rounded-lg bg-yellow-900/40 border-2 border-yellow-700">
+                <p className="text-base font-bold text-yellow-300 mb-2">
+                  🔐 Gdzie znaleźć prawdziwe klucze OKX:
+                </p>
+                <ol className="space-y-1 text-sm text-gray-300 list-decimal list-inside">
+                  <li>Zaloguj się na <strong className="text-white">okx.com</strong></li>
+                  <li>Idź do: Profile → API → Create API Key</li>
+                  <li>Skopiuj: <strong className="text-white">API Key, Secret Key, Passphrase</strong></li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button 
+                onClick={() => router.push("/exchange-test")} 
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                size="lg"
+              >
+                <Settings className="mr-2 h-5 w-5" />
+                Konfiguracja API
+              </Button>
+              <Button 
+                onClick={clearLocalStorageAndReconfigure} 
+                variant="outline"
+                className="border-red-600 text-red-400 hover:bg-red-600/20"
+                size="lg"
+              >
+                <AlertCircle className="mr-2 h-5 w-5" />
+                Wyczyść localStorage
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
