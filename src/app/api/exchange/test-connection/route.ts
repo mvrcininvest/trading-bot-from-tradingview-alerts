@@ -218,15 +218,22 @@ async function testOkxConnection(apiKey: string, apiSecret: string, passphrase: 
 
   const url = `${baseUrl}${requestPath}`;
 
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+  };
+
+  // Add x-simulated-trading header for demo environment
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+
   try {
     const response = await axios.get(url, {
-      headers: {
-        "OK-ACCESS-KEY": apiKey,
-        "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": passphrase,
-        "Content-Type": "application/json",
-      },
+      headers,
       timeout: 10000,
     });
 

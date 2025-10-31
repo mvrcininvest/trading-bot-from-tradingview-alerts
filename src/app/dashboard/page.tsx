@@ -303,21 +303,25 @@ export default function DashboardPage() {
           credsToUse.apiSecret
         );
         
-        const baseUrl = credsToUse.environment === "demo"
-          ? "https://www.okx.com"
-          : "https://www.okx.com";
-        
+        const baseUrl = "https://www.okx.com";
         const url = `${baseUrl}${requestPath}${queryString}`;
+        
+        const headers: Record<string, string> = {
+          "OK-ACCESS-KEY": credsToUse.apiKey,
+          "OK-ACCESS-SIGN": signature,
+          "OK-ACCESS-TIMESTAMP": timestamp,
+          "OK-ACCESS-PASSPHRASE": credsToUse.passphrase || "",
+          "Content-Type": "application/json",
+        };
+        
+        // Add x-simulated-trading header for demo environment
+        if (credsToUse.environment === "demo") {
+          headers["x-simulated-trading"] = "1";
+        }
         
         const response = await fetch(url, {
           method: "GET",
-          headers: {
-            "OK-ACCESS-KEY": credsToUse.apiKey,
-            "OK-ACCESS-SIGN": signature,
-            "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": credsToUse.passphrase || "",
-            "Content-Type": "application/json",
-          },
+          headers,
         });
 
         const data = await response.json();

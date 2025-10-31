@@ -151,16 +151,23 @@ async function getOkxBalance(
     .update(signString)
     .digest("base64");
 
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+  };
+
+  // Add x-simulated-trading header for demo environment
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+
   const response = await fetch(
     `${OKX_BASE_URL}${requestPath}`,
     {
-      headers: {
-        "OK-ACCESS-KEY": apiKey,
-        "OK-ACCESS-SIGN": signature,
-        "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS-PASSPHRASE": passphrase,
-        "Content-Type": "application/json",
-      },
+      headers,
     }
   );
 

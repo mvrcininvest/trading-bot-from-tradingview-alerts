@@ -150,6 +150,58 @@ async function makeBybitRequest(
   return { response, data };
 }
 
+// Helper function for OKX API calls
+async function makeOkxRequest(
+  url: string,
+  method: string,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  body?: any,
+  alertId?: number
+) {
+  const timestamp = new Date().toISOString();
+  const requestPath = url.replace('https://www.okx.com', '');
+  const bodyString = body ? JSON.stringify(body) : '';
+  
+  const signString = timestamp + method + requestPath + bodyString;
+  const signature = crypto
+    .createHmac('sha256', apiSecret)
+    .update(signString)
+    .digest('base64');
+
+  const headers: Record<string, string> = {
+    'OK-ACCESS-KEY': apiKey,
+    'OK-ACCESS-SIGN': signature,
+    'OK-ACCESS-TIMESTAMP': timestamp,
+    'OK-ACCESS-PASSPHRASE': passphrase,
+    'Content-Type': 'application/json',
+  };
+
+  if (demo) {
+    headers['x-simulated-trading'] = '1';
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: bodyString || undefined,
+  });
+
+  const responseText = await response.text();
+  console.log(`📥 OKX Response (${response.status}):`, responseText.substring(0, 500));
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    throw new Error(`Nieprawidłowa odpowiedź JSON od OKX: ${responseText.substring(0, 200)}`);
+  }
+
+  return { response, data };
+}
+
 export async function POST(request: Request) {
   try {
     // KROK 1: Sprawdź raw body dla debugowania
@@ -803,14 +855,13 @@ export async function POST(request: Request) {
     console.log(`💰 Position size: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
 
     // ============================================
-    // 🚀 OPEN POSITION ON BYBIT (DIRECT API CALL)
+    // 🚀 OPEN POSITION ON EXCHANGE
     // ============================================
 
     try {
-      console.log(`🔧 Using Bybit environment: ${environment}`);
+      console.log(`🔧 Using ${exchange} environment: ${environment}`);
       console.log(`🔑 API Key preview: ${apiKey.substring(0, 8)}...`);
 
-      const baseUrl = getBybitBaseUrl(environment);
       const symbol = data.symbol;
       const side = data.side === "BUY" ? "Buy" : "Sell";
       const tpMode = botConfig.tpStrategy || "main_only";
@@ -818,123 +869,180 @@ export async function POST(request: Request) {
       await logToBot(
         'info',
         'position_opening',
-        `Opening position: ${symbol} ${side} ${leverage}x (env: ${environment})`,
-        { symbol, side, leverage, quantity, entryPrice, sl: slPrice, tp1: tp1Price, environment },
+        `Opening position: ${symbol} ${side} ${leverage}x (env: ${environment}, exchange: ${exchange})`,
+        { symbol, side, leverage, quantity, entryPrice, sl: slPrice, tp1: tp1Price, environment, exchange },
         alert.id
       );
 
-      // CRITICAL FIX: SET LEVERAGE FROM ALERT BEFORE OPENING POSITION
-      // Use makeBybitRequest() helper which works (same headers as market order)
-      // This ensures position uses the CORRECT leverage from the alert
-      
-      console.log(`🔧 Setting leverage ${leverage}x for ${symbol} (from alert)`);
-      
-      try {
-        const { data: leverageData } = await makeBybitRequest(
-          `${baseUrl}/v5/position/set-leverage`,
+      let orderId: string;
+
+      // ============================================
+      // Handle OKX
+      // ============================================
+      if (exchange === "okx") {
+        const baseUrl = 'https://www.okx.com';
+        
+        // Step 1: Set leverage if provided
+        if (leverage) {
+          try {
+            const { data: leverageData } = await makeOkxRequest(
+              `${baseUrl}/api/v5/account/set-leverage`,
+              'POST',
+              apiKey,
+              apiSecret,
+              botConfig.passphrase || '',
+              environment === "demo",
+              {
+                instId: symbol,
+                lever: leverage.toString(),
+                mgnMode: 'cross'
+              },
+              alert.id
+            );
+
+            if (leverageData.code !== '0') {
+              console.warn('OKX leverage setting warning:', leverageData.msg);
+              await logToBot('warning', 'leverage_set_warning', `OKX leverage warning: ${leverageData.msg}`, { leverageData }, alert.id);
+            }
+          } catch (leverageError: any) {
+            console.warn('⚠️ OKX leverage setting failed:', leverageError.message);
+            await logToBot('warning', 'leverage_set_failed', `OKX leverage failed: ${leverageError.message}`, { error: leverageError.message }, alert.id);
+          }
+        }
+
+        // Step 2: Open position (market order)
+        const orderPayload: any = {
+          instId: symbol,
+          tdMode: 'cross',
+          side: data.side.toLowerCase(),
+          ordType: 'market',
+          sz: quantity.toFixed(4),
+        };
+
+        // Add SL/TP if provided
+        if (slPrice) {
+          orderPayload.slTriggerPx = slPrice.toFixed(2);
+          orderPayload.slOrdPx = '-1'; // Market order for SL
+        }
+
+        if (tp1Price) {
+          orderPayload.tpTriggerPx = tp1Price.toFixed(2);
+          orderPayload.tpOrdPx = '-1'; // Market order for TP
+        }
+
+        const { data: orderData } = await makeOkxRequest(
+          `${baseUrl}/api/v5/trade/order`,
+          'POST',
+          apiKey,
+          apiSecret,
+          botConfig.passphrase || '',
+          environment === "demo",
+          orderPayload,
+          alert.id
+        );
+
+        if (orderData.code !== '0') {
+          throw new Error(`OKX order failed (code ${orderData.code}): ${orderData.msg}`);
+        }
+
+        orderId = orderData.data?.[0]?.ordId || 'unknown';
+        console.log('✅ OKX position opened:', orderId);
+      }
+      // ============================================
+      // Handle Bybit
+      // ============================================
+      else {
+        const baseUrl = getBybitBaseUrl(environment);
+        
+        // CRITICAL FIX: SET LEVERAGE FROM ALERT BEFORE OPENING POSITION
+        console.log(`🔧 Setting leverage ${leverage}x for ${symbol} (from alert)`);
+        
+        try {
+          const { data: leverageData } = await makeBybitRequest(
+            `${baseUrl}/v5/position/set-leverage`,
+            apiKey,
+            apiSecret,
+            {
+              category: "linear",
+              symbol,
+              buyLeverage: leverage.toString(),
+              sellLeverage: leverage.toString()
+            },
+            alert.id
+          );
+
+          if (leverageData.retCode === 0) {
+            console.log(`✅ Leverage set successfully: ${leverage}x`);
+          } else if (leverageData.retCode === 110043) {
+            console.log(`ℹ️ Leverage already set to ${leverage}x (code 110043)`);
+          } else {
+            console.warn(`⚠️ Leverage setting warning (code ${leverageData.retCode}): ${leverageData.retMsg}`);
+            await logToBot('warning', 'leverage_set_warning', `Leverage setting warning: ${leverageData.retMsg}`, { retCode: leverageData.retCode, retMsg: leverageData.retMsg, leverage }, alert.id);
+          }
+        } catch (leverageError: any) {
+          console.warn(`⚠️ Failed to set leverage: ${leverageError.message}`);
+          await logToBot('warning', 'leverage_set_failed', `Failed to set leverage ${leverage}x: ${leverageError.message}`, { error: leverageError.message, leverage, symbol }, alert.id);
+        }
+
+        // Step 1: Open Position (Market Order) - now with correct leverage
+        const { data: orderData } = await makeBybitRequest(
+          `${baseUrl}/v5/order/create`,
           apiKey,
           apiSecret,
           {
             category: "linear",
             symbol,
-            buyLeverage: leverage.toString(),
-            sellLeverage: leverage.toString()
+            side,
+            orderType: "Market",
+            qty: quantity.toFixed(4),
+            timeInForce: "GTC"
           },
           alert.id
         );
 
-        if (leverageData.retCode === 0) {
-          console.log(`✅ Leverage set successfully: ${leverage}x`);
-        } else if (leverageData.retCode === 110043) {
-          // Leverage already set to this value - not an error
-          console.log(`ℹ️ Leverage already set to ${leverage}x (code 110043)`);
-        } else {
-          console.warn(`⚠️ Leverage setting warning (code ${leverageData.retCode}): ${leverageData.retMsg}`);
-          await logToBot(
-            'warning',
-            'leverage_set_warning',
-            `Leverage setting warning: ${leverageData.retMsg}`,
-            { retCode: leverageData.retCode, retMsg: leverageData.retMsg, leverage },
-            alert.id
-          );
-        }
-      } catch (leverageError: any) {
-        // Log warning but continue - position will use existing leverage
-        console.warn(`⚠️ Failed to set leverage: ${leverageError.message}`);
-        await logToBot(
-          'warning',
-          'leverage_set_failed',
-          `Failed to set leverage ${leverage}x: ${leverageError.message}`,
-          { error: leverageError.message, leverage, symbol },
-          alert.id
-        );
-      }
-
-      // Step 1: Open Position (Market Order) - now with correct leverage
-      const { data: orderData } = await makeBybitRequest(
-        `${baseUrl}/v5/order/create`,
-        apiKey,
-        apiSecret,
-        {
-          category: "linear",
-          symbol,
-          side,
-          orderType: "Market",
-          qty: quantity.toFixed(4),
-          timeInForce: "GTC"
-        },
-        alert.id
-      );
-
-      if (orderData.retCode !== 0) {
-        throw new Error(`Bybit order failed (retCode ${orderData.retCode}): ${orderData.retMsg}`);
-      }
-
-      const orderId = orderData.result?.orderId;
-      console.log("✅ Position opened on Bybit:", orderId);
-
-      // Step 3: Set SL/TP
-      if (slPrice || tp1Price) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        const tpslParams: any = {
-          category: "linear",
-          symbol,
-          positionIdx: 0
-        };
-
-        if (slPrice) {
-          tpslParams.stopLoss = slPrice.toFixed(2);
+        if (orderData.retCode !== 0) {
+          throw new Error(`Bybit order failed (retCode ${orderData.retCode}): ${orderData.retMsg}`);
         }
 
-        if (tpMode === "multiple" && tp1Price) {
-          tpslParams.takeProfit = tp1Price.toFixed(2);
-        } else if (tp1Price) {
-          tpslParams.takeProfit = tp1Price.toFixed(2);
-        }
+        orderId = orderData.result?.orderId || 'unknown';
+        console.log("✅ Position opened on Bybit:", orderId);
 
-        try {
-          const { data: tpslData } = await makeBybitRequest(
-            `${baseUrl}/v5/position/trading-stop`,
-            apiKey,
-            apiSecret,
-            tpslParams,
-            alert.id
-          );
+        // Step 3: Set SL/TP for Bybit
+        if (slPrice || tp1Price) {
+          await new Promise(resolve => setTimeout(resolve, 500));
 
-          if (tpslData.retCode !== 0) {
-            console.warn("⚠️ SL/TP setting warning:", tpslData.retMsg);
-            await logToBot(
-              'warning',
-              'sl_tp_set_warning',
-              `SL/TP setting warning: ${tpslData.retMsg}`,
-              { retCode: tpslData.retCode, retMsg: tpslData.retMsg, sl: slPrice, tp: tp1Price },
+          const tpslParams: any = {
+            category: "linear",
+            symbol,
+            positionIdx: 0
+          };
+
+          if (slPrice) {
+            tpslParams.stopLoss = slPrice.toFixed(2);
+          }
+
+          if (tpMode === "multiple" && tp1Price) {
+            tpslParams.takeProfit = tp1Price.toFixed(2);
+          } else if (tp1Price) {
+            tpslParams.takeProfit = tp1Price.toFixed(2);
+          }
+
+          try {
+            const { data: tpslData } = await makeBybitRequest(
+              `${baseUrl}/v5/position/trading-stop`,
+              apiKey,
+              apiSecret,
+              tpslParams,
               alert.id
             );
+
+            if (tpslData.retCode !== 0) {
+              console.warn("⚠️ SL/TP setting warning:", tpslData.retMsg);
+              await logToBot('warning', 'sl_tp_set_warning', `SL/TP setting warning: ${tpslData.retMsg}`, { retCode: tpslData.retCode, retMsg: tpslData.retMsg, sl: slPrice, tp: tp1Price }, alert.id);
+            }
+          } catch (tpslError: any) {
+            console.warn("⚠️ SL/TP setting failed:", tpslError.message);
           }
-        } catch (tpslError: any) {
-          console.warn("⚠️ SL/TP setting failed:", tpslError.message);
-          // Non-critical, position is already open
         }
       }
 
@@ -992,6 +1100,7 @@ export async function POST(request: Request) {
           entry: entryPrice,
           quantity: quantity,
           leverage: leverage,
+          exchange
         }),
         success: true,
         createdAt: new Date().toISOString(),
@@ -1001,7 +1110,7 @@ export async function POST(request: Request) {
       await logToBot(
         'success',
         'position_opened',
-        `✅ Position opened: ${symbol} ${side} ${leverage}x | Entry: ${entryPrice}`,
+        `✅ Position opened: ${symbol} ${side} ${leverage}x | Entry: ${entryPrice} (${exchange})`,
         {
           positionId: botPosition.id,
           orderId,
@@ -1015,7 +1124,8 @@ export async function POST(request: Request) {
           tp2: tp2Price,
           tp3: tp3Price,
           tier: data.tier,
-          environment
+          environment,
+          exchange
         },
         alert.id,
         botPosition.id
@@ -1035,6 +1145,7 @@ export async function POST(request: Request) {
           tp1: tp1Price,
           tp2: tp2Price,
           tp3: tp3Price,
+          exchange
         },
       });
     } catch (error: any) {
@@ -1056,7 +1167,7 @@ export async function POST(request: Request) {
         tier: data.tier,
         alertId: alert.id,
         reason: "exchange_error",
-        details: JSON.stringify({ error: error.message }),
+        details: JSON.stringify({ error: error.message, exchange }),
         success: false,
         errorMessage: error.message,
         createdAt: new Date().toISOString(),
@@ -1072,7 +1183,8 @@ export async function POST(request: Request) {
           symbol: data.symbol,
           side: data.side,
           tier: data.tier,
-          environment
+          environment,
+          exchange
         },
         alert.id
       );
