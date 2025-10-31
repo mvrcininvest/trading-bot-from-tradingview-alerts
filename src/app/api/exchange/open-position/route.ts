@@ -26,16 +26,15 @@ async function makeBybitRequest(url: string, apiKey: string, apiSecret: string, 
 
   console.log("🔑 Bybit Request:", { url, timestamp, payload: payloadString });
 
+  // CRITICAL FIX: Use MINIMAL headers - exactly like working client-side code
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Accept": "application/json",
       "X-BAPI-API-KEY": apiKey,
       "X-BAPI-TIMESTAMP": timestamp.toString(),
       "X-BAPI-SIGN": signature,
-      "X-BAPI-RECV-WINDOW": "5000",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "X-BAPI-RECV-WINDOW": "5000"
     },
     body: payloadString
   });
