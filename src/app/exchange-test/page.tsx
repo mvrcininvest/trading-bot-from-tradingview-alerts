@@ -21,14 +21,17 @@ interface ConnectionResult {
 }
 
 type BybitEnvironment = "mainnet" | "testnet" | "demo";
+type OkxEnvironment = "mainnet" | "demo";
 
 export default function ExchangeTestPage() {
   const router = useRouter();
-  const [exchange, setExchange] = useState<"binance" | "bybit">("binance");
+  const [exchange, setExchange] = useState<"binance" | "bybit" | "okx">("binance");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [passphrase, setPassphrase] = useState("");
   const [testnet, setTestnet] = useState(true);
   const [bybitEnv, setBybitEnv] = useState<BybitEnvironment>("demo");
+  const [okxEnv, setOkxEnv] = useState<OkxEnvironment>("demo");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [savedWithoutTest, setSavedWithoutTest] = useState(false);
@@ -47,11 +50,14 @@ export default function ExchangeTestPage() {
             setExchange(creds.exchange || "binance");
             setApiKey(creds.apiKey || "");
             setApiSecret(creds.apiSecret || "");
+            setPassphrase(creds.passphrase || "");
             
             if (creds.exchange === "binance") {
               setTestnet(creds.environment === "testnet");
-            } else {
+            } else if (creds.exchange === "bybit") {
               setBybitEnv(creds.environment || "demo");
+            } else if (creds.exchange === "okx") {
+              setOkxEnv(creds.environment === "demo" ? "demo" : "mainnet");
             }
             console.log("✅ Credentials loaded from database");
             return;
@@ -65,11 +71,14 @@ export default function ExchangeTestPage() {
           setExchange(creds.exchange || "binance");
           setApiKey(creds.apiKey || "");
           setApiSecret(creds.apiSecret || "");
+          setPassphrase(creds.passphrase || "");
           
           if (creds.exchange === "binance") {
             setTestnet(creds.environment === "testnet");
-          } else {
+          } else if (creds.exchange === "bybit") {
             setBybitEnv(creds.environment || "demo");
+          } else if (creds.exchange === "okx") {
+            setOkxEnv(creds.environment === "demo" ? "demo" : "mainnet");
           }
           console.log("✅ Credentials loaded from localStorage");
         }
@@ -87,15 +96,17 @@ export default function ExchangeTestPage() {
     setSavedWithoutTest(false);
 
     try {
-      const payload = exchange === "binance" 
-        ? { exchange, apiKey, apiSecret, testnet }
-        : { 
-            exchange, 
-            apiKey, 
-            apiSecret, 
-            testnet: bybitEnv === "testnet",
-            demo: bybitEnv === "demo"
-          };
+      let payload: any = { exchange, apiKey, apiSecret };
+
+      if (exchange === "binance") {
+        payload.testnet = testnet;
+      } else if (exchange === "bybit") {
+        payload.testnet = bybitEnv === "testnet";
+        payload.demo = bybitEnv === "demo";
+      } else if (exchange === "okx") {
+        payload.demo = okxEnv === "demo";
+        payload.passphrase = passphrase;
+      }
 
       const response = await fetch("/api/exchange/test-connection", {
         method: "POST",
@@ -123,11 +134,21 @@ export default function ExchangeTestPage() {
     });
     
     // Save keys to localStorage AND database
+    let environment: string;
+    if (exchange === "binance") {
+      environment = testnet ? "testnet" : "mainnet";
+    } else if (exchange === "bybit") {
+      environment = bybitEnv;
+    } else {
+      environment = okxEnv;
+    }
+
     const credentials = {
       exchange,
       apiKey,
       apiSecret,
-      environment: exchange === "binance" ? (testnet ? "testnet" : "mainnet") : bybitEnv,
+      passphrase: exchange === "okx" ? passphrase : undefined,
+      environment,
       savedAt: new Date().toISOString()
     };
     
@@ -142,6 +163,7 @@ export default function ExchangeTestPage() {
         body: JSON.stringify({
           apiKey: credentials.apiKey,
           apiSecret: credentials.apiSecret,
+          passphrase: credentials.passphrase,
           exchange: credentials.exchange,
           environment: credentials.environment
         })
@@ -203,10 +225,11 @@ export default function ExchangeTestPage() {
             <CardDescription className="text-gray-400">Wprowadź klucze API z wybranej giełdy</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Tabs value={exchange} onValueChange={(v) => setExchange(v as "binance" | "bybit")}>
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs value={exchange} onValueChange={(v) => setExchange(v as "binance" | "bybit" | "okx")}>
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="binance" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Binance</TabsTrigger>
                 <TabsTrigger value="bybit" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Bybit</TabsTrigger>
+                <TabsTrigger value="okx" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">OKX</TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -235,6 +258,21 @@ export default function ExchangeTestPage() {
                 />
               </div>
 
+              {exchange === "okx" && (
+                <div className="space-y-2">
+                  <Label htmlFor="passphrase" className="text-gray-300">Passphrase</Label>
+                  <Input
+                    id="passphrase"
+                    type="password"
+                    placeholder="Wprowadź swoje Passphrase"
+                    value={passphrase}
+                    onChange={(e) => setPassphrase(e.target.value)}
+                    className="bg-gray-800 border-gray-700 text-gray-300"
+                  />
+                  <p className="text-xs text-gray-500">Passphrase utworzone podczas tworzenia klucza API</p>
+                </div>
+              )}
+
               {exchange === "binance" ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -248,7 +286,7 @@ export default function ExchangeTestPage() {
                     Użyj Testnet (zalecane do testów)
                   </Label>
                 </div>
-              ) : (
+              ) : exchange === "bybit" ? (
                 <div className="space-y-3">
                   <Label className="text-gray-300">Środowisko Bybit</Label>
                   <RadioGroup value={bybitEnv} onValueChange={(v) => setBybitEnv(v as BybitEnvironment)}>
@@ -272,12 +310,30 @@ export default function ExchangeTestPage() {
                     </div>
                   </RadioGroup>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  <Label className="text-gray-300">Środowisko OKX</Label>
+                  <RadioGroup value={okxEnv} onValueChange={(v) => setOkxEnv(v as OkxEnvironment)}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="mainnet" id="okx-mainnet" className="bg-gray-800 border-gray-700 text-gray-300" />
+                      <Label htmlFor="okx-mainnet" className="text-gray-300 cursor-pointer font-normal">
+                        <span className="font-semibold text-gray-200">Mainnet</span> - Prawdziwe konto produkcyjne
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="demo" id="okx-demo" className="bg-gray-800 border-gray-700 text-gray-300" />
+                      <Label htmlFor="okx-demo" className="text-gray-300 cursor-pointer font-normal">
+                        <span className="font-semibold text-gray-200">Demo</span> - Demo Trading (prawdziwa płynność, środowisko testowe)
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
               )}
 
               <div className="flex gap-3">
                 <Button 
                   onClick={testConnection} 
-                  disabled={loading || !apiKey || !apiSecret}
+                  disabled={loading || !apiKey || !apiSecret || (exchange === "okx" && !passphrase)}
                   className="flex-1 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white"
                 >
                   {loading ? (
@@ -292,7 +348,7 @@ export default function ExchangeTestPage() {
                 
                 <Button 
                   onClick={saveWithoutTesting}
-                  disabled={loading || !apiKey || !apiSecret}
+                  disabled={loading || !apiKey || !apiSecret || (exchange === "okx" && !passphrase)}
                   variant="outline"
                   className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
                 >
@@ -305,6 +361,16 @@ export default function ExchangeTestPage() {
                   <AlertTriangle className="h-5 w-5 text-red-500" />
                   <AlertDescription className="text-sm text-gray-300">
                     <strong className="text-red-500">UWAGA:</strong> Używasz prawdziwego konta Bybit Mainnet. 
+                    Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {exchange === "okx" && okxEnv === "mainnet" && (
+                <Alert className="border-red-500 bg-red-500/10">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <AlertDescription className="text-sm text-gray-300">
+                    <strong className="text-red-500">UWAGA:</strong> Używasz prawdziwego konta OKX Mainnet. 
                     Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
                   </AlertDescription>
                 </Alert>
@@ -393,6 +459,13 @@ export default function ExchangeTestPage() {
               <li><strong>Demo Account:</strong> Zaloguj się na Bybit → Przełącz na "Demo Trading" → API Management → Utwórz klucz (może być blokowane przez CloudFlare)</li>
               <li><strong>Testnet (mniejsza płynność):</strong> Zarejestruj się na <a href="https://testnet.bybit.com/" target="_blank" className="text-primary underline">testnet.bybit.com</a> → API Management</li>
               <li>Włącz uprawnienia tradingu przy tworzeniu klucza</li>
+            </ol>
+            <p className="mt-4"><strong>OKX:</strong></p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li><strong>Demo Trading (zalecane do testów):</strong> Zaloguj się na OKX → Trading → Demo Trading → Personal Center → Create Demo APIKey</li>
+              <li><strong>Mainnet:</strong> Użyj prawdziwego konta OKX → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
+              <li>Włącz uprawnienia: "Trade" przy tworzeniu klucza</li>
+              <li><strong>WAŻNE:</strong> Zapisz Passphrase - nie możesz go później odzyskać!</li>
             </ol>
           </CardContent>
         </Card>

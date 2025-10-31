@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { botSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
-const VALID_EXCHANGES = ['bybit', 'binance'];
+const VALID_EXCHANGES = ['bybit', 'binance', 'okx'];
 const VALID_ENVIRONMENTS = ['demo', 'testnet', 'mainnet'];
 
 export async function GET(request: NextRequest) {
@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         credentials: {
           apiKey: '',
           apiSecret: '',
+          passphrase: '',
           exchange: 'bybit',
           environment: 'demo'
         }
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
       credentials: {
         apiKey: record.apiKey ?? '',
         apiSecret: record.apiSecret ?? '',
+        passphrase: record.passphrase ?? '',
         exchange: record.exchange ?? 'bybit',
         environment: record.environment ?? 'demo'
       }
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, apiSecret, exchange, environment } = body;
+    const { apiKey, apiSecret, passphrase, exchange, environment } = body;
 
     if (exchange !== undefined && exchange !== '' && !VALID_EXCHANGES.includes(exchange)) {
       return NextResponse.json({
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest) {
         botEnabled: false,
         apiKey: apiKey || null,
         apiSecret: apiSecret || null,
+        passphrase: passphrase || null,
         exchange: exchange || 'bybit',
         environment: environment || 'demo',
         createdAt: new Date().toISOString(),
@@ -103,6 +106,10 @@ export async function POST(request: NextRequest) {
 
     if (apiSecret !== undefined) {
       updateData.apiSecret = apiSecret === '' ? null : apiSecret;
+    }
+
+    if (passphrase !== undefined) {
+      updateData.passphrase = passphrase === '' ? null : passphrase;
     }
 
     if (exchange !== undefined && exchange !== '') {

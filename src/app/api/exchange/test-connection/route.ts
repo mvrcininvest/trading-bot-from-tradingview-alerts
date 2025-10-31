@@ -3,9 +3,10 @@ import crypto from "crypto";
 import axios from "axios";
 
 interface TestConnectionRequest {
-  exchange: "binance" | "bybit";
+  exchange: "binance" | "bybit" | "okx";
   apiKey: string;
   apiSecret: string;
+  passphrase?: string;
   testnet: boolean;
   demo?: boolean;
 }
@@ -198,14 +199,91 @@ async function testBybitConnection(apiKey: string, apiSecret: string, testnet: b
   }
 }
 
+// OKX API test
+async function testOkxConnection(apiKey: string, apiSecret: string, passphrase: string, demo: boolean = false) {
+  // OKX uses same base URL for both demo and production
+  // Demo keys are distinguished by the API key itself
+  const baseUrl = "https://www.okx.com";
+  
+  const timestamp = new Date().toISOString();
+  const method = "GET";
+  const requestPath = "/api/v5/account/balance";
+  
+  // OKX signature: Base64(HMAC-SHA256(timestamp + method + requestPath, secretKey))
+  const signString = timestamp + method + requestPath;
+  const signature = crypto
+    .createHmac("sha256", apiSecret)
+    .update(signString)
+    .digest("base64");
+
+  const url = `${baseUrl}${requestPath}`;
+
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        "OK-ACCESS-KEY": apiKey,
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": passphrase,
+        "Content-Type": "application/json",
+      },
+      timeout: 10000,
+    });
+
+    const data = response.data;
+
+    if (data.code !== "0") {
+      return {
+        success: false,
+        message: `OKX API Error (${data.code}): ${data.msg || "Unknown error"}`,
+      };
+    }
+
+    // Extract balances
+    const balances = data.data?.[0]?.details?.map((detail: any) => ({
+      asset: detail.ccy,
+      free: detail.availBal || "0",
+      locked: detail.frozenBal || "0",
+    })) || [];
+
+    return {
+      success: true,
+      message: `✅ Połączenie z OKX ${demo ? "Demo" : "Mainnet"} udane! Konto jest gotowe do tradingu.`,
+      accountInfo: {
+        canTrade: true,
+        balances: balances.filter((b: any) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0),
+      },
+    };
+  } catch (error: any) {
+    if (error.response) {
+      const errorData = error.response.data;
+      return {
+        success: false,
+        message: `OKX API Error: ${errorData?.msg || error.response.statusText} (Code: ${errorData?.code || error.response.status})`,
+      };
+    }
+    return {
+      success: false,
+      message: `Błąd połączenia: ${error.message}`,
+    };
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: TestConnectionRequest = await request.json();
-    const { exchange, apiKey, apiSecret, testnet, demo } = body;
+    const { exchange, apiKey, apiSecret, passphrase, testnet, demo } = body;
 
     if (!apiKey || !apiSecret) {
       return NextResponse.json(
         { success: false, message: "API Key i Secret są wymagane" },
+        { status: 400 }
+      );
+    }
+
+    if (exchange === "okx" && !passphrase) {
+      return NextResponse.json(
+        { success: false, message: "Passphrase jest wymagane dla OKX" },
         { status: 400 }
       );
     }
@@ -216,6 +294,8 @@ export async function POST(request: NextRequest) {
       result = await testBinanceConnection(apiKey, apiSecret, testnet);
     } else if (exchange === "bybit") {
       result = await testBybitConnection(apiKey, apiSecret, testnet, demo);
+    } else if (exchange === "okx") {
+      result = await testOkxConnection(apiKey, apiSecret, passphrase!, demo);
     } else {
       return NextResponse.json(
         { success: false, message: "Nieobsługiwana giełda" },

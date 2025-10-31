@@ -6,6 +6,7 @@ const BINANCE_MAINNET_URL = "https://api.binance.com";
 const BYBIT_TESTNET_URL = "https://api-testnet.bybit.com";
 const BYBIT_DEMO_URL = "https://api-demo.bybit.com";
 const BYBIT_MAINNET_URL = "https://api.bybit.com";
+const OKX_BASE_URL = "https://www.okx.com";
 
 function createBybitSignature(
   apiKey: string,
@@ -133,14 +134,87 @@ async function getBybitBalance(
   };
 }
 
+async function getOkxBalance(
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean
+) {
+  const timestamp = new Date().toISOString();
+  const method = "GET";
+  const requestPath = "/api/v5/account/balance";
+  
+  // OKX signature: Base64(HMAC-SHA256(timestamp + method + requestPath, secretKey))
+  const signString = timestamp + method + requestPath;
+  const signature = crypto
+    .createHmac("sha256", apiSecret)
+    .update(signString)
+    .digest("base64");
+
+  const response = await fetch(
+    `${OKX_BASE_URL}${requestPath}`,
+    {
+      headers: {
+        "OK-ACCESS-KEY": apiKey,
+        "OK-ACCESS-SIGN": signature,
+        "OK-ACCESS-TIMESTAMP": timestamp,
+        "OK-ACCESS-PASSPHRASE": passphrase,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OKX API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+
+  if (data.code !== "0") {
+    throw new Error(`OKX API error (${data.code}): ${data.msg || "Unknown error"}`);
+  }
+
+  // Extract balances from OKX response
+  const balances: Array<{ asset: string; free: string; locked: string }> = [];
+  
+  if (data.data?.[0]?.details) {
+    data.data[0].details.forEach((detail: any) => {
+      const free = parseFloat(detail.availBal || "0");
+      const locked = parseFloat(detail.frozenBal || "0");
+      
+      if (free > 0 || locked > 0) {
+        balances.push({
+          asset: detail.ccy,
+          free: free.toFixed(8),
+          locked: locked.toFixed(8),
+        });
+      }
+    });
+  }
+
+  return {
+    success: true,
+    balances,
+    canTrade: true,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { exchange, apiKey, apiSecret, testnet = false, demo = false } = body;
+    const { exchange, apiKey, apiSecret, passphrase, testnet = false, demo = false } = body;
 
     if (!exchange || !apiKey || !apiSecret) {
       return NextResponse.json(
         { success: false, message: "Brak wymaganych parametrów" },
+        { status: 400 }
+      );
+    }
+
+    if (exchange === "okx" && !passphrase) {
+      return NextResponse.json(
+        { success: false, message: "Passphrase jest wymagane dla OKX" },
         { status: 400 }
       );
     }
@@ -151,6 +225,8 @@ export async function POST(request: NextRequest) {
       result = await getBinanceBalance(apiKey, apiSecret, testnet);
     } else if (exchange === "bybit") {
       result = await getBybitBalance(apiKey, apiSecret, demo, testnet);
+    } else if (exchange === "okx") {
+      result = await getOkxBalance(apiKey, apiSecret, passphrase, demo);
     } else {
       return NextResponse.json(
         { success: false, message: "Nieobsługiwana giełda" },

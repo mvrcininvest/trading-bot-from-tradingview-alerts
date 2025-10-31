@@ -31,9 +31,10 @@ interface Position {
 }
 
 interface ExchangeCredentials {
-  exchange: "binance" | "bybit";
+  exchange: "binance" | "bybit" | "okx";
   apiKey: string;
   apiSecret: string;
+  passphrase?: string;
   environment: string;
   savedAt: string;
 }
@@ -257,6 +258,8 @@ export default function DashboardPage() {
         } else {
           setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
         }
+      } else if (credsToUse.exchange === "okx") {
+        setPositionsError("Pobieranie pozycji OKX będzie wkrótce dostępne");
       } else {
         setPositionsError("Pobieranie pozycji jest obecnie wspierane tylko dla Bybit");
       }
@@ -338,14 +341,18 @@ export default function DashboardPage() {
           setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
         }
       } else {
-        // Binance - use backend API
-        const payload = {
+        // Binance and OKX - use backend API
+        const payload: any = {
           exchange: credsToUse.exchange,
           apiKey: credsToUse.apiKey,
           apiSecret: credsToUse.apiSecret,
           testnet: credsToUse.environment === "testnet",
           demo: credsToUse.environment === "demo"
         };
+
+        if (credsToUse.exchange === "okx" && credsToUse.passphrase) {
+          payload.passphrase = credsToUse.passphrase;
+        }
 
         const response = await fetch("/api/exchange/get-balance", {
           method: "POST",
@@ -440,7 +447,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* CRITICAL WARNING for Demo Environment */}
-        {credentials.environment === "demo" && (
+        {credentials.environment === "demo" && credentials.exchange === "bybit" && (
           <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <AlertDescription className="text-sm text-red-200">
