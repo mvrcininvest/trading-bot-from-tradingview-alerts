@@ -866,9 +866,7 @@ export async function POST(request: Request) {
           side,
           orderType: "Market",
           qty: quantity.toFixed(4),
-          timeInForce: "GTC",
-          reduceOnly: false,
-          closeOnTrigger: false
+          timeInForce: "GTC"
         },
         alert.id
       );

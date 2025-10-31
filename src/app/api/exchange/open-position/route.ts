@@ -150,9 +150,7 @@ export async function POST(request: NextRequest) {
         side,
         orderType: "Market",
         qty: quantity,
-        timeInForce: "GTC",
-        reduceOnly: false,
-        closeOnTrigger: false
+        timeInForce: "GTC"
       }
     );
 
