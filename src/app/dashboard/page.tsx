@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -439,6 +439,33 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* CRITICAL WARNING for Demo Environment */}
+        {credentials.environment === "demo" && (
+          <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <AlertDescription className="text-sm text-red-200">
+              <strong className="text-red-300 text-base">⚠️ OSTRZEŻENIE: Używasz środowiska DEMO</strong>
+              <div className="mt-2 space-y-2">
+                <p className="font-medium">
+                  Bybit API Demo jest często <strong>blokowane przez CloudFlare/WAF</strong> dla requestów server-side (webhook, bot).
+                </p>
+                <p className="text-red-300 font-semibold">
+                  ❌ Webhook i automatyczny bot <u>NIE BĘDĄ DZIAŁAĆ</u> z Demo environment!
+                </p>
+                <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3">
+                  ✅ <strong>ROZWIĄZANIE:</strong> Przejdź do <Button 
+                    variant="link" 
+                    className="text-green-300 underline p-0 h-auto font-bold"
+                    onClick={() => router.push("/exchange-test")}
+                  >
+                    Konfiguracja API
+                  </Button> i zmień środowisko na <strong className="text-green-300">TESTNET</strong> lub <strong className="text-green-300">PRODUKCJA</strong>
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header with Quick Stats */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -453,7 +480,11 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <p className="text-sm text-gray-400 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    {credentials.exchange.toUpperCase()} · {credentials.environment}
+                    {credentials.exchange.toUpperCase()} · 
+                    <span className={credentials.environment === "demo" ? "text-red-400 font-bold" : ""}>
+                      {credentials.environment}
+                      {credentials.environment === "demo" && " ⚠️"}
+                    </span>
                   </p>
                   {botEnabled !== null && (
                     <Tooltip>
@@ -473,7 +504,9 @@ export default function DashboardPage() {
                       <TooltipContent>
                         <p className="max-w-xs">
                           {botEnabled 
-                            ? "Bot aktywnie monitoruje alerty z TradingView i automatycznie otwiera pozycje zgodne z ustawieniami" 
+                            ? credentials.environment === "demo"
+                              ? "⚠️ Bot włączony ale Demo environment może nie działać! Przełącz się na Testnet"
+                              : "Bot aktywnie monitoruje alerty z TradingView i automatycznie otwiera pozycje zgodne z ustawieniami"
                             : "Bot jest nieaktywny i nie będzie otwierał nowych pozycji. Przejdź do Ustawień Bota aby go włączyć"}
                         </p>
                       </TooltipContent>
