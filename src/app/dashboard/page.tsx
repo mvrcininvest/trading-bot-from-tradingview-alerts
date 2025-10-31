@@ -89,6 +89,16 @@ export default function DashboardPage() {
     const stored = localStorage.getItem("exchange_credentials");
     if (stored) {
       const creds = JSON.parse(stored);
+      
+      // 🔍 VALIDATION: Check if apiKey is UUID (invalid)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(creds.apiKey)) {
+        toast.error("⚠️ Wykryto błędne dane w localStorage! Klucz API to UUID zamiast prawdziwego klucza. Przejdź do Konfiguracji API i wprowadź prawdziwe klucze.");
+        console.error("❌ Invalid API key detected (UUID):", creds.apiKey);
+        // Don't set credentials - force user to reconfigure
+        return;
+      }
+      
       setCredentials(creds);
       // Auto-fetch balance and positions on mount
       fetchBalance(creds);
@@ -127,6 +137,14 @@ export default function DashboardPage() {
       return;
     }
 
+    // 🔍 VALIDATION: Check if apiKey is UUID (invalid)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(credentials.apiKey)) {
+      toast.error("❌ Błąd: API Key wygląda na UUID! Przejdź do Konfiguracji API i wprowadź PRAWDZIWE klucze OKX.");
+      console.error("❌ Cannot sync - API key is UUID:", credentials.apiKey);
+      return;
+    }
+
     setSyncingCredentials(true);
     try {
       console.log("🔄 Syncing credentials to database:", {
@@ -162,6 +180,14 @@ export default function DashboardPage() {
     } finally {
       setSyncingCredentials(false);
     }
+  };
+
+  const clearLocalStorageAndReconfigure = () => {
+    localStorage.removeItem("exchange_credentials");
+    toast.success("✅ localStorage wyczyszczony! Przekierowuję do konfiguracji...");
+    setTimeout(() => {
+      router.push("/exchange-test");
+    }, 1000);
   };
 
   const fetchBotStatus = async (silent = false) => {
@@ -564,7 +590,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-gray-400">
-              Nie znaleziono zapisanych kluczy API. Najpierw skonfiguruj połączenie z giełdą.
+              Nie znaleziono zapisanych kluczy API lub wykryto błędne dane. Najpierw skonfiguruj połączenie z giełdą.
             </p>
             <Button onClick={() => router.push("/exchange-test")} className="w-full">
               <Settings className="mr-2 h-4 w-4" />
@@ -617,24 +643,38 @@ export default function DashboardPage() {
                   Dashboard czyta z <strong>localStorage</strong>, ale webhook czyta z <strong>bazy danych</strong>.
                   Jeśli webhook używa niewłaściwej giełdy, kliknij przycisk aby zsynchronizować:
                 </p>
+                <p className="mt-2 text-xs text-blue-300">
+                  💡 Jeśli po kliknięciu dostaniesz błąd "UUID" - musisz przejść do Konfiguracji API i wprowadzić PRAWDZIWE klucze!
+                </p>
               </div>
-              <Button
-                onClick={syncCredentialsToDatabase}
-                disabled={syncingCredentials}
-                className="ml-4 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {syncingCredentials ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Sync do Bazy
-                  </>
-                )}
-              </Button>
+              <div className="ml-4 flex flex-col gap-2">
+                <Button
+                  onClick={syncCredentialsToDatabase}
+                  disabled={syncingCredentials}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {syncingCredentials ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Sync do Bazy
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={clearLocalStorageAndReconfigure}
+                  variant="outline"
+                  className="border-red-600 text-red-400 hover:bg-red-600/20"
+                  size="sm"
+                >
+                  <AlertCircle className="mr-2 h-3 w-3" />
+                  Wyczyść i Skonfiguruj
+                </Button>
+              </div>
             </div>
           </AlertDescription>
         </Alert>
