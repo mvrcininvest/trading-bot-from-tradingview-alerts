@@ -95,6 +95,17 @@ export default function ExchangeTestPage() {
     setResult(null);
     setSavedWithoutTest(false);
 
+    // 🔍 VALIDATION: Check if apiKey is UUID (invalid) BEFORE testing
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(apiKey)) {
+      setResult({
+        success: false,
+        message: `❌ BŁĄD: Wprowadzony API Key wygląda na UUID!\n\nUUID: ${apiKey}\n\nTo NIE JEST prawdziwy klucz API! Musisz wprowadzić PRAWDZIWY klucz API z ${exchange.toUpperCase()}.\n\n💡 Prawdziwe klucze API to długie stringi (30-50+ znaków) bez myślników w formacie UUID.`
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
       let payload: any = { exchange, apiKey, apiSecret };
 
