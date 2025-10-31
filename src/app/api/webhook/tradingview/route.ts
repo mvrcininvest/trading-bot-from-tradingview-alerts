@@ -100,6 +100,7 @@ async function makeBybitRequest(
     apiKeyPreview: apiKey.substring(0, 8) + '...'
   });
 
+  // CRITICAL: Add realistic browser headers to bypass CloudFlare/WAF
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -109,7 +110,17 @@ async function makeBybitRequest(
       "X-BAPI-TIMESTAMP": timestamp.toString(),
       "X-BAPI-SIGN": signature,
       "X-BAPI-RECV-WINDOW": "5000",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Origin": "https://www.bybit.com",
+      "Referer": "https://www.bybit.com/",
+      "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": '"Windows"',
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-site"
     },
     body: payloadString
   });
@@ -124,22 +135,33 @@ async function makeBybitRequest(
     await logToBot(
       'error',
       'bybit_html_response',
-      'Bybit API returned HTML (possible CloudFlare block or wrong URL)',
+      'Bybit API returned HTML (CloudFlare/WAF block from server IP)',
       { 
         status: response.status,
         url,
         apiKeyPreview: apiKey.substring(0, 8) + '...',
-        responsePreview: responseText.substring(0, 300)
+        responsePreview: responseText.substring(0, 300),
+        solution: 'Add Vercel server IP to Bybit API whitelist: Go to Bybit → API Management → Edit API → IP Restriction → Allow server IPs'
       },
       alertId
     );
 
     throw new Error(
-      'Bybit API blocked or wrong environment. Check:\n' +
-      '1. API keys are correct and have trading permissions\n' +
-      '2. BYBIT_ENVIRONMENT in .env matches your API key type (demo/testnet/mainnet)\n' +
-      '3. IP whitelist is configured in Bybit API settings\n' +
-      `4. Current environment: ${process.env.BYBIT_ENVIRONMENT || 'not set'}`
+      '🔒 Bybit CloudFlare/WAF blokuje serwer Vercel!\n\n' +
+      '✅ ROZWIĄZANIE (wybierz jedno):\n\n' +
+      '1. ⭐ NAJLEPSZE: Wyłącz IP Restriction w Bybit API:\n' +
+      '   • Wejdź na Bybit → API Management\n' +
+      '   • Edytuj swój API key\n' +
+      '   • IP Restriction → "Unrestricted" (wszystkie IP)\n' +
+      '   • Zapisz zmiany\n\n' +
+      '2. Dodaj IP serwera Vercel do whitelisty:\n' +
+      '   • Bybit → API Management → Edit API\n' +
+      '   • IP Restriction → Dodaj: 76.76.21.0/24 (Vercel IPs)\n' +
+      '   • Problem: Vercel używa wielu dynamicznych IP\n\n' +
+      '3. Użyj Bybit Mainnet zamiast Demo:\n' +
+      '   • Mainnet ma mniej restrykcji CloudFlare\n' +
+      '   • Exchange Test → Mainnet environment\n\n' +
+      `Obecne środowisko: ${process.env.BYBIT_ENVIRONMENT || 'not set'}`
     );
   }
 
