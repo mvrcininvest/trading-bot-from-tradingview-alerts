@@ -112,6 +112,113 @@ async function verifyOkxSymbol(symbol: string): Promise<{ valid: boolean; sugges
 }
 
 // ============================================
+// 🔍 GET INSTRUMENT INFO FROM OKX
+// ============================================
+
+async function getOkxInstrumentInfo(symbol: string) {
+  try {
+    const response = await fetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${symbol}`);
+    const data = await response.json();
+    
+    if (data.code === '0' && data.data && data.data.length > 0) {
+      const instrument = data.data[0];
+      console.log(`📋 OKX Instrument Info for ${symbol}:`, JSON.stringify(instrument, null, 2));
+      
+      return {
+        instId: instrument.instId,
+        ctVal: parseFloat(instrument.ctVal), // Contract value (e.g., 0.01 for BTC)
+        ctValCcy: instrument.ctValCcy, // Contract value currency (e.g., BTC, USD)
+        lotSz: parseFloat(instrument.lotSz), // Lot size (minimum order quantity)
+        minSz: parseFloat(instrument.minSz), // Minimum order size
+        tickSz: parseFloat(instrument.tickSz), // Price tick size
+        ctType: instrument.ctType, // linear or inverse
+      };
+    }
+    
+    throw new Error(`Instrument ${symbol} not found on OKX`);
+  } catch (error) {
+    console.error(`❌ Failed to get instrument info for ${symbol}:`, error);
+    throw error;
+  }
+}
+
+// ============================================
+// 🔢 CALCULATE PROPER QUANTITY FOR OKX
+// ============================================
+
+function calculateOkxQuantity(
+  positionSizeUsd: number,
+  entryPrice: number,
+  instrumentInfo: any
+): { quantity: string; quantityNumber: number } {
+  const { ctVal, ctValCcy, lotSz, minSz, ctType } = instrumentInfo;
+  
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`🔢 CALCULATING OKX QUANTITY`);
+  console.log(`${'='.repeat(60)}`);
+  console.log(`   - Position Size (USD): ${positionSizeUsd}`);
+  console.log(`   - Entry Price: ${entryPrice}`);
+  console.log(`   - Contract Value: ${ctVal} ${ctValCcy}`);
+  console.log(`   - Contract Type: ${ctType}`);
+  console.log(`   - Lot Size: ${lotSz}`);
+  console.log(`   - Min Size: ${minSz}`);
+  
+  let contracts: number;
+  
+  if (ctType === 'linear' && ctValCcy === 'USD') {
+    // Linear USDT contracts (e.g., ETH-USDT-SWAP)
+    // Each contract = ctVal USD
+    contracts = positionSizeUsd / ctVal;
+  } else if (ctType === 'inverse') {
+    // Inverse contracts (e.g., BTC-USD-SWAP)
+    // Each contract = ctVal BTC
+    const btcAmount = positionSizeUsd / entryPrice;
+    contracts = btcAmount / ctVal;
+  } else {
+    // Linear coin contracts (e.g., some alts)
+    const coinAmount = positionSizeUsd / entryPrice;
+    contracts = coinAmount / ctVal;
+  }
+  
+  // Round to lot size
+  const roundedContracts = Math.floor(contracts / lotSz) * lotSz;
+  
+  console.log(`   - Raw contracts: ${contracts}`);
+  console.log(`   - Rounded contracts: ${roundedContracts}`);
+  console.log(`   - Minimum required: ${minSz}`);
+  
+  // Ensure minimum size
+  const finalContracts = Math.max(roundedContracts, minSz);
+  
+  if (finalContracts < minSz) {
+    throw new Error(`Calculated quantity ${finalContracts} is below minimum ${minSz} for ${instrumentInfo.instId}`);
+  }
+  
+  console.log(`   ✅ Final contracts: ${finalContracts}`);
+  console.log(`${'='.repeat(60)}\n`);
+  
+  return {
+    quantity: finalContracts.toString(),
+    quantityNumber: finalContracts
+  };
+}
+
+// ============================================
+// 🎯 FORMAT PRICE WITH PROPER PRECISION
+// ============================================
+
+function formatOkxPrice(price: number, tickSize: number): string {
+  // Calculate decimal places from tick size
+  const decimals = tickSize.toString().includes('.') 
+    ? tickSize.toString().split('.')[1].length 
+    : 0;
+  
+  const formatted = price.toFixed(decimals);
+  console.log(`   💵 Price ${price} formatted to ${formatted} (tick: ${tickSize})`);
+  return formatted;
+}
+
+// ============================================
 // 🛠️ UTILITY FUNCTIONS
 // ============================================
 
@@ -220,10 +327,11 @@ async function makeOkxRequest(
 async function openOkxPosition(
   symbol: string,
   side: string,
-  quantity: number,
+  positionSizeUsd: number,
   leverage: number,
   slPrice: number | null,
   tp1Price: number | null,
+  entryPrice: number,
   apiKey: string,
   apiSecret: string,
   passphrase: string,
@@ -236,13 +344,21 @@ async function openOkxPosition(
   console.log(`📊 Input Parameters:`);
   console.log(`   - Original Symbol: ${symbol}`);
   console.log(`   - Side: ${side}`);
-  console.log(`   - Quantity: ${quantity}`);
+  console.log(`   - Position Size (USD): ${positionSizeUsd}`);
+  console.log(`   - Entry Price: ${entryPrice}`);
   console.log(`   - Leverage: ${leverage}x`);
   console.log(`   - Environment: ${demo ? 'DEMO' : 'PRODUCTION'}`);
   
   // ✅ Convert symbol to OKX format
   const okxSymbol = convertSymbolToOkx(symbol);
   console.log(`🔄 Symbol after conversion: ${okxSymbol}`);
+  
+  // ✅ Get instrument info for proper precision
+  console.log(`\n🔍 Fetching instrument specifications...`);
+  const instrumentInfo = await getOkxInstrumentInfo(okxSymbol);
+  
+  // ✅ Calculate proper quantity based on instrument specs
+  const { quantity, quantityNumber } = calculateOkxQuantity(positionSizeUsd, entryPrice, instrumentInfo);
   
   // ✅ Verify symbol exists on OKX
   const verification = await verifyOkxSymbol(okxSymbol);
@@ -261,6 +377,7 @@ async function openOkxPosition(
 
   // Step 1: Set leverage
   try {
+    console.log(`\n📏 Setting leverage to ${leverage}x...`);
     const { data: leverageData } = await makeOkxRequest(
       'POST',
       '/api/v5/account/set-leverage',
@@ -290,24 +407,27 @@ async function openOkxPosition(
   }
 
   // Step 2: Open position with SL/TP
+  console.log(`\n📈 Opening market position...`);
   const orderPayload: any = {
     instId: okxSymbol,
     tdMode: 'cross',
     side: side.toLowerCase(),
     ordType: 'market',
-    sz: quantity.toFixed(4),
+    sz: quantity,
   };
 
   if (slPrice) {
-    orderPayload.slTriggerPx = slPrice.toFixed(2);
+    const formattedSL = formatOkxPrice(slPrice, instrumentInfo.tickSz);
+    orderPayload.slTriggerPx = formattedSL;
     orderPayload.slOrdPx = '-1';
-    console.log(`🛑 Stop Loss set: ${slPrice.toFixed(2)}`);
+    console.log(`🛑 Stop Loss set: ${formattedSL}`);
   }
 
   if (tp1Price) {
-    orderPayload.tpTriggerPx = tp1Price.toFixed(2);
+    const formattedTP = formatOkxPrice(tp1Price, instrumentInfo.tickSz);
+    orderPayload.tpTriggerPx = formattedTP;
     orderPayload.tpOrdPx = '-1';
-    console.log(`🎯 Take Profit set: ${tp1Price.toFixed(2)}`);
+    console.log(`🎯 Take Profit set: ${formattedTP}`);
   }
 
   console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
@@ -323,9 +443,21 @@ async function openOkxPosition(
     alertId
   );
 
+  console.log(`📥 Full order response:`, JSON.stringify(orderData, null, 2));
+
   if (orderData.code !== '0') {
     const errorMsg = `OKX order failed (code ${orderData.code}): ${orderData.msg}`;
     console.error(`❌ ${errorMsg}`);
+    
+    // Log detailed error info
+    await logToBot('error', 'order_failed', errorMsg, { 
+      orderData,
+      orderPayload,
+      instrumentInfo,
+      positionSizeUsd,
+      calculatedQuantity: quantity
+    }, alertId);
+    
     throw new Error(errorMsg);
   }
 
@@ -336,7 +468,8 @@ async function openOkxPosition(
   console.log(`   - Order ID: ${orderId}`);
   console.log(`   - Symbol: ${okxSymbol}`);
   console.log(`   - Side: ${side}`);
-  console.log(`   - Quantity: ${quantity}`);
+  console.log(`   - Quantity (contracts): ${quantity}`);
+  console.log(`   - Position Size (USD): ${positionSizeUsd}`);
   console.log(`${'='.repeat(60)}\n`);
 
   await logToBot('success', 'position_opened', `OKX position opened: ${okxSymbol} ${side} ${leverage}x`, { 
@@ -344,12 +477,15 @@ async function openOkxPosition(
     symbol: okxSymbol, 
     side, 
     leverage, 
-    quantity, 
+    quantity,
+    quantityNumber,
+    positionSizeUsd,
     sl: slPrice, 
-    tp: tp1Price 
+    tp: tp1Price,
+    instrumentInfo
   }, alertId);
 
-  return orderId;
+  return { orderId, quantity: quantityNumber };
 }
 
 // ============================================
@@ -748,13 +884,14 @@ export async function POST(request: Request) {
         environment 
       }, alert.id);
 
-      const orderId = await openOkxPosition(
+      const { orderId, quantity: finalQuantity } = await openOkxPosition(
         symbol,
         side,
-        quantity,
+        positionSizeUsd,
         leverage,
         slPrice,
         tp1Price,
+        entryPrice,
         apiKey,
         apiSecret,
         passphrase,
@@ -767,7 +904,7 @@ export async function POST(request: Request) {
         symbol: data.symbol,
         side: data.side,
         entryPrice,
-        quantity,
+        quantity: finalQuantity,
         leverage,
         stopLoss: slPrice || 0,
         tp1Price,
@@ -812,7 +949,7 @@ export async function POST(request: Request) {
         symbol,
         side,
         leverage,
-        quantity,
+        quantity: finalQuantity,
         entryPrice,
         sl: slPrice,
         tp: tp1Price,
@@ -826,7 +963,7 @@ export async function POST(request: Request) {
         message: "Position opened successfully on OKX",
         exchange: "okx",
         environment,
-        position: { symbol, side, entry: entryPrice, quantity, sl: slPrice, tp: tp1Price }
+        position: { symbol, side, entry: entryPrice, quantity: finalQuantity, sl: slPrice, tp: tp1Price }
       });
     } catch (error: any) {
       console.error("❌ Position opening failed:", error);
