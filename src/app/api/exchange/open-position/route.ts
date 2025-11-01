@@ -16,6 +16,30 @@ function createOkxSignature(
   return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
 }
 
+// ============================================
+// 🔄 SYMBOL CONVERSION FOR OKX
+// ============================================
+
+function convertSymbolToOkx(symbol: string): string {
+  // If already in OKX format (contains hyphens), return as-is
+  if (symbol.includes('-')) {
+    return symbol;
+  }
+  
+  // Convert ETHUSDT -> ETH-USDT-SWAP
+  // Convert BTCUSDT -> BTC-USDT-SWAP
+  const match = symbol.match(/^([A-Z0-9]+)(USDT|USD)$/i);
+  
+  if (match) {
+    const [, base, quote] = match;
+    return `${base.toUpperCase()}-${quote.toUpperCase()}-SWAP`;
+  }
+  
+  // If format is unclear, return as-is and let OKX API handle it
+  console.warn(`⚠️ Unrecognized symbol format: ${symbol}, using as-is`);
+  return symbol;
+}
+
 async function makeOkxRequest(
   url: string,
   method: string,
@@ -80,6 +104,10 @@ async function openOkxPosition(
 ) {
   const baseUrl = 'https://www.okx.com';
   
+  // ✅ Convert symbol to OKX format
+  const okxSymbol = convertSymbolToOkx(symbol);
+  console.log(`🔄 Symbol conversion: ${symbol} -> ${okxSymbol}`);
+  
   // Step 1: Set leverage if provided
   if (leverage) {
     try {
@@ -91,16 +119,18 @@ async function openOkxPosition(
         passphrase,
         demo,
         {
-          instId: symbol,
+          instId: okxSymbol,
           lever: leverage,
           mgnMode: 'cross'
         }
       );
 
       if (leverageData.code !== '0') {
-        console.warn('OKX leverage setting warning:', leverageData.msg);
+        console.warn('⚠️ OKX leverage warning:', leverageData.msg);
+        // Log leverage data for debugging
+        console.log('📊 Leverage data:', JSON.stringify(leverageData, null, 2));
       } else {
-        console.log(`✅ OKX leverage set: ${leverage}x`);
+        console.log(`✅ OKX leverage set: ${leverage}x for ${okxSymbol}`);
       }
     } catch (leverageError: any) {
       console.warn('⚠️ OKX leverage setting failed:', leverageError.message);
@@ -109,7 +139,7 @@ async function openOkxPosition(
 
   // Step 2: Open position (market order)
   const orderPayload: any = {
-    instId: symbol,
+    instId: okxSymbol,
     tdMode: 'cross',
     side: side.toLowerCase() === 'buy' ? 'buy' : 'sell',
     ordType: 'market',
@@ -126,6 +156,8 @@ async function openOkxPosition(
     orderPayload.tpTriggerPx = takeProfit;
     orderPayload.tpOrdPx = '-1'; // Market order for TP
   }
+
+  console.log('📤 Opening OKX position with payload:', JSON.stringify(orderPayload, null, 2));
 
   const { data: orderData } = await makeOkxRequest(
     `${baseUrl}/api/v5/trade/order`,
@@ -147,13 +179,13 @@ async function openOkxPosition(
   return {
     success: true,
     orderId,
-    symbol,
+    symbol: okxSymbol,
     side,
     quantity,
     leverage,
     stopLoss,
     takeProfit,
-    message: 'Position opened successfully on OKX'
+    message: `Position opened successfully on OKX for ${okxSymbol}`
   };
 }
 
