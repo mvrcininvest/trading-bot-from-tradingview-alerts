@@ -91,6 +91,12 @@ export default function DashboardPage() {
       const creds = JSON.parse(stored);
       
       setCredentials(creds);
+      
+      // ✅ AUTO-SYNC: If passphrase exists in localStorage but not in database, sync it
+      if (creds.passphrase) {
+        syncCredentialsToDatabase(creds);
+      }
+      
       // Auto-fetch balance and positions on mount
       fetchBalance(creds);
       fetchPositions(creds);
@@ -122,38 +128,38 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [credentials]);
 
-  const syncCredentialsToDatabase = async () => {
-    if (!credentials) {
+  const syncCredentialsToDatabase = async (credsOverride?: ExchangeCredentials) => {
+    const credsToUse = credsOverride || credentials;
+    if (!credsToUse) {
       toast.error("Brak credentials do synchronizacji");
       return;
     }
 
-    // Removed UUID validation - OKX demo keys can look like UUIDs!
-
     setSyncingCredentials(true);
     try {
       console.log("🔄 Syncing credentials to database:", {
-        exchange: credentials.exchange,
-        environment: credentials.environment,
-        apiKeyPreview: credentials.apiKey.substring(0, 8) + "..."
+        exchange: credsToUse.exchange,
+        environment: credsToUse.environment,
+        apiKeyPreview: credsToUse.apiKey.substring(0, 8) + "...",
+        hasPassphrase: !!credsToUse.passphrase
       });
 
       const response = await fetch("/api/bot/credentials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          apiKey: credentials.apiKey,
-          apiSecret: credentials.apiSecret,
-          passphrase: credentials.passphrase,
-          exchange: credentials.exchange,
-          environment: credentials.environment
+          apiKey: credsToUse.apiKey,
+          apiSecret: credsToUse.apiSecret,
+          passphrase: credsToUse.passphrase,
+          exchange: credsToUse.exchange,
+          environment: credsToUse.environment
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        toast.success(`✅ Credentials ${credentials.exchange.toUpperCase()} zapisane do bazy danych!`);
+        toast.success(`✅ Credentials ${credsToUse.exchange.toUpperCase()} zapisane do bazy danych!`);
         console.log("✅ Database sync successful");
       } else {
         toast.error(`❌ Błąd zapisu: ${data.error}`);
