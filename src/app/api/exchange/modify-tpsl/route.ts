@@ -1,27 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
-// Helper function to sign Bybit request
-function signBybitRequest(
-  apiKey: string,
-  apiSecret: string,
-  timestamp: number,
-  params: Record<string, any>
+// ============================================
+// 🔐 OKX SIGNATURE HELPER
+// ============================================
+
+function signOkxRequest(
+  timestamp: string,
+  method: string,
+  requestPath: string,
+  body: string,
+  apiSecret: string
 ): string {
-  const queryString = Object.keys(params)
-    .sort()
-    .map(key => `${key}=${params[key]}`)
-    .join("&");
-  
-  const signString = timestamp + apiKey + 5000 + queryString;
-  
-  const signature = crypto
+  const message = timestamp + method + requestPath + body;
+  return crypto
     .createHmac("sha256", apiSecret)
-    .update(signString)
-    .digest("hex");
-  
-  return signature;
+    .update(message)
+    .digest("base64");
 }
+
+// ============================================
+// 📨 POST ENDPOINT - MODIFY TP/SL (OKX ONLY)
+// ============================================
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,246 +30,99 @@ export async function POST(req: NextRequest) {
       exchange,
       apiKey,
       apiSecret,
+      passphrase,
       environment,
       symbol,
-      side, // "Buy" or "Sell" - current position side
       stopLoss, // new SL (optional)
-      takeProfit, // new main TP (optional)
-      tp2, // new TP2 (optional, for limit orders)
-      tp3, // new TP3 (optional, for limit orders)
-      oldTp2OrderLinkId, // old TP2 order to cancel
-      oldTp3OrderLinkId, // old TP3 order to cancel
-      positionQty, // current position quantity (needed for TP2/TP3 calculation)
+      takeProfit, // new TP (optional)
     } = body;
 
-    if (!exchange || !apiKey || !apiSecret || !symbol || !side) {
+    if (!exchange || !apiKey || !apiSecret || !symbol) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    if (exchange !== "bybit") {
+    // Only support OKX
+    if (exchange !== "okx") {
       return NextResponse.json(
-        { success: false, message: "Only Bybit is supported for now" },
+        { success: false, message: "Only OKX is supported. Update your exchange to OKX." },
         { status: 400 }
       );
     }
 
-    const baseUrl =
-      environment === "demo"
-        ? "https://api-demo.bybit.com"
-        : environment === "testnet"
-        ? "https://api-testnet.bybit.com"
-        : "https://api.bybit.com";
+    if (!passphrase) {
+      return NextResponse.json(
+        { success: false, message: "Passphrase is required for OKX" },
+        { status: 400 }
+      );
+    }
+
+    const baseUrl = "https://www.okx.com";
+    const demo = environment === "demo";
 
     const results: any = {
-      mainTpSlUpdated: false,
-      tp2Updated: false,
-      tp3Updated: false,
+      tpSlUpdated: false,
       errors: [],
     };
 
-    // Step 1: Modify main TP/SL using trading-stop
+    // Modify TP/SL using amend-order endpoint
     if (stopLoss || takeProfit) {
       try {
-        const timestamp = Date.now();
-        const tradingStopParams: Record<string, any> = {
-          category: "linear",
-          symbol: symbol,
-          positionIdx: 0, // One-Way Mode
+        const timestamp = new Date().toISOString();
+        const requestPath = "/api/v5/trade/amend-algos";
+        
+        const amendPayload: any = {
+          instId: symbol,
         };
 
         if (stopLoss) {
-          tradingStopParams.stopLoss = stopLoss;
-          tradingStopParams.slTriggerBy = "MarkPrice";
+          amendPayload.slTriggerPx = stopLoss;
+          amendPayload.slOrdPx = "-1"; // Market order
         }
 
         if (takeProfit) {
-          tradingStopParams.takeProfit = takeProfit;
-          tradingStopParams.tpTriggerBy = "MarkPrice";
+          amendPayload.tpTriggerPx = takeProfit;
+          amendPayload.tpOrdPx = "-1"; // Market order
         }
 
-        const signature = signBybitRequest(
-          apiKey,
-          apiSecret,
-          timestamp,
-          tradingStopParams
-        );
+        const bodyString = JSON.stringify(amendPayload);
+        const signature = signOkxRequest(timestamp, "POST", requestPath, bodyString, apiSecret);
 
-        const response = await fetch(`${baseUrl}/v5/position/trading-stop`, {
+        const headers: Record<string, string> = {
+          "OK-ACCESS-KEY": apiKey,
+          "OK-ACCESS-SIGN": signature,
+          "OK-ACCESS-TIMESTAMP": timestamp,
+          "OK-ACCESS-PASSPHRASE": passphrase,
+          "Content-Type": "application/json",
+        };
+
+        if (demo) {
+          headers["x-simulated-trading"] = "1";
+        }
+
+        const response = await fetch(`${baseUrl}${requestPath}`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": timestamp.toString(),
-            "X-BAPI-SIGN": signature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-          body: JSON.stringify(tradingStopParams),
+          headers,
+          body: bodyString,
         });
 
         const data = await response.json();
 
-        if (data.retCode === 0) {
-          results.mainTpSlUpdated = true;
-          console.log("✅ Main TP/SL updated successfully");
+        if (data.code === "0") {
+          results.tpSlUpdated = true;
+          console.log("✅ OKX TP/SL updated successfully");
         } else {
-          results.errors.push(`Main TP/SL update failed: ${data.retMsg}`);
+          results.errors.push(`TP/SL update failed: ${data.msg}`);
         }
       } catch (err) {
-        results.errors.push(`Error updating main TP/SL: ${err instanceof Error ? err.message : "Unknown"}`);
-      }
-    }
-
-    // Step 2: Update TP2 (cancel old, create new)
-    if (tp2 && positionQty) {
-      try {
-        // Cancel old TP2 if exists
-        if (oldTp2OrderLinkId) {
-          const timestamp = Date.now();
-          const cancelParams = {
-            category: "linear",
-            symbol: symbol,
-            orderLinkId: oldTp2OrderLinkId,
-          };
-
-          const cancelSignature = signBybitRequest(apiKey, apiSecret, timestamp, cancelParams);
-
-          await fetch(`${baseUrl}/v5/order/cancel`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-BAPI-API-KEY": apiKey,
-              "X-BAPI-TIMESTAMP": timestamp.toString(),
-              "X-BAPI-SIGN": cancelSignature,
-              "X-BAPI-RECV-WINDOW": "5000",
-            },
-            body: JSON.stringify(cancelParams),
-          });
-        }
-
-        // Create new TP2
-        const timestamp = Date.now();
-        const tp2Qty = (parseFloat(positionQty) * 0.3).toFixed(3); // 30% of position
-        const closeSide = side === "Buy" ? "Sell" : "Buy";
-
-        const tp2Params = {
-          category: "linear",
-          symbol: symbol,
-          side: closeSide,
-          orderType: "Limit",
-          qty: tp2Qty,
-          price: tp2,
-          reduceOnly: true,
-          positionIdx: 0,
-          timeInForce: "GoodTillCancel",
-          orderLinkId: `tp2_${Date.now()}`,
-        };
-
-        const tp2Signature = signBybitRequest(apiKey, apiSecret, timestamp, tp2Params);
-
-        const tp2Response = await fetch(`${baseUrl}/v5/order/create`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": timestamp.toString(),
-            "X-BAPI-SIGN": tp2Signature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-          body: JSON.stringify(tp2Params),
-        });
-
-        const tp2Data = await tp2Response.json();
-
-        if (tp2Data.retCode === 0) {
-          results.tp2Updated = true;
-          results.newTp2OrderLinkId = tp2Data.result?.orderLinkId;
-          console.log("✅ TP2 updated successfully");
-        } else {
-          results.errors.push(`TP2 update failed: ${tp2Data.retMsg}`);
-        }
-      } catch (err) {
-        results.errors.push(`Error updating TP2: ${err instanceof Error ? err.message : "Unknown"}`);
-      }
-    }
-
-    // Step 3: Update TP3 (cancel old, create new)
-    if (tp3 && positionQty) {
-      try {
-        // Cancel old TP3 if exists
-        if (oldTp3OrderLinkId) {
-          const timestamp = Date.now();
-          const cancelParams = {
-            category: "linear",
-            symbol: symbol,
-            orderLinkId: oldTp3OrderLinkId,
-          };
-
-          const cancelSignature = signBybitRequest(apiKey, apiSecret, timestamp, cancelParams);
-
-          await fetch(`${baseUrl}/v5/order/cancel`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-BAPI-API-KEY": apiKey,
-              "X-BAPI-TIMESTAMP": timestamp.toString(),
-              "X-BAPI-SIGN": cancelSignature,
-              "X-BAPI-RECV-WINDOW": "5000",
-            },
-            body: JSON.stringify(cancelParams),
-          });
-        }
-
-        // Create new TP3
-        const timestamp = Date.now();
-        const tp3Qty = (parseFloat(positionQty) * 0.2).toFixed(3); // 20% of position
-        const closeSide = side === "Buy" ? "Sell" : "Buy";
-
-        const tp3Params = {
-          category: "linear",
-          symbol: symbol,
-          side: closeSide,
-          orderType: "Limit",
-          qty: tp3Qty,
-          price: tp3,
-          reduceOnly: true,
-          positionIdx: 0,
-          timeInForce: "GoodTillCancel",
-          orderLinkId: `tp3_${Date.now()}`,
-        };
-
-        const tp3Signature = signBybitRequest(apiKey, apiSecret, timestamp, tp3Params);
-
-        const tp3Response = await fetch(`${baseUrl}/v5/order/create`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-BAPI-API-KEY": apiKey,
-            "X-BAPI-TIMESTAMP": timestamp.toString(),
-            "X-BAPI-SIGN": tp3Signature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-          body: JSON.stringify(tp3Params),
-        });
-
-        const tp3Data = await tp3Response.json();
-
-        if (tp3Data.retCode === 0) {
-          results.tp3Updated = true;
-          results.newTp3OrderLinkId = tp3Data.result?.orderLinkId;
-          console.log("✅ TP3 updated successfully");
-        } else {
-          results.errors.push(`TP3 update failed: ${tp3Data.retMsg}`);
-        }
-      } catch (err) {
-        results.errors.push(`Error updating TP3: ${err instanceof Error ? err.message : "Unknown"}`);
+        results.errors.push(`Error updating TP/SL: ${err instanceof Error ? err.message : "Unknown"}`);
       }
     }
 
     // Determine success
-    const hasUpdates = results.mainTpSlUpdated || results.tp2Updated || results.tp3Updated;
+    const hasUpdates = results.tpSlUpdated;
     const hasErrors = results.errors.length > 0;
 
     if (!hasUpdates && hasErrors) {
