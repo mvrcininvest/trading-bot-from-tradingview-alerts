@@ -23,6 +23,7 @@ function createOkxSignature(
 function convertSymbolToOkx(symbol: string): string {
   // If already in OKX format (contains hyphens), return as-is
   if (symbol.includes('-')) {
+    console.log(`✅ Symbol already in OKX format: ${symbol}`);
     return symbol;
   }
   
@@ -32,12 +33,43 @@ function convertSymbolToOkx(symbol: string): string {
   
   if (match) {
     const [, base, quote] = match;
-    return `${base.toUpperCase()}-${quote.toUpperCase()}-SWAP`;
+    const okxFormat = `${base.toUpperCase()}-${quote.toUpperCase()}-SWAP`;
+    console.log(`🔄 Symbol conversion: ${symbol} -> ${okxFormat}`);
+    return okxFormat;
   }
   
   // If format is unclear, return as-is and let OKX API handle it
   console.warn(`⚠️ Unrecognized symbol format: ${symbol}, using as-is`);
   return symbol;
+}
+
+// ============================================
+// 🔍 GET AVAILABLE INSTRUMENTS (for debugging)
+// ============================================
+
+async function getOkxInstruments(
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  instType: string = 'SWAP'
+) {
+  const baseUrl = 'https://www.okx.com';
+  const requestPath = `/api/v5/public/instruments?instType=${instType}`;
+  
+  try {
+    const response = await fetch(`${baseUrl}${requestPath}`);
+    const data = await response.json();
+    
+    if (data.code === '0' && data.data) {
+      const symbols = data.data.map((inst: any) => inst.instId);
+      console.log(`📋 Available OKX ${instType} instruments (${symbols.length} total):`, symbols.slice(0, 20));
+      return symbols;
+    }
+  } catch (error) {
+    console.error('❌ Failed to fetch OKX instruments:', error);
+  }
+  return [];
 }
 
 async function makeOkxRequest(
@@ -104,13 +136,52 @@ async function openOkxPosition(
 ) {
   const baseUrl = 'https://www.okx.com';
   
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`🚀 OPENING OKX POSITION - START`);
+  console.log(`${'='.repeat(60)}`);
+  console.log(`📊 Input Parameters:`);
+  console.log(`   - Original Symbol: ${symbol}`);
+  console.log(`   - Side: ${side}`);
+  console.log(`   - Quantity: ${quantity}`);
+  console.log(`   - Leverage: ${leverage || 'not set'}`);
+  console.log(`   - Environment: ${demo ? 'DEMO' : 'PRODUCTION'}`);
+  
   // ✅ Convert symbol to OKX format
   const okxSymbol = convertSymbolToOkx(symbol);
-  console.log(`🔄 Symbol conversion: ${symbol} -> ${okxSymbol}`);
+  console.log(`\n🔄 Symbol after conversion: ${okxSymbol}`);
+  
+  // 🔍 Debug: Fetch available instruments to verify symbol exists
+  console.log(`\n🔍 Fetching available instruments to verify symbol...`);
+  const availableInstruments = await getOkxInstruments(apiKey, apiSecret, passphrase, demo, 'SWAP');
+  const symbolExists = availableInstruments.includes(okxSymbol);
+  
+  if (!symbolExists && availableInstruments.length > 0) {
+    console.error(`\n❌ CRITICAL: Symbol ${okxSymbol} NOT FOUND in available instruments!`);
+    console.log(`\n💡 Searching for similar symbols...`);
+    const baseCurrency = symbol.replace(/USDT|USD/, '');
+    const similar = availableInstruments.filter((inst: string) => inst.includes(baseCurrency));
+    console.log(`   Similar symbols found:`, similar.length > 0 ? similar : 'NONE');
+    
+    if (similar.length > 0) {
+      throw new Error(`Symbol ${okxSymbol} not found. Did you mean: ${similar[0]}? Available: ${similar.join(', ')}`);
+    } else {
+      throw new Error(`Symbol ${okxSymbol} not available on OKX ${demo ? 'DEMO' : 'PRODUCTION'}. Check symbol format or try a different pair.`);
+    }
+  } else {
+    console.log(`✅ Symbol ${okxSymbol} verified as available`);
+  }
   
   // Step 1: Set leverage if provided
   if (leverage) {
+    console.log(`\n📏 Setting leverage to ${leverage}x...`);
     try {
+      const leveragePayload = {
+        instId: okxSymbol,
+        lever: leverage,
+        mgnMode: 'cross'
+      };
+      console.log(`📤 Leverage payload:`, JSON.stringify(leveragePayload, null, 2));
+      
       const { data: leverageData } = await makeOkxRequest(
         `${baseUrl}/api/v5/account/set-leverage`,
         'POST',
@@ -118,26 +189,25 @@ async function openOkxPosition(
         apiSecret,
         passphrase,
         demo,
-        {
-          instId: okxSymbol,
-          lever: leverage,
-          mgnMode: 'cross'
-        }
+        leveragePayload
       );
 
+      console.log(`📥 Leverage response:`, JSON.stringify(leverageData, null, 2));
+
       if (leverageData.code !== '0') {
-        console.warn('⚠️ OKX leverage warning:', leverageData.msg);
-        // Log leverage data for debugging
-        console.log('📊 Leverage data:', JSON.stringify(leverageData, null, 2));
+        console.error(`❌ Leverage setting failed (code ${leverageData.code}): ${leverageData.msg}`);
+        throw new Error(`Cannot set leverage for ${okxSymbol}: ${leverageData.msg}`);
       } else {
-        console.log(`✅ OKX leverage set: ${leverage}x for ${okxSymbol}`);
+        console.log(`✅ Leverage set successfully: ${leverage}x for ${okxSymbol}`);
       }
     } catch (leverageError: any) {
-      console.warn('⚠️ OKX leverage setting failed:', leverageError.message);
+      console.error(`❌ Leverage error:`, leverageError);
+      throw new Error(`Leverage setting failed: ${leverageError.message}`);
     }
   }
 
   // Step 2: Open position (market order)
+  console.log(`\n📈 Opening market position...`);
   const orderPayload: any = {
     instId: okxSymbol,
     tdMode: 'cross',
@@ -150,14 +220,16 @@ async function openOkxPosition(
   if (stopLoss) {
     orderPayload.slTriggerPx = stopLoss;
     orderPayload.slOrdPx = '-1'; // Market order for SL
+    console.log(`🛑 Stop Loss set: ${stopLoss}`);
   }
 
   if (takeProfit) {
     orderPayload.tpTriggerPx = takeProfit;
     orderPayload.tpOrdPx = '-1'; // Market order for TP
+    console.log(`🎯 Take Profit set: ${takeProfit}`);
   }
 
-  console.log('📤 Opening OKX position with payload:', JSON.stringify(orderPayload, null, 2));
+  console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
 
   const { data: orderData } = await makeOkxRequest(
     `${baseUrl}/api/v5/trade/order`,
@@ -169,12 +241,21 @@ async function openOkxPosition(
     orderPayload
   );
 
+  console.log(`📥 Order response:`, JSON.stringify(orderData, null, 2));
+
   if (orderData.code !== '0') {
+    console.error(`❌ Order failed (code ${orderData.code}): ${orderData.msg}`);
     throw new Error(`OKX order failed (code ${orderData.code}): ${orderData.msg}`);
   }
 
   const orderId = orderData.data?.[0]?.ordId;
-  console.log('✅ OKX position opened:', orderId);
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`✅ POSITION OPENED SUCCESSFULLY`);
+  console.log(`   - Order ID: ${orderId}`);
+  console.log(`   - Symbol: ${okxSymbol}`);
+  console.log(`   - Side: ${side}`);
+  console.log(`   - Quantity: ${quantity}`);
+  console.log(`${'='.repeat(60)}\n`);
 
   return {
     success: true,
