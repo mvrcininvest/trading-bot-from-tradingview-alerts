@@ -687,7 +687,7 @@ export default function DashboardPage() {
               </div>
               <div className="ml-4 flex flex-col gap-2">
                 <Button
-                  onClick={syncCredentialsToDatabase}
+                  onClick={() => syncCredentialsToDatabase()}
                   disabled={syncingCredentials}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
