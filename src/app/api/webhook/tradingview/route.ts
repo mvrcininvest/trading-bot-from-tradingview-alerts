@@ -342,7 +342,7 @@ async function openOkxPosition(
   // ✅ CRITICAL FIX: Use attachAlgoOrds array instead of direct SL/TP
   if (slPrice || tpPrice) {
     const algoOrd: any = {
-      attachAlgoClOrdId: `algo-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      attachAlgoClOrdId: `a${Date.now()}${Math.random().toString(36).substring(2, 8)}`,
     };
 
     if (tpPrice) {
