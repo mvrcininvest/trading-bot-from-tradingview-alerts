@@ -145,59 +145,64 @@ export async function GET(request: NextRequest) {
     // Get bot settings for API credentials
     const settings = await db.select().from(botSettings).limit(1);
     
-    if (settings.length > 0 && settings[0].apiKey && settings[0].apiSecret && settings[0].passphrase) {
+    if (settings.length > 0) {
       const botConfig = settings[0];
-      const demo = botConfig.environment === "demo";
+      const { apiKey, apiSecret, passphrase } = botConfig;
       
-      try {
-        // Fetch live positions from OKX
-        const okxPositions = await getOkxPositions(
-          botConfig.apiKey,
-          botConfig.apiSecret,
-          botConfig.passphrase,
-          demo
-        );
+      // ✅ Type-safe check: ensure all credentials exist
+      if (apiKey && apiSecret && passphrase) {
+        const demo = botConfig.environment === "demo";
         
-        // Create map for quick lookup: "SYMBOL_SIDE" -> OKX position
-        const okxPositionsMap = new Map(
-          okxPositions.map((p: any) => {
-            const okxSymbol = p.instId;
-            const positionSide = parseFloat(p.pos) > 0 ? "BUY" : "SELL";
-            return [`${okxSymbol}_${positionSide}`, p];
-          })
-        );
-        
-        // Update each position with live PnL from OKX
-        const updatedPositions = positions.map(pos => {
-          const okxSymbol = convertSymbolToOkx(pos.symbol);
-          const posKey = `${okxSymbol}_${pos.side}`;
-          const okxPos = okxPositionsMap.get(posKey) as any;
+        try {
+          // Fetch live positions from OKX
+          const okxPositions = await getOkxPositions(
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo
+          );
           
-          if (okxPos) {
-            // Use live PnL from OKX
-            const livePnl = parseFloat(okxPos.upl || "0");
-            return {
-              ...pos,
-              unrealisedPnl: livePnl,
-            };
-          }
+          // Create map for quick lookup: "SYMBOL_SIDE" -> OKX position
+          const okxPositionsMap = new Map(
+            okxPositions.map((p: any) => {
+              const okxSymbol = p.instId;
+              const positionSide = parseFloat(p.pos) > 0 ? "BUY" : "SELL";
+              return [`${okxSymbol}_${positionSide}`, p];
+            })
+          );
           
-          // Position not found on OKX - keep DB value
-          return pos;
-        });
-        
-        return NextResponse.json(
-          {
-            success: true,
-            positions: updatedPositions,
-            count: updatedPositions.length,
-            livePnlEnabled: true,
-          },
-          { status: 200 }
-        );
-      } catch (error) {
-        console.error("Failed to fetch live PnL from OKX:", error);
-        // If OKX fetch fails, return positions with DB PnL
+          // Update each position with live PnL from OKX
+          const updatedPositions = positions.map(pos => {
+            const okxSymbol = convertSymbolToOkx(pos.symbol);
+            const posKey = `${okxSymbol}_${pos.side}`;
+            const okxPos = okxPositionsMap.get(posKey) as any;
+            
+            if (okxPos) {
+              // Use live PnL from OKX
+              const livePnl = parseFloat(okxPos.upl || "0");
+              return {
+                ...pos,
+                unrealisedPnl: livePnl,
+              };
+            }
+            
+            // Position not found on OKX - keep DB value
+            return pos;
+          });
+          
+          return NextResponse.json(
+            {
+              success: true,
+              positions: updatedPositions,
+              count: updatedPositions.length,
+              livePnlEnabled: true,
+            },
+            { status: 200 }
+          );
+        } catch (error) {
+          console.error("Failed to fetch live PnL from OKX:", error);
+          // If OKX fetch fails, return positions with DB PnL
+        }
       }
     }
     
