@@ -55,7 +55,6 @@ export default function AlertsPage() {
   const [stats, setStats] = useState({ total: 0, buy: 0, sell: 0, avgLatency: 0 });
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [cleaningOld, setCleaningOld] = useState(false);
-  const [cleaningAllButLast, setCleaningAllButLast] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
   
@@ -145,25 +144,6 @@ export default function AlertsPage() {
       toast.error("Błąd czyszczenia alertów");
     } finally {
       setCleaningOld(false);
-    }
-  };
-
-  const cleanAllButLast = async () => {
-    setCleaningAllButLast(true);
-    try {
-      const response = await fetch("/api/alerts/cleanup-all-but-last", { method: "DELETE" });
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success(data.message);
-        fetchAlerts();
-      } else {
-        toast.error("Nie udało się wyczyścić alertów");
-      }
-    } catch (error) {
-      toast.error("Błąd czyszczenia alertów");
-    } finally {
-      setCleaningAllButLast(false);
     }
   };
 
@@ -347,16 +327,6 @@ export default function AlertsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button 
-              onClick={cleanAllButLast} 
-              disabled={cleaningAllButLast}
-              size="sm" 
-              variant="outline" 
-              className="border-amber-700 bg-amber-900/20 hover:bg-amber-900/40 text-amber-300"
-            >
-              <Trash className={`mr-2 h-4 w-4 ${cleaningAllButLast ? "animate-spin" : ""}`} />
-              Zachowaj tylko ostatni
-            </Button>
             <Button 
               onClick={cleanOldAlerts} 
               disabled={cleaningOld}
