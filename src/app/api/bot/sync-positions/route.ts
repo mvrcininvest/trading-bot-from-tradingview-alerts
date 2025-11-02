@@ -101,9 +101,9 @@ export async function POST(request: NextRequest) {
     }
 
     const botConfig = settings[0];
-    const apiKey = botConfig.apiKey;
-    const apiSecret = botConfig.apiSecret;
-    const passphrase = botConfig.passphrase;
+    const apiKey = botConfig.apiKey!;
+    const apiSecret = botConfig.apiSecret!;
+    const passphrase = botConfig.passphrase!;
     const environment = botConfig.environment || "demo";
     const demo = environment === "demo";
 
