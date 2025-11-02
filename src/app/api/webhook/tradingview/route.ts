@@ -79,146 +79,6 @@ function convertSymbolToOkx(symbol: string): string {
 }
 
 // ============================================
-// 🔍 VERIFY OKX SYMBOL EXISTS
-// ============================================
-
-async function verifyOkxSymbol(symbol: string): Promise<{ valid: boolean; suggestions?: string[] }> {
-  try {
-    const response = await fetch('https://www.okx.com/api/v5/public/instruments?instType=SWAP');
-    const data = await response.json();
-    
-    if (data.code === '0' && data.data) {
-      const availableSymbols = data.data.map((inst: any) => inst.instId);
-      
-      if (availableSymbols.includes(symbol)) {
-        console.log(`✅ Symbol ${symbol} verified as available on OKX`);
-        return { valid: true };
-      } else {
-        console.error(`❌ Symbol ${symbol} NOT FOUND on OKX`);
-        
-        // Find similar symbols
-        const baseCurrency = symbol.split('-')[0];
-        const similar = availableSymbols.filter((inst: string) => inst.includes(baseCurrency));
-        
-        return { valid: false, suggestions: similar.slice(0, 5) };
-      }
-    }
-  } catch (error) {
-    console.error('⚠️ Could not verify symbol (API call failed):', error);
-    return { valid: true }; // Assume valid if verification fails to avoid blocking
-  }
-  
-  return { valid: true };
-}
-
-// ============================================
-// 🔍 GET INSTRUMENT INFO FROM OKX
-// ============================================
-
-async function getOkxInstrumentInfo(symbol: string) {
-  try {
-    const response = await fetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${symbol}`);
-    const data = await response.json();
-    
-    if (data.code === '0' && data.data && data.data.length > 0) {
-      const instrument = data.data[0];
-      console.log(`📋 OKX Instrument Info for ${symbol}:`, JSON.stringify(instrument, null, 2));
-      
-      return {
-        instId: instrument.instId,
-        ctVal: parseFloat(instrument.ctVal), // Contract value (e.g., 0.01 for BTC)
-        ctValCcy: instrument.ctValCcy, // Contract value currency (e.g., BTC, USD)
-        lotSz: parseFloat(instrument.lotSz), // Lot size (minimum order quantity)
-        minSz: parseFloat(instrument.minSz), // Minimum order size
-        tickSz: parseFloat(instrument.tickSz), // Price tick size
-        ctType: instrument.ctType, // linear or inverse
-      };
-    }
-    
-    throw new Error(`Instrument ${symbol} not found on OKX`);
-  } catch (error) {
-    console.error(`❌ Failed to get instrument info for ${symbol}:`, error);
-    throw error;
-  }
-}
-
-// ============================================
-// 🔢 CALCULATE PROPER QUANTITY FOR OKX
-// ============================================
-
-function calculateOkxQuantity(
-  positionSizeUsd: number,
-  entryPrice: number,
-  instrumentInfo: any
-): { quantity: string; quantityNumber: number } {
-  const { ctVal, ctValCcy, lotSz, minSz, ctType } = instrumentInfo;
-  
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`🔢 CALCULATING OKX QUANTITY`);
-  console.log(`${'='.repeat(60)}`);
-  console.log(`   - Position Size (USD): ${positionSizeUsd}`);
-  console.log(`   - Entry Price: ${entryPrice}`);
-  console.log(`   - Contract Value: ${ctVal} ${ctValCcy}`);
-  console.log(`   - Contract Type: ${ctType}`);
-  console.log(`   - Lot Size: ${lotSz}`);
-  console.log(`   - Min Size: ${minSz}`);
-  
-  let contracts: number;
-  
-  if (ctType === 'linear' && ctValCcy === 'USD') {
-    // Linear USDT contracts (e.g., ETH-USDT-SWAP)
-    // Each contract = ctVal USD
-    contracts = positionSizeUsd / ctVal;
-  } else if (ctType === 'inverse') {
-    // Inverse contracts (e.g., BTC-USD-SWAP)
-    // Each contract = ctVal BTC
-    const btcAmount = positionSizeUsd / entryPrice;
-    contracts = btcAmount / ctVal;
-  } else {
-    // Linear coin contracts (e.g., some alts)
-    const coinAmount = positionSizeUsd / entryPrice;
-    contracts = coinAmount / ctVal;
-  }
-  
-  // Round to lot size
-  const roundedContracts = Math.floor(contracts / lotSz) * lotSz;
-  
-  console.log(`   - Raw contracts: ${contracts}`);
-  console.log(`   - Rounded contracts: ${roundedContracts}`);
-  console.log(`   - Minimum required: ${minSz}`);
-  
-  // Ensure minimum size
-  const finalContracts = Math.max(roundedContracts, minSz);
-  
-  if (finalContracts < minSz) {
-    throw new Error(`Calculated quantity ${finalContracts} is below minimum ${minSz} for ${instrumentInfo.instId}`);
-  }
-  
-  console.log(`   ✅ Final contracts: ${finalContracts}`);
-  console.log(`${'='.repeat(60)}\n`);
-  
-  return {
-    quantity: finalContracts.toString(),
-    quantityNumber: finalContracts
-  };
-}
-
-// ============================================
-// 🎯 FORMAT PRICE WITH PROPER PRECISION
-// ============================================
-
-function formatOkxPrice(price: number, tickSize: number): string {
-  // Calculate decimal places from tick size
-  const decimals = tickSize.toString().includes('.') 
-    ? tickSize.toString().split('.')[1].length 
-    : 0;
-  
-  const formatted = price.toFixed(decimals);
-  console.log(`   💵 Price ${price} formatted to ${formatted} (tick: ${tickSize})`);
-  return formatted;
-}
-
-// ============================================
 // 🛠️ UTILITY FUNCTIONS
 // ============================================
 
@@ -321,7 +181,7 @@ async function makeOkxRequest(
 }
 
 // ============================================
-// 🚀 OKX POSITION OPENING
+// 🚀 OKX POSITION OPENING (SIMPLIFIED & FIXED)
 // ============================================
 
 async function openOkxPosition(
@@ -330,7 +190,7 @@ async function openOkxPosition(
   positionSizeUsd: number,
   leverage: number,
   slPrice: number | null,
-  tp1Price: number | null,
+  tpPrice: number | null,
   entryPrice: number,
   apiKey: string,
   apiSecret: string,
@@ -339,22 +199,24 @@ async function openOkxPosition(
   alertId?: number
 ) {
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`🚀 WEBHOOK: OPENING OKX POSITION - START`);
+  console.log(`🚀 OPENING OKX POSITION - START`);
   console.log(`${'='.repeat(60)}`);
-  console.log(`📊 Input Parameters:`);
-  console.log(`   - Original Symbol: ${symbol}`);
-  console.log(`   - Side: ${side}`);
-  console.log(`   - Position Size (USD): ${positionSizeUsd}`);
-  console.log(`   - Entry Price: ${entryPrice}`);
-  console.log(`   - Leverage: ${leverage}x`);
-  console.log(`   - Environment: ${demo ? 'DEMO' : 'PRODUCTION'}`);
+  console.log(`📊 Input:`);
+  console.log(`   Symbol: ${symbol}`);
+  console.log(`   Side: ${side}`);
+  console.log(`   Position Size: $${positionSizeUsd}`);
+  console.log(`   Entry Price: ${entryPrice}`);
+  console.log(`   Leverage: ${leverage}x`);
+  console.log(`   SL: ${slPrice}, TP: ${tpPrice}`);
+  console.log(`   Demo: ${demo}`);
   
   // ✅ Convert symbol to OKX format
   const okxSymbol = convertSymbolToOkx(symbol);
-  console.log(`🔄 Symbol after conversion: ${okxSymbol}`);
   
-  // ✅ FIRST: Test account access to verify credentials work
-  console.log(`\n🔍 Testing account access with credentials...`);
+  // ============================================
+  // 🔍 STEP 1: TEST CREDENTIALS WITH BALANCE CHECK
+  // ============================================
+  console.log(`\n🔍 Testing credentials with balance check...`);
   try {
     const { data: balanceData } = await makeOkxRequest(
       'GET',
@@ -368,50 +230,98 @@ async function openOkxPosition(
     );
     
     if (balanceData.code !== '0') {
-      throw new Error(`Account access failed: ${balanceData.msg} (code: ${balanceData.code})`);
+      throw new Error(`Credentials test failed: ${balanceData.msg} (code: ${balanceData.code})`);
     }
     
-    console.log(`✅ Account access successful - credentials are valid`);
-    console.log(`   Balance check response:`, JSON.stringify(balanceData, null, 2));
-  } catch (balanceError: any) {
-    console.error(`❌ CRITICAL: Account access test FAILED!`);
-    console.error(`   This means OKX is rejecting your API credentials`);
-    console.error(`   Error:`, balanceError.message);
-    
-    await logToBot('error', 'credentials_test_failed', `Account access failed: ${balanceError.message}`, {
-      error: balanceError.message,
-      apiKeyPreview: apiKey.substring(0, 12) + '...',
-      demo
+    console.log(`✅ Credentials valid - Account access successful`);
+  } catch (error: any) {
+    console.error(`❌ CREDENTIALS TEST FAILED:`, error.message);
+    await logToBot('error', 'credentials_invalid', `Credentials rejected by OKX: ${error.message}`, {
+      error: error.message,
+      apiKeyPreview: apiKey.substring(0, 12) + '...'
     }, alertId);
-    
-    throw new Error(`OKX credentials test failed: ${balanceError.message}. Go to /exchange-test and enter REAL working OKX credentials.`);
+    throw new Error(`OKX rejected credentials: ${error.message}. Go to /exchange-test and enter REAL OKX credentials.`);
   }
   
-  // ✅ Get instrument info for proper precision
-  console.log(`\n🔍 Fetching instrument specifications...`);
-  const instrumentInfo = await getOkxInstrumentInfo(okxSymbol);
-  
-  // ✅ Calculate proper quantity based on instrument specs
-  const { quantity, quantityNumber } = calculateOkxQuantity(positionSizeUsd, entryPrice, instrumentInfo);
-  
-  // ✅ Verify symbol exists on OKX
-  const verification = await verifyOkxSymbol(okxSymbol);
-  if (!verification.valid) {
-    const errorMsg = verification.suggestions && verification.suggestions.length > 0
-      ? `Symbol ${okxSymbol} not found. Did you mean: ${verification.suggestions[0]}? Available: ${verification.suggestions.join(', ')}`
-      : `Symbol ${okxSymbol} not available on OKX. Check symbol format or try a different pair.`;
-    
-    await logToBot('error', 'invalid_symbol', errorMsg, { 
-      symbol: okxSymbol, 
-      suggestions: verification.suggestions 
-    }, alertId);
-    
-    throw new Error(errorMsg);
-  }
-
-  // Step 1: Set leverage
+  // ============================================
+  // 🔍 STEP 2: GET INSTRUMENT INFO
+  // ============================================
+  console.log(`\n🔍 Fetching instrument info for ${okxSymbol}...`);
+  let instrumentInfo;
   try {
-    console.log(`\n📏 Setting leverage to ${leverage}x...`);
+    const { data: instData } = await makeOkxRequest(
+      'GET',
+      `/api/v5/public/instruments?instType=SWAP&instId=${okxSymbol}`,
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+      undefined,
+      alertId
+    );
+    
+    if (instData.code !== '0' || !instData.data || instData.data.length === 0) {
+      throw new Error(`Instrument ${okxSymbol} not found on OKX`);
+    }
+    
+    instrumentInfo = instData.data[0];
+    console.log(`✅ Instrument found:`, {
+      instId: instrumentInfo.instId,
+      ctVal: instrumentInfo.ctVal,
+      ctValCcy: instrumentInfo.ctValCcy,
+      lotSz: instrumentInfo.lotSz,
+      minSz: instrumentInfo.minSz,
+      tickSz: instrumentInfo.tickSz
+    });
+  } catch (error: any) {
+    console.error(`❌ Failed to get instrument info:`, error.message);
+    await logToBot('error', 'instrument_not_found', `Instrument ${okxSymbol} not found: ${error.message}`, { symbol: okxSymbol }, alertId);
+    throw error;
+  }
+  
+  // ============================================
+  // 🔢 STEP 3: CALCULATE QUANTITY (SIMPLIFIED)
+  // ============================================
+  console.log(`\n🔢 Calculating order quantity...`);
+  const ctVal = parseFloat(instrumentInfo.ctVal);
+  const ctValCcy = instrumentInfo.ctValCcy;
+  const lotSz = parseFloat(instrumentInfo.lotSz);
+  const minSz = parseFloat(instrumentInfo.minSz);
+  const tickSz = parseFloat(instrumentInfo.tickSz);
+  
+  // CRITICAL FIX: For USDT-margined perpetuals (e.g., ETH-USDT-SWAP):
+  // - ctVal = contract value in base currency (e.g., 0.01 ETH)
+  // - ctValCcy = base currency (e.g., ETH)
+  // - To calculate sz (number of contracts):
+  //   sz = (Position Size USD / Entry Price) / ctVal
+  
+  let contracts: number;
+  const coinAmount = positionSizeUsd / entryPrice; // Amount of base currency needed
+  contracts = coinAmount / ctVal; // Number of contracts
+  
+  // Round to lot size
+  const roundedContracts = Math.floor(contracts / lotSz) * lotSz;
+  const finalContracts = Math.max(roundedContracts, minSz);
+  
+  console.log(`   Position Size USD: $${positionSizeUsd}`);
+  console.log(`   Entry Price: ${entryPrice}`);
+  console.log(`   Coin Amount Needed: ${coinAmount.toFixed(8)} ${ctValCcy}`);
+  console.log(`   Contract Value: ${ctVal} ${ctValCcy}`);
+  console.log(`   Raw Contracts: ${contracts.toFixed(4)}`);
+  console.log(`   Rounded (lotSz ${lotSz}): ${roundedContracts.toFixed(4)}`);
+  console.log(`   Final (min ${minSz}): ${finalContracts.toFixed(4)}`);
+  
+  if (finalContracts < minSz) {
+    throw new Error(`Calculated ${finalContracts} contracts is below minimum ${minSz} for ${okxSymbol}`);
+  }
+  
+  const quantity = finalContracts.toString();
+  
+  // ============================================
+  // 📏 STEP 4: SET LEVERAGE
+  // ============================================
+  console.log(`\n📏 Setting leverage to ${leverage}x...`);
+  try {
     const { data: leverageData } = await makeOkxRequest(
       'POST',
       '/api/v5/account/set-leverage',
@@ -428,47 +338,53 @@ async function openOkxPosition(
     );
 
     if (leverageData.code !== '0') {
-      console.error(`❌ OKX leverage failed (code ${leverageData.code}): ${leverageData.msg}`);
-      await logToBot('error', 'leverage_failed', `OKX leverage: ${leverageData.msg}`, { leverageData }, alertId);
-      throw new Error(`Cannot set leverage for ${okxSymbol}: ${leverageData.msg}`);
+      // Leverage errors are often non-critical (already set), log as warning
+      console.warn(`⚠️ Leverage response (code ${leverageData.code}): ${leverageData.msg}`);
+      await logToBot('warning', 'leverage_warning', `Leverage: ${leverageData.msg}`, { leverageData }, alertId);
     } else {
-      console.log(`✅ OKX leverage set: ${leverage}x for ${okxSymbol}`);
+      console.log(`✅ Leverage set: ${leverage}x`);
     }
-  } catch (leverageError: any) {
-    console.error('❌ OKX leverage failed:', leverageError.message);
-    await logToBot('error', 'leverage_failed', `OKX leverage failed: ${leverageError.message}`, { error: leverageError.message }, alertId);
-    throw leverageError;
+  } catch (error: any) {
+    console.error(`❌ Leverage failed:`, error.message);
+    await logToBot('error', 'leverage_failed', `Leverage failed: ${error.message}`, { error: error.message }, alertId);
+    // Don't throw - continue with order placement
   }
 
-  // Step 2: Open position with SL/TP
-  console.log(`\n📈 Opening market position...`);
+  // ============================================
+  // 📈 STEP 5: PLACE ORDER WITH SL/TP
+  // ============================================
+  console.log(`\n📈 Placing market order...`);
+  
+  // Format prices with correct precision
+  const formatPrice = (price: number) => {
+    const decimals = tickSz.toString().includes('.') 
+      ? tickSz.toString().split('.')[1].length 
+      : 0;
+    return price.toFixed(decimals);
+  };
+  
   const orderPayload: any = {
     instId: okxSymbol,
     tdMode: 'cross',
-    side: side.toLowerCase(),
+    side: side.toLowerCase(), // 'buy' or 'sell'
     ordType: 'market',
     sz: quantity,
   };
 
   if (slPrice) {
-    const formattedSL = formatOkxPrice(slPrice, instrumentInfo.tickSz);
-    orderPayload.slTriggerPx = formattedSL;
-    orderPayload.slOrdPx = '-1';
-    console.log(`🛑 Stop Loss set: ${formattedSL}`);
+    orderPayload.slTriggerPx = formatPrice(slPrice);
+    orderPayload.slOrdPx = '-1'; // Market price when triggered
+    console.log(`🛑 Stop Loss: ${orderPayload.slTriggerPx}`);
   }
 
-  if (tp1Price) {
-    const formattedTP = formatOkxPrice(tp1Price, instrumentInfo.tickSz);
-    orderPayload.tpTriggerPx = formattedTP;
-    orderPayload.tpOrdPx = '-1';
-    console.log(`🎯 Take Profit set: ${formattedTP}`);
+  if (tpPrice) {
+    orderPayload.tpTriggerPx = formatPrice(tpPrice);
+    orderPayload.tpOrdPx = '-1'; // Market price when triggered
+    console.log(`🎯 Take Profit: ${orderPayload.tpTriggerPx}`);
   }
 
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`📤 FINAL ORDER PAYLOAD TO OKX:`);
-  console.log(`${'='.repeat(60)}`);
+  console.log(`\n📤 ORDER PAYLOAD:`);
   console.log(JSON.stringify(orderPayload, null, 2));
-  console.log(`${'='.repeat(60)}\n`);
 
   const { data: orderData } = await makeOkxRequest(
     'POST',
@@ -481,38 +397,20 @@ async function openOkxPosition(
     alertId
   );
 
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`📥 FULL OKX ORDER RESPONSE:`);
-  console.log(`${'='.repeat(60)}`);
+  console.log(`\n📥 ORDER RESPONSE:`);
   console.log(JSON.stringify(orderData, null, 2));
-  console.log(`${'='.repeat(60)}\n`);
 
   if (orderData.code !== '0') {
     const errorMsg = `OKX order failed (code ${orderData.code}): ${orderData.msg}`;
     console.error(`❌ ${errorMsg}`);
     
-    // Extract detailed error info from OKX response
-    const detailedError = {
+    await logToBot('error', 'order_failed', errorMsg, {
       code: orderData.code,
       msg: orderData.msg,
       data: orderData.data,
       orderPayload,
-      instrumentInfo,
-      positionSizeUsd,
-      calculatedQuantity: quantity,
-      entryPrice,
-      leverage,
-      demo,
-      apiKeyPreview: apiKey.substring(0, 12) + '...'
-    };
-    
-    console.error(`\n${'='.repeat(60)}`);
-    console.error(`❌ DETAILED ERROR ANALYSIS:`);
-    console.error(`${'='.repeat(60)}`);
-    console.error(JSON.stringify(detailedError, null, 2));
-    console.error(`${'='.repeat(60)}\n`);
-    
-    await logToBot('error', 'order_failed', errorMsg, detailedError, alertId);
+      demo
+    }, alertId);
     
     throw new Error(errorMsg);
   }
@@ -520,12 +418,11 @@ async function openOkxPosition(
   const orderId = orderData.data?.[0]?.ordId || 'unknown';
   
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`✅ WEBHOOK: POSITION OPENED SUCCESSFULLY`);
-  console.log(`   - Order ID: ${orderId}`);
-  console.log(`   - Symbol: ${okxSymbol}`);
-  console.log(`   - Side: ${side}`);
-  console.log(`   - Quantity (contracts): ${quantity}`);
-  console.log(`   - Position Size (USD): ${positionSizeUsd}`);
+  console.log(`✅ POSITION OPENED SUCCESSFULLY`);
+  console.log(`   Order ID: ${orderId}`);
+  console.log(`   Symbol: ${okxSymbol}`);
+  console.log(`   Side: ${side}`);
+  console.log(`   Quantity: ${quantity} contracts`);
   console.log(`${'='.repeat(60)}\n`);
 
   await logToBot('success', 'position_opened', `OKX position opened: ${okxSymbol} ${side} ${leverage}x`, { 
@@ -534,14 +431,12 @@ async function openOkxPosition(
     side, 
     leverage, 
     quantity,
-    quantityNumber,
     positionSizeUsd,
     sl: slPrice, 
-    tp: tp1Price,
-    instrumentInfo
+    tp: tpPrice
   }, alertId);
 
-  return { orderId, quantity: quantityNumber, okxSymbol };
+  return { orderId, quantity: finalContracts, okxSymbol };
 }
 
 // ============================================
@@ -566,7 +461,7 @@ async function closeOkxPosition(
     tdMode: 'cross',
     side: positionSide === 'BUY' ? 'sell' : 'buy',
     ordType: 'market',
-    sz: quantity.toFixed(4),
+    sz: quantity.toString(),
   };
 
   const { data } = await makeOkxRequest(
@@ -724,7 +619,7 @@ export async function POST(request: Request) {
     // Check API credentials
     if (!botConfig.apiKey || !botConfig.apiSecret || !botConfig.passphrase) {
       await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_api_credentials' }).where(eq(alerts.id, alert.id));
-      await logToBot('error', 'rejected', 'OKX API credentials incomplete (missing passphrase)', { reason: 'no_api_credentials' }, alert.id);
+      await logToBot('error', 'rejected', 'OKX API credentials incomplete', { reason: 'no_api_credentials' }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: "Alert saved, OKX credentials incomplete" });
     }
 
@@ -828,7 +723,7 @@ export async function POST(request: Request) {
 
           try {
             const closeOrderId = await closeOkxPosition(
-              data.symbol,
+              convertSymbolToOkx(data.symbol),
               existingPosition.side,
               existingPosition.quantity,
               apiKey,
@@ -919,10 +814,9 @@ export async function POST(request: Request) {
     // ============================================
 
     let positionSizeUsd = botConfig.positionSizeFixed;
-    const quantity = positionSizeUsd / entryPrice;
     const leverage = botConfig.leverageMode === "from_alert" ? (data.leverage || botConfig.leverageFixed) : botConfig.leverageFixed;
 
-    console.log(`💰 Position: $${positionSizeUsd}, Qty: ${quantity}, Leverage: ${leverage}x`);
+    console.log(`💰 Position: $${positionSizeUsd}, Leverage: ${leverage}x`);
 
     // ============================================
     // 🚀 OPEN POSITION ON OKX
@@ -936,7 +830,7 @@ export async function POST(request: Request) {
         symbol, 
         side, 
         leverage, 
-        quantity, 
+        positionSizeUsd,
         environment 
       }, alert.id);
 
@@ -1019,7 +913,7 @@ export async function POST(request: Request) {
         message: "Position opened successfully on OKX",
         exchange: "okx",
         environment,
-        position: { symbol, side, entry: entryPrice, quantity: finalQuantity, sl: slPrice, tp: tp1Price }
+        position: { symbol: okxSymbol, side, entry: entryPrice, quantity: finalQuantity, sl: slPrice, tp: tp1Price }
       });
     } catch (error: any) {
       console.error("❌ Position opening failed:", error);
