@@ -339,16 +339,25 @@ async function openOkxPosition(
     sz: quantity,
   };
 
-  if (slPrice) {
-    orderPayload.slTriggerPx = formatPrice(slPrice);
-    orderPayload.slOrdPx = '-1'; // Market price when triggered
-    console.log(`🛑 Stop Loss: ${orderPayload.slTriggerPx}`);
-  }
+  // ✅ CRITICAL FIX: Use attachAlgoOrds array instead of direct SL/TP
+  if (slPrice || tpPrice) {
+    const algoOrd: any = {
+      attachAlgoClOrdId: `algo-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    };
 
-  if (tpPrice) {
-    orderPayload.tpTriggerPx = formatPrice(tpPrice);
-    orderPayload.tpOrdPx = '-1'; // Market price when triggered
-    console.log(`🎯 Take Profit: ${orderPayload.tpTriggerPx}`);
+    if (tpPrice) {
+      algoOrd.tpTriggerPx = formatPrice(tpPrice);
+      algoOrd.tpOrdPx = '-1'; // Market price when triggered
+      console.log(`🎯 Take Profit: ${algoOrd.tpTriggerPx}`);
+    }
+
+    if (slPrice) {
+      algoOrd.slTriggerPx = formatPrice(slPrice);
+      algoOrd.slOrdPx = '-1'; // Market price when triggered
+      console.log(`🛑 Stop Loss: ${algoOrd.slTriggerPx}`);
+    }
+
+    orderPayload.attachAlgoOrds = [algoOrd];
   }
 
   console.log(`\n📤 ORDER PAYLOAD:`);

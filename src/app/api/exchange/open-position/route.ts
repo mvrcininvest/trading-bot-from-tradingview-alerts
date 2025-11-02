@@ -216,17 +216,25 @@ async function openOkxPosition(
     sz: quantity,
   };
 
-  // Add SL/TP if provided
-  if (stopLoss) {
-    orderPayload.slTriggerPx = stopLoss;
-    orderPayload.slOrdPx = '-1'; // Market order for SL
-    console.log(`🛑 Stop Loss set: ${stopLoss}`);
-  }
+  // ✅ CRITICAL FIX: Use attachAlgoOrds array instead of direct SL/TP
+  if (stopLoss || takeProfit) {
+    const algoOrd: any = {
+      attachAlgoClOrdId: `algo-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    };
 
-  if (takeProfit) {
-    orderPayload.tpTriggerPx = takeProfit;
-    orderPayload.tpOrdPx = '-1'; // Market order for TP
-    console.log(`🎯 Take Profit set: ${takeProfit}`);
+    if (takeProfit) {
+      algoOrd.tpTriggerPx = takeProfit;
+      algoOrd.tpOrdPx = '-1'; // Market price when triggered
+      console.log(`🎯 Take Profit: ${algoOrd.tpTriggerPx}`);
+    }
+
+    if (stopLoss) {
+      algoOrd.slTriggerPx = stopLoss;
+      algoOrd.slOrdPx = '-1'; // Market price when triggered
+      console.log(`🛑 Stop Loss: ${algoOrd.slTriggerPx}`);
+    }
+
+    orderPayload.attachAlgoOrds = [algoOrd];
   }
 
   console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
