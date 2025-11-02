@@ -20,38 +20,6 @@ function createOkxSignature(
 }
 
 // ============================================
-// ✅ VALIDATE OKX CREDENTIALS (NOT UUID)
-// ============================================
-
-function isValidOkxCredential(credential: string, type: 'apiKey' | 'apiSecret' | 'passphrase'): boolean {
-  // UUID pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  
-  if (uuidPattern.test(credential)) {
-    console.error(`❌ CRITICAL: ${type} is a UUID placeholder, not a real OKX credential!`);
-    return false;
-  }
-  
-  // OKX API keys should be alphanumeric strings (not UUIDs)
-  if (type === 'apiKey' && credential.length < 20) {
-    console.error(`❌ CRITICAL: ${type} is too short to be a valid OKX API key`);
-    return false;
-  }
-  
-  if (type === 'apiSecret' && credential.length < 20) {
-    console.error(`❌ CRITICAL: ${type} is too short to be a valid OKX API secret`);
-    return false;
-  }
-  
-  if (type === 'passphrase' && credential.length < 1) {
-    console.error(`❌ CRITICAL: passphrase is empty`);
-    return false;
-  }
-  
-  return true;
-}
-
-// ============================================
 // 🔄 SYMBOL CONVERSION FOR OKX
 // ============================================
 
@@ -630,50 +598,6 @@ export async function POST(request: Request) {
     const exchange = botConfig.exchange || "okx";
 
     console.log(`🔑 Using ${exchange.toUpperCase()} (${environment}) - API Key: ${apiKey.substring(0, 8)}...`);
-
-    // ============================================
-    // ✅ VALIDATE CREDENTIALS ARE NOT UUID
-    // ============================================
-    
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`🔐 VALIDATING OKX CREDENTIALS`);
-    console.log(`${'='.repeat(60)}`);
-    
-    const apiKeyValid = isValidOkxCredential(apiKey, 'apiKey');
-    const apiSecretValid = isValidOkxCredential(apiSecret, 'apiSecret');
-    const passphraseValid = isValidOkxCredential(passphrase, 'passphrase');
-    
-    if (!apiKeyValid || !apiSecretValid || !passphraseValid) {
-      const errorMsg = `❌ CRITICAL: OKX credentials are UUID placeholders, not real API keys! Go to Dashboard → "Sync do Bazy" button → then go to /exchange-test and enter REAL OKX credentials (API Key, Secret, Passphrase).`;
-      
-      console.error(errorMsg);
-      console.error(`   - API Key valid: ${apiKeyValid}`);
-      console.error(`   - API Secret valid: ${apiSecretValid}`);
-      console.error(`   - Passphrase valid: ${passphraseValid}`);
-      
-      await db.update(alerts).set({ 
-        executionStatus: 'rejected', 
-        rejectionReason: 'invalid_credentials_uuid' 
-      }).where(eq(alerts.id, alert.id));
-      
-      await logToBot('error', 'invalid_credentials', errorMsg, { 
-        apiKeyValid, 
-        apiSecretValid, 
-        passphraseValid,
-        apiKeyPreview: apiKey.substring(0, 12) + '...'
-      }, alert.id);
-      
-      return NextResponse.json({ 
-        success: false, 
-        alert_id: alert.id, 
-        error: "INVALID_CREDENTIALS_UUID",
-        message: errorMsg,
-        fix: "Go to /exchange-test and configure REAL OKX API credentials" 
-      }, { status: 400 });
-    }
-    
-    console.log(`✅ All credentials validated successfully`);
-    console.log(`${'='.repeat(60)}\n`);
 
     // CRITICAL: Only support OKX
     if (exchange !== "okx") {
