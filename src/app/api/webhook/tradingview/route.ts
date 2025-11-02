@@ -353,6 +353,40 @@ async function openOkxPosition(
   const okxSymbol = convertSymbolToOkx(symbol);
   console.log(`🔄 Symbol after conversion: ${okxSymbol}`);
   
+  // ✅ FIRST: Test account access to verify credentials work
+  console.log(`\n🔍 Testing account access with credentials...`);
+  try {
+    const { data: balanceData } = await makeOkxRequest(
+      'GET',
+      '/api/v5/account/balance',
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+      undefined,
+      alertId
+    );
+    
+    if (balanceData.code !== '0') {
+      throw new Error(`Account access failed: ${balanceData.msg} (code: ${balanceData.code})`);
+    }
+    
+    console.log(`✅ Account access successful - credentials are valid`);
+    console.log(`   Balance check response:`, JSON.stringify(balanceData, null, 2));
+  } catch (balanceError: any) {
+    console.error(`❌ CRITICAL: Account access test FAILED!`);
+    console.error(`   This means OKX is rejecting your API credentials`);
+    console.error(`   Error:`, balanceError.message);
+    
+    await logToBot('error', 'credentials_test_failed', `Account access failed: ${balanceError.message}`, {
+      error: balanceError.message,
+      apiKeyPreview: apiKey.substring(0, 12) + '...',
+      demo
+    }, alertId);
+    
+    throw new Error(`OKX credentials test failed: ${balanceError.message}. Go to /exchange-test and enter REAL working OKX credentials.`);
+  }
+  
   // ✅ Get instrument info for proper precision
   console.log(`\n🔍 Fetching instrument specifications...`);
   const instrumentInfo = await getOkxInstrumentInfo(okxSymbol);
@@ -430,7 +464,11 @@ async function openOkxPosition(
     console.log(`🎯 Take Profit set: ${formattedTP}`);
   }
 
-  console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`📤 FINAL ORDER PAYLOAD TO OKX:`);
+  console.log(`${'='.repeat(60)}`);
+  console.log(JSON.stringify(orderPayload, null, 2));
+  console.log(`${'='.repeat(60)}\n`);
 
   const { data: orderData } = await makeOkxRequest(
     'POST',
@@ -443,20 +481,38 @@ async function openOkxPosition(
     alertId
   );
 
-  console.log(`📥 Full order response:`, JSON.stringify(orderData, null, 2));
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`📥 FULL OKX ORDER RESPONSE:`);
+  console.log(`${'='.repeat(60)}`);
+  console.log(JSON.stringify(orderData, null, 2));
+  console.log(`${'='.repeat(60)}\n`);
 
   if (orderData.code !== '0') {
     const errorMsg = `OKX order failed (code ${orderData.code}): ${orderData.msg}`;
     console.error(`❌ ${errorMsg}`);
     
-    // Log detailed error info
-    await logToBot('error', 'order_failed', errorMsg, { 
-      orderData,
+    // Extract detailed error info from OKX response
+    const detailedError = {
+      code: orderData.code,
+      msg: orderData.msg,
+      data: orderData.data,
       orderPayload,
       instrumentInfo,
       positionSizeUsd,
-      calculatedQuantity: quantity
-    }, alertId);
+      calculatedQuantity: quantity,
+      entryPrice,
+      leverage,
+      demo,
+      apiKeyPreview: apiKey.substring(0, 12) + '...'
+    };
+    
+    console.error(`\n${'='.repeat(60)}`);
+    console.error(`❌ DETAILED ERROR ANALYSIS:`);
+    console.error(`${'='.repeat(60)}`);
+    console.error(JSON.stringify(detailedError, null, 2));
+    console.error(`${'='.repeat(60)}\n`);
+    
+    await logToBot('error', 'order_failed', errorMsg, detailedError, alertId);
     
     throw new Error(errorMsg);
   }
@@ -485,7 +541,7 @@ async function openOkxPosition(
     instrumentInfo
   }, alertId);
 
-  return { orderId, quantity: quantityNumber };
+  return { orderId, quantity: quantityNumber, okxSymbol };
 }
 
 // ============================================
@@ -884,7 +940,7 @@ export async function POST(request: Request) {
         environment 
       }, alert.id);
 
-      const { orderId, quantity: finalQuantity } = await openOkxPosition(
+      const { orderId, quantity: finalQuantity, okxSymbol } = await openOkxPosition(
         symbol,
         side,
         positionSizeUsd,
