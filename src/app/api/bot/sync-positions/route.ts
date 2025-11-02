@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     const environment = botConfig.environment || "demo";
     const demo = environment === "demo";
 
-    console.log(`[Sync] Using OKX (${environment}) - API Key: ${apiKey.substring(0, 8)}...`);
+    console.log(`[Sync] Using OKX (${environment}) - API Key: ${apiKey?.substring(0, 8) ?? 'N/A'}...`);
 
     // Get all open positions from database
     const dbPositions = await db
