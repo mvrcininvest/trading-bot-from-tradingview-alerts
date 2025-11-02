@@ -742,6 +742,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP provided" });
     }
 
+    // ✅ CRITICAL FIX: Validate TP/SL direction
+    const isBuy = data.side === "BUY";
+    if (slPrice && tp1Price) {
+      if (isBuy) {
+        // BUY: TP must be > entry, SL must be < entry
+        if (tp1Price <= entryPrice) {
+          console.warn(`⚠️ TP ${tp1Price} <= entry ${entryPrice} for BUY, adjusting...`);
+          tp1Price = entryPrice * 1.02; // +2% default
+        }
+        if (slPrice >= entryPrice) {
+          console.warn(`⚠️ SL ${slPrice} >= entry ${entryPrice} for BUY, adjusting...`);
+          slPrice = entryPrice * 0.98; // -2% default
+        }
+      } else {
+        // SELL: TP must be < entry, SL must be > entry
+        if (tp1Price >= entryPrice) {
+          console.warn(`⚠️ TP ${tp1Price} >= entry ${entryPrice} for SELL, adjusting...`);
+          tp1Price = entryPrice * 0.98; // -2% default
+        }
+        if (slPrice <= entryPrice) {
+          console.warn(`⚠️ SL ${slPrice} <= entry ${entryPrice} for SELL, adjusting...`);
+          slPrice = entryPrice * 1.02; // +2% default
+        }
+      }
+      console.log(`🎯 Validated TP/SL - Side: ${data.side}, Entry: ${entryPrice}, TP: ${tp1Price}, SL: ${slPrice}`);
+    }
+
     // ============================================
     // 💰 CALCULATE POSITION SIZE
     // ============================================

@@ -1,143 +1,114 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { botPositions, positionHistory, botActions } from "@/db/schema";
+import { botPositions, positionHistory, botActions, botSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import crypto from 'crypto';
 
 /**
- * Synchronize bot positions with exchange
+ * Synchronize bot positions with exchange (OKX ONLY)
  * Checks if positions marked as "open" in DB are still open on the exchange
- * If closed on exchange, updates DB and cleans up orders
+ * If closed on exchange, updates DB and moves to history
  */
 
-// Helper function to sign Bybit requests
-async function signBybitRequest(
+// ============================================
+// 🔐 OKX SIGNATURE HELPER
+// ============================================
+
+function createOkxSignature(
+  timestamp: string,
+  method: string,
+  requestPath: string,
+  body: string,
+  apiSecret: string
+): string {
+  const message = timestamp + method + requestPath + body;
+  return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
+}
+
+// ============================================
+// 🔄 SYMBOL CONVERSION FOR OKX
+// ============================================
+
+function convertSymbolToOkx(symbol: string): string {
+  if (symbol.includes('-')) {
+    return symbol;
+  }
+  
+  const match = symbol.match(/^([A-Z0-9]+)(USDT|USD)$/i);
+  if (match) {
+    const [, base, quote] = match;
+    return `${base.toUpperCase()}-${quote.toUpperCase()}-SWAP`;
+  }
+  
+  return symbol;
+}
+
+// ============================================
+// 🏦 GET OPEN POSITIONS FROM OKX
+// ============================================
+
+async function getOkxPositions(
   apiKey: string,
   apiSecret: string,
-  timestamp: number,
-  params: Record<string, any>
+  passphrase: string,
+  demo: boolean
 ) {
-  const queryString = Object.keys(params)
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join("&");
-
-  const signString = timestamp + apiKey + 5000 + queryString;
-
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiSecret);
-  const messageData = encoder.encode(signString);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-  const hashArray = Array.from(new Uint8Array(signature));
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-
-  return hashHex;
-}
-
-// Get all open positions from Bybit
-async function getExchangePositions() {
-  const apiKey = process.env.BYBIT_API_KEY;
-  const apiSecret = process.env.BYBIT_API_SECRET;
-  const environment = process.env.BYBIT_ENVIRONMENT || "demo";
-
-  if (!apiKey || !apiSecret) {
-    throw new Error("Bybit API credentials not configured");
-  }
-
-  const timestamp = Date.now();
-  const params: Record<string, any> = {
-    category: "linear",
-    settleCoin: "USDT",
+  const timestamp = new Date().toISOString();
+  const method = "GET";
+  const requestPath = "/api/v5/account/positions";
+  const queryString = "?instType=SWAP";
+  const body = "";
+  
+  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  
+  const baseUrl = "https://www.okx.com";
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
   };
-
-  const signature = await signBybitRequest(apiKey, apiSecret, timestamp, params);
-
-  const baseUrl =
-    environment === "demo"
-      ? "https://api-demo.bybit.com"
-      : environment === "testnet"
-      ? "https://api-testnet.bybit.com"
-      : "https://api.bybit.com";
-
-  const queryString = Object.keys(params)
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join("&");
-
-  const url = `${baseUrl}/v5/position/list?${queryString}`;
-
-  const response = await fetch(url, {
+  
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+  
+  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
     method: "GET",
-    headers: {
-      "X-BAPI-API-KEY": apiKey,
-      "X-BAPI-TIMESTAMP": timestamp.toString(),
-      "X-BAPI-SIGN": signature,
-      "X-BAPI-RECV-WINDOW": "5000",
-    },
+    headers,
   });
 
   const data = await response.json();
 
-  if (data.retCode !== 0) {
-    throw new Error(`Bybit API error: ${data.retMsg}`);
+  if (data.code !== "0") {
+    throw new Error(`OKX API error: ${data.msg}`);
   }
 
-  // Return only positions with size > 0
-  return data.result?.list?.filter((p: any) => parseFloat(p.size) > 0) || [];
-}
-
-// Cancel order on Bybit
-async function cancelOrder(orderId: string, symbol: string) {
-  const apiKey = process.env.BYBIT_API_KEY;
-  const apiSecret = process.env.BYBIT_API_SECRET;
-  const environment = process.env.BYBIT_ENVIRONMENT || "demo";
-
-  if (!apiKey || !apiSecret) {
-    return { success: false, error: "API credentials not configured" };
-  }
-
-  const timestamp = Date.now();
-  const params: Record<string, any> = {
-    category: "linear",
-    symbol,
-    orderId,
-  };
-
-  const signature = await signBybitRequest(apiKey, apiSecret, timestamp, params);
-
-  const baseUrl =
-    environment === "demo"
-      ? "https://api-demo.bybit.com"
-      : environment === "testnet"
-      ? "https://api-testnet.bybit.com"
-      : "https://api.bybit.com";
-
-  const response = await fetch(`${baseUrl}/v5/order/cancel`, {
-    method: "POST",
-    headers: {
-      "X-BAPI-API-KEY": apiKey,
-      "X-BAPI-TIMESTAMP": timestamp.toString(),
-      "X-BAPI-SIGN": signature,
-      "X-BAPI-RECV-WINDOW": "5000",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(params),
-  });
-
-  const data = await response.json();
-  return { success: data.retCode === 0, data };
+  // Return only positions with pos !== 0
+  return data.data?.filter((p: any) => parseFloat(p.pos) !== 0) || [];
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Get bot settings for API credentials
+    const settings = await db.select().from(botSettings).limit(1);
+    if (settings.length === 0 || !settings[0].apiKey || !settings[0].apiSecret || !settings[0].passphrase) {
+      return NextResponse.json({
+        success: false,
+        message: "OKX API credentials not configured in bot settings",
+      }, { status: 400 });
+    }
+
+    const botConfig = settings[0];
+    const apiKey = botConfig.apiKey;
+    const apiSecret = botConfig.apiSecret;
+    const passphrase = botConfig.passphrase;
+    const environment = botConfig.environment || "demo";
+    const demo = environment === "demo";
+
+    console.log(`[Sync] Using OKX (${environment}) - API Key: ${apiKey.substring(0, 8)}...`);
+
     // Get all open positions from database
     const dbPositions = await db
       .select()
@@ -146,25 +117,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Sync] Found ${dbPositions.length} open positions in database`);
 
-    // Get all open positions from exchange
-    let exchangePositions;
+    // Get all open positions from OKX
+    let okxPositions;
     try {
-      exchangePositions = await getExchangePositions();
-      console.log(`[Sync] Found ${exchangePositions.length} open positions on exchange`);
+      okxPositions = await getOkxPositions(apiKey, apiSecret, passphrase, demo);
+      console.log(`[Sync] Found ${okxPositions.length} open positions on OKX`);
     } catch (error) {
-      console.error("[Sync] Failed to fetch exchange positions:", error);
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Failed to fetch exchange positions: ${error instanceof Error ? error.message : "Unknown error"}`,
-        },
-        { status: 500 }
-      );
+      console.error("[Sync] Failed to fetch OKX positions:", error);
+      return NextResponse.json({
+        success: false,
+        message: `Failed to fetch OKX positions: ${error instanceof Error ? error.message : "Unknown error"}`,
+      }, { status: 500 });
     }
 
-    // Create a map of exchange positions for quick lookup
-    const exchangePositionsMap = new Map(
-      exchangePositions.map((p: any) => [`${p.symbol}_${p.side}`, p])
+    // Create a map of OKX positions for quick lookup
+    // Key format: "SYMBOL_SIDE" e.g., "XRP-USDT-SWAP_long" or "XRP-USDT-SWAP_short"
+    const okxPositionsMap = new Map(
+      okxPositions.map((p: any) => {
+        const positionSide = parseFloat(p.pos) > 0 ? "long" : "short";
+        return [`${p.instId}_${positionSide}`, p];
+      })
     );
 
     const syncResults = {
@@ -174,28 +146,21 @@ export async function POST(request: NextRequest) {
       errors: [] as string[],
     };
 
-    // Check each DB position against exchange positions
+    // Check each DB position against OKX positions
     for (const dbPos of dbPositions) {
       syncResults.checked++;
-      const posKey = `${dbPos.symbol}_${dbPos.side === "BUY" ? "Buy" : "Sell"}`;
-      const exchangePos = exchangePositionsMap.get(posKey) as any;
+      
+      const okxSymbol = convertSymbolToOkx(dbPos.symbol);
+      const positionSide = dbPos.side === "BUY" ? "long" : "short";
+      const posKey = `${okxSymbol}_${positionSide}`;
+      const okxPos = okxPositionsMap.get(posKey) as any;
 
-      if (!exchangePos) {
+      if (!okxPos) {
         // Position is closed on exchange but still open in DB
-        console.log(`[Sync] Position ${dbPos.symbol} ${dbPos.side} is closed on exchange, syncing...`);
+        console.log(`[Sync] Position ${dbPos.symbol} ${dbPos.side} is closed on OKX, syncing...`);
 
         try {
-          // 1. Cancel any pending TP2/TP3 orders if they exist
-          if (dbPos.tp2OrderId) {
-            await cancelOrder(dbPos.tp2OrderId, dbPos.symbol);
-            console.log(`[Sync] Cancelled TP2 order ${dbPos.tp2OrderId}`);
-          }
-          if (dbPos.tp3OrderId) {
-            await cancelOrder(dbPos.tp3OrderId, dbPos.symbol);
-            console.log(`[Sync] Cancelled TP3 order ${dbPos.tp3OrderId}`);
-          }
-
-          // 2. Calculate final PnL (use last known values)
+          // Calculate final PnL (use last known values)
           const closedAt = new Date();
           const durationMinutes = Math.floor(
             (closedAt.getTime() - new Date(dbPos.openedAt).getTime()) / 1000 / 60
@@ -205,7 +170,7 @@ export async function POST(request: NextRequest) {
           const pnl = dbPos.unrealisedPnl; // Last known PnL
           const pnlPercent = (pnl / dbPos.initialMargin) * 100;
 
-          // 3. Save to position_history
+          // Save to position_history
           await db.insert(positionHistory).values({
             positionId: dbPos.id,
             symbol: dbPos.symbol,
@@ -227,7 +192,7 @@ export async function POST(request: NextRequest) {
             durationMinutes,
           });
 
-          // 4. Update position status to closed
+          // Update position status to closed
           await db
             .update(botPositions)
             .set({
@@ -237,14 +202,14 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(botPositions.id, dbPos.id));
 
-          // 5. Log action
+          // Log action
           await db.insert(botActions).values({
             actionType: "position_closed",
             symbol: dbPos.symbol,
             side: dbPos.side,
             reason: "auto_sync",
             details: JSON.stringify({
-              message: "Position closed on exchange, synced to database",
+              message: "Position closed on OKX, synced to database",
               positionId: dbPos.id,
             }),
             success: true,
@@ -259,15 +224,18 @@ export async function POST(request: NextRequest) {
           syncResults.errors.push(errorMsg);
         }
       } else {
-        // Position still open on exchange
+        // Position still open on OKX
         syncResults.stillOpen++;
 
-        // Optionally update unrealised PnL from exchange data
-        const updatedPnl = parseFloat(exchangePos.unrealisedPnl || "0");
+        // Update unrealised PnL from OKX data
+        const updatedPnl = parseFloat(okxPos.upl || "0");
         if (Math.abs(updatedPnl - dbPos.unrealisedPnl) > 0.01) {
           await db
             .update(botPositions)
-            .set({ unrealisedPnl: updatedPnl })
+            .set({ 
+              unrealisedPnl: updatedPnl,
+              lastUpdated: new Date().toISOString(),
+            })
             .where(eq(botPositions.id, dbPos.id));
           console.log(`[Sync] Updated PnL for ${dbPos.symbol}: ${updatedPnl}`);
         }
@@ -283,12 +251,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Sync] Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: `Sync failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: false,
+      message: `Sync failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    }, { status: 500 });
   }
 }
