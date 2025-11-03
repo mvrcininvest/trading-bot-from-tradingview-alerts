@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
-import { autoFixMissingSlTp } from '@/lib/fix-missing-tpsl-helper';
+import { monitorAndManagePositions } from '@/lib/position-monitor';
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -1150,6 +1150,25 @@ export async function POST(request: Request) {
         // Don't fail the whole request if auto-fix fails
       }
 
+      // ✅ CRITICAL: RUN POSITION MONITOR IMMEDIATELY AFTER OPENING POSITION
+      console.log("\n🔍 Running position monitor immediately after position opening...");
+      try {
+        const monitorResult = await monitorAndManagePositions(false);
+        if (monitorResult.success) {
+          console.log(`✅ Monitor completed: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`);
+          await logToBot('success', 'monitor_completed', `Position monitor after open: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`, {
+            tpHits: monitorResult.tpHits,
+            slAdjustments: monitorResult.slAdjustments,
+            slTpFixed: monitorResult.slTpFixed,
+          }, alert.id, botPosition.id);
+        } else {
+          console.log(`⚠️ Monitor skipped: ${monitorResult.reason || monitorResult.error}`);
+        }
+      } catch (error) {
+        console.error("❌ Monitor failed:", error);
+        // Don't fail the whole request if monitor fails
+      }
+
       return NextResponse.json({
         success: true,
         alert_id: alert.id,
@@ -1168,7 +1187,7 @@ export async function POST(request: Request) {
           tp3: tp3Price, 
           tpLevels: botConfig.tpCount 
         },
-        autoFixRan: true
+        monitorRan: true
       });
 
     } catch (error: any) {

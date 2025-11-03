@@ -124,24 +124,24 @@ export default function DashboardPage() {
 
     const autoFixInterval = setInterval(async () => {
       try {
-        console.log("🔧 [Background] Running auto-fix for missing SL/TP...");
-        const response = await fetch("/api/bot/fix-missing-tpsl", {
+        console.log("🔍 [Background] Running position monitor...");
+        const response = await fetch("/api/bot/monitor-positions", {
           method: "POST",
         });
         const data = await response.json();
 
-        if (data.success && data.results) {
-          const { fixed, closed } = data.results;
-          if (fixed > 0 || closed > 0) {
-            console.log(`✅ [Background] Auto-fix: Fixed ${fixed}, Closed ${closed}`);
-            // Refresh positions after auto-fix
+        if (data.success && data.result) {
+          const { tpHits, slAdjustments, slTpFixed } = data.result;
+          if (tpHits > 0 || slAdjustments > 0 || slTpFixed > 0) {
+            console.log(`✅ [Background] Monitor: TP hits ${tpHits}, SL adj ${slAdjustments}, Fixed ${slTpFixed}`);
+            // Refresh positions after monitor actions
             fetchBotPositions(true);
             fetchPositions(credentials, true);
           }
         }
       } catch (error) {
         // Silent fail - don't disturb user
-        console.error("❌ [Background] Auto-fix failed:", error);
+        console.error("❌ [Background] Monitor failed:", error);
       }
     }, 10000); // Run every 10 seconds
 
