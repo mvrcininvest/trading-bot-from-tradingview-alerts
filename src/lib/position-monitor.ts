@@ -331,13 +331,13 @@ async function getOkxPositions(
 
 export async function monitorAndManagePositions(silent = true) {
   try {
-    if (!silent) {
-      console.log("\n🔍 [MONITOR] Starting position monitoring...");
-    }
+    // ALWAYS log when starting monitor (even in silent mode)
+    console.log("\n🔍 [MONITOR] Starting position monitoring...");
 
     // Get settings
     const settings = await db.select().from(botSettings).limit(1);
     if (settings.length === 0 || !settings[0].apiKey) {
+      console.log("⚠️ [MONITOR] No credentials found");
       return { success: false, reason: "no_credentials" };
     }
 
@@ -352,9 +352,10 @@ export async function monitorAndManagePositions(silent = true) {
       .from(botPositions)
       .where(eq(botPositions.status, "open"));
 
+    console.log(`📊 [MONITOR] Found ${dbPositions.length} open positions in database`);
+
     if (dbPositions.length === 0) {
-      if (!silent) console.log("⚠️ [MONITOR] No open positions in database");
-      return { success: true, checked: 0 };
+      return { success: true, checked: 0, tpHits: 0, slAdjustments: 0, slTpFixed: 0 };
     }
 
     // Get OKX positions
@@ -363,25 +364,24 @@ export async function monitorAndManagePositions(silent = true) {
     // Get existing algo orders
     const algoOrders = await getAlgoOrders(apiKey, apiSecret, passphrase, demo);
     
-    if (!silent) {
-      console.log(`📊 [MONITOR] DB Positions: ${dbPositions.length}`);
-      console.log(`📊 [MONITOR] OKX Positions: ${okxPositions.length}`);
-      console.log(`📊 [MONITOR] Algo Orders: ${algoOrders.length}`);
-    }
+    console.log(`📊 [MONITOR] OKX Positions: ${okxPositions.length}, Algo Orders: ${algoOrders.length}`);
 
     let tpHits = 0;
     let slAdjustments = 0;
     let slTpFixed = 0;
+    const errors: string[] = [];
+    const details: any[] = [];
 
     for (const dbPos of dbPositions) {
       const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
+      
+      console.log(`\n🔍 [MONITOR] Checking ${symbol} (${dbPos.side})...`);
       
       // Find matching OKX position
       const okxPos = okxPositions.find((p: any) => p.instId === symbol);
       
       if (!okxPos) {
-        // Position closed on exchange but still open in DB
-        if (!silent) console.log(`⚠️ [MONITOR] ${symbol} closed on exchange, updating DB...`);
+        console.log(`⚠️ [MONITOR] ${symbol} not found on exchange - marking as closed`);
         
         await db.update(botPositions)
           .set({
@@ -390,6 +390,13 @@ export async function monitorAndManagePositions(silent = true) {
             closedAt: new Date().toISOString(),
           })
           .where(eq(botPositions.id, dbPos.id));
+        
+        details.push({
+          symbol,
+          side: dbPos.side,
+          action: "closed",
+          reason: "Position not found on exchange"
+        });
         
         continue;
       }
@@ -400,10 +407,7 @@ export async function monitorAndManagePositions(silent = true) {
       const side = dbPos.side;
       const entryPrice = dbPos.entryPrice;
       
-      if (!silent) {
-        console.log(`\n📍 [MONITOR] ${symbol} ${side}`);
-        console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}`);
-      }
+      console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}`);
 
       // ============================================
       // 🎯 CHECK TP LEVELS AND PARTIAL CLOSE
@@ -418,9 +422,8 @@ export async function monitorAndManagePositions(silent = true) {
           : currentPrice <= dbPos.tp1Price;
         
         if (tp1Hit) {
-          if (!silent) console.log(`   🎯 TP1 HIT @ ${dbPos.tp1Price}!`);
+          console.log(`   🎯 TP1 HIT @ ${dbPos.tp1Price}! Closing partial position...`);
           
-          // Close partial position (based on tp1Percent setting)
           const closePercent = config.tp1Percent || 50.0;
           const closeQty = (quantity * closePercent) / 100;
           
@@ -435,9 +438,8 @@ export async function monitorAndManagePositions(silent = true) {
               demo
             );
             
-            if (!silent) console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
+            console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
             
-            // Update database
             await db.update(botPositions)
               .set({
                 tp1Hit: true,
@@ -447,12 +449,17 @@ export async function monitorAndManagePositions(silent = true) {
               .where(eq(botPositions.id, dbPos.id));
             
             tpHits++;
+            details.push({
+              symbol,
+              side,
+              action: "tp1_hit",
+              reason: `Closed ${closePercent}% @ ${currentPrice}`
+            });
             
             // Adjust SL based on strategy
             if (config.slManagementAfterTp1 === "breakeven") {
-              if (!silent) console.log(`   📈 Moving SL to breakeven @ ${entryPrice}`);
+              console.log(`   📈 Moving SL to breakeven @ ${entryPrice}`);
               
-              // Cancel existing SL algo orders
               const slAlgos = algoOrders.filter((a: any) => 
                 a.instId === symbol && a.slTriggerPx
               );
@@ -461,7 +468,6 @@ export async function monitorAndManagePositions(silent = true) {
                 await cancelAlgoOrder(algo.algoId, symbol, apiKey, apiSecret, passphrase, demo);
               }
               
-              // Set new SL at breakeven
               await setAlgoOrder(
                 symbol,
                 side,
@@ -485,9 +491,8 @@ export async function monitorAndManagePositions(silent = true) {
                 ? currentPrice * (1 - trailingDist / 100)
                 : currentPrice * (1 + trailingDist / 100);
               
-              if (!silent) console.log(`   📈 Trailing SL to ${newSl.toFixed(4)} (${trailingDist}% from current)`);
+              console.log(`   📈 Trailing SL to ${newSl.toFixed(4)}`);
               
-              // Cancel existing SL
               const slAlgos = algoOrders.filter((a: any) => 
                 a.instId === symbol && a.slTriggerPx
               );
@@ -496,7 +501,6 @@ export async function monitorAndManagePositions(silent = true) {
                 await cancelAlgoOrder(algo.algoId, symbol, apiKey, apiSecret, passphrase, demo);
               }
               
-              // Set trailing SL
               await setAlgoOrder(
                 symbol,
                 side,
@@ -517,7 +521,9 @@ export async function monitorAndManagePositions(silent = true) {
             }
             
           } catch (error: any) {
-            console.error(`   ❌ Failed to close TP1: ${error.message}`);
+            const errMsg = `Failed to close TP1 for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
           }
         }
       }
@@ -529,10 +535,10 @@ export async function monitorAndManagePositions(silent = true) {
           : currentPrice <= dbPos.tp2Price;
         
         if (tp2Hit) {
-          if (!silent) console.log(`   🎯 TP2 HIT @ ${dbPos.tp2Price}!`);
+          console.log(`   🎯 TP2 HIT @ ${dbPos.tp2Price}!`);
           
           const closePercent = config.tp2Percent || 30.0;
-          const currentQty = dbPos.quantity; // Already reduced after TP1
+          const currentQty = dbPos.quantity;
           const closeQty = (currentQty * closePercent) / 100;
           
           try {
@@ -546,7 +552,7 @@ export async function monitorAndManagePositions(silent = true) {
               demo
             );
             
-            if (!silent) console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
+            console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
             
             await db.update(botPositions)
               .set({
@@ -557,9 +563,17 @@ export async function monitorAndManagePositions(silent = true) {
               .where(eq(botPositions.id, dbPos.id));
             
             tpHits++;
+            details.push({
+              symbol,
+              side,
+              action: "tp2_hit",
+              reason: `Closed ${closePercent}% @ ${currentPrice}`
+            });
             
           } catch (error: any) {
-            console.error(`   ❌ Failed to close TP2: ${error.message}`);
+            const errMsg = `Failed to close TP2 for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
           }
         }
       }
@@ -571,9 +585,9 @@ export async function monitorAndManagePositions(silent = true) {
           : currentPrice <= dbPos.tp3Price;
         
         if (tp3Hit) {
-          if (!silent) console.log(`   🎯 TP3 HIT @ ${dbPos.tp3Price}! Closing remaining position...`);
+          console.log(`   🎯 TP3 HIT @ ${dbPos.tp3Price}! Closing remaining position...`);
           
-          const currentQty = dbPos.quantity; // Remaining after TP1 and TP2
+          const currentQty = dbPos.quantity;
           
           try {
             const orderId = await closePositionPartial(
@@ -586,7 +600,7 @@ export async function monitorAndManagePositions(silent = true) {
               demo
             );
             
-            if (!silent) console.log(`   ✅ Closed remaining ${currentQty} @ market - Order: ${orderId}`);
+            console.log(`   ✅ Closed remaining ${currentQty} @ market - Order: ${orderId}`);
             
             await db.update(botPositions)
               .set({
@@ -598,9 +612,17 @@ export async function monitorAndManagePositions(silent = true) {
               .where(eq(botPositions.id, dbPos.id));
             
             tpHits++;
+            details.push({
+              symbol,
+              side,
+              action: "tp3_hit",
+              reason: `Closed remaining @ ${currentPrice}`
+            });
             
           } catch (error: any) {
-            console.error(`   ❌ Failed to close TP3: ${error.message}`);
+            const errMsg = `Failed to close TP3 for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
           }
         }
       }
@@ -609,15 +631,15 @@ export async function monitorAndManagePositions(silent = true) {
       // 🛡️ CHECK AND FIX MISSING SL/TP ALGO ORDERS
       // ============================================
 
-      // Find algo orders for this position
       const positionAlgos = algoOrders.filter((a: any) => a.instId === symbol);
       const hasSL = positionAlgos.some((a: any) => a.slTriggerPx);
       const hasTP = positionAlgos.some((a: any) => a.tpTriggerPx);
 
+      console.log(`   🔍 Algo Orders: SL=${hasSL}, TP=${hasTP} (Total: ${positionAlgos.length})`);
+
       if (!hasSL || !hasTP) {
-        if (!silent) console.log(`   ⚠️ Missing SL/TP algo orders - Fixing...`);
+        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - FIXING NOW...`);
         
-        // Calculate correct SL/TP based on current settings
         const slRR = config.defaultSlRR || 1.0;
         const nextTpRR = !dbPos.tp1Hit ? (config.tp1RR || 1.0) 
                         : !dbPos.tp2Hit ? (config.tp2RR || 2.0)
@@ -636,51 +658,83 @@ export async function monitorAndManagePositions(silent = true) {
         
         // Set SL if missing
         if (!hasSL) {
-          const slAlgoId = await setAlgoOrder(
-            symbol,
-            side,
-            dbPos.quantity,
-            newSL,
-            "sl",
-            apiKey,
-            apiSecret,
-            passphrase,
-            demo
-          );
-          
-          if (slAlgoId) {
-            if (!silent) console.log(`   ✅ SL set @ ${newSL.toFixed(4)} - Algo: ${slAlgoId}`);
-            slTpFixed++;
+          try {
+            const slAlgoId = await setAlgoOrder(
+              symbol,
+              side,
+              dbPos.quantity,
+              newSL,
+              "sl",
+              apiKey,
+              apiSecret,
+              passphrase,
+              demo
+            );
+            
+            if (slAlgoId) {
+              console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)} - Algo: ${slAlgoId}`);
+              slTpFixed++;
+              details.push({
+                symbol,
+                side,
+                action: "sl_fixed",
+                reason: `SL set @ ${newSL.toFixed(4)}`
+              });
+            } else {
+              const errMsg = `Failed to set SL for ${symbol} - API returned null`;
+              console.error(`   ❌ ${errMsg}`);
+              errors.push(errMsg);
+            }
+          } catch (error: any) {
+            const errMsg = `Failed to set SL for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
           }
         }
         
-        // Set TP if missing (only for next TP level)
+        // Set TP if missing
         if (!hasTP) {
-          const tpAlgoId = await setAlgoOrder(
-            symbol,
-            side,
-            dbPos.quantity,
-            newTP,
-            "tp",
-            apiKey,
-            apiSecret,
-            passphrase,
-            demo
-          );
-          
-          if (tpAlgoId) {
-            if (!silent) console.log(`   ✅ TP set @ ${newTP.toFixed(4)} - Algo: ${tpAlgoId}`);
-            slTpFixed++;
+          try {
+            const tpAlgoId = await setAlgoOrder(
+              symbol,
+              side,
+              dbPos.quantity,
+              newTP,
+              "tp",
+              apiKey,
+              apiSecret,
+              passphrase,
+              demo
+            );
+            
+            if (tpAlgoId) {
+              console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)} - Algo: ${tpAlgoId}`);
+              slTpFixed++;
+              details.push({
+                symbol,
+                side,
+                action: "tp_fixed",
+                reason: `TP set @ ${newTP.toFixed(4)}`
+              });
+            } else {
+              const errMsg = `Failed to set TP for ${symbol} - API returned null`;
+              console.error(`   ❌ ${errMsg}`);
+              errors.push(errMsg);
+            }
+          } catch (error: any) {
+            const errMsg = `Failed to set TP for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
           }
         }
+      } else {
+        console.log(`   ✅ Position has both SL and TP - OK`);
       }
     }
 
-    if (!silent) {
-      console.log(`\n✅ [MONITOR] Completed`);
-      console.log(`   TP Hits: ${tpHits}`);
-      console.log(`   SL Adjustments: ${slAdjustments}`);
-      console.log(`   SL/TP Fixed: ${slTpFixed}`);
+    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}`);
+    if (errors.length > 0) {
+      console.error(`⚠️ [MONITOR] Errors encountered: ${errors.length}`);
     }
 
     return {
@@ -689,10 +743,12 @@ export async function monitorAndManagePositions(silent = true) {
       tpHits,
       slAdjustments,
       slTpFixed,
+      errors,
+      details,
     };
 
   } catch (error: any) {
-    console.error("❌ [MONITOR] Error:", error.message);
+    console.error("❌ [MONITOR] Fatal error:", error.message);
     return {
       success: false,
       error: error.message,
