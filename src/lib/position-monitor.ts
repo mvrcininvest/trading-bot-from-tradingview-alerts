@@ -231,13 +231,13 @@ async function setAlgoOrder(
   const requestPath = "/api/v5/trade/order-algo";
   
   const algoSide = side === "BUY" ? "sell" : "buy";
-  const posSide = side === "BUY" ? "long" : "short";
   
+  // ⚠️ CRITICAL: Do NOT use posSide in net mode (most OKX accounts)
+  // In net mode, OKX infers position direction from the order side
   const payload: any = {
     instId: symbol,
     tdMode: "cross",
     side: algoSide,
-    posSide: posSide,
     ordType: "conditional",
     sz: quantity.toString(),
   };
@@ -265,6 +265,10 @@ async function setAlgoOrder(
     headers["x-simulated-trading"] = "1";
   }
 
+  console.error(`🔧 [SET_ALGO] Setting ${orderType.toUpperCase()} for ${symbol}`);
+  console.error(`   Payload: ${JSON.stringify(payload, null, 2)}`);
+  console.error(`   Demo mode: ${demo}`);
+
   const response = await fetch(`https://www.okx.com${requestPath}`, {
     method: "POST",
     headers,
@@ -273,12 +277,26 @@ async function setAlgoOrder(
 
   const data = await response.json();
 
+  console.error(`📥 [SET_ALGO] OKX Response:`);
+  console.error(`   Code: ${data.code}`);
+  console.error(`   Message: ${data.msg}`);
+  console.error(`   Full response: ${JSON.stringify(data, null, 2)}`);
+
   if (data.code !== "0") {
-    console.error(`Failed to set ${orderType.toUpperCase()}: ${data.msg}`);
+    console.error(`❌ [SET_ALGO] Failed to set ${orderType.toUpperCase()}: ${data.msg} (code: ${data.code})`);
     return null;
   }
 
-  return data.data?.[0]?.algoId || null;
+  const algoId = data.data?.[0]?.algoId || null;
+  
+  if (!algoId) {
+    console.error(`❌ [SET_ALGO] Success code but no algoId returned!`);
+    console.error(`   Data array: ${JSON.stringify(data.data, null, 2)}`);
+  } else {
+    console.error(`✅ [SET_ALGO] Successfully set ${orderType.toUpperCase()} - Algo ID: ${algoId}`);
+  }
+
+  return algoId;
 }
 
 // ============================================
@@ -656,8 +674,106 @@ export async function monitorAndManagePositions(silent = true) {
           newTP = entryPrice * (1 - nextTpRR / 100);
         }
         
-        // Set SL if missing
-        if (!hasSL) {
+        // ============================================
+        // ⚠️ CRITICAL: Check if position already hit SL/TP
+        // ============================================
+        
+        const slAlreadyHit = isLong 
+          ? currentPrice <= newSL 
+          : currentPrice >= newSL;
+          
+        const tpAlreadyHit = isLong 
+          ? currentPrice >= newTP 
+          : currentPrice <= newTP;
+        
+        if (slAlreadyHit) {
+          console.error(`   ⚠️ SL ALREADY HIT! Current: ${currentPrice}, SL: ${newSL.toFixed(4)} - CLOSING POSITION`);
+          
+          try {
+            const orderId = await closePositionPartial(
+              symbol, 
+              side, 
+              quantity, 
+              apiKey, 
+              apiSecret, 
+              passphrase, 
+              demo
+            );
+            
+            console.log(`   ✅ Position closed @ market due to SL - Order: ${orderId}`);
+            
+            await db.update(botPositions)
+              .set({
+                status: "closed",
+                closeReason: "sl_hit",
+                closedAt: new Date().toISOString(),
+              })
+              .where(eq(botPositions.id, dbPos.id));
+            
+            details.push({
+              symbol,
+              side,
+              action: "sl_hit_closed",
+              reason: `Position closed - SL already hit @ ${currentPrice}`
+            });
+            
+            continue; // Skip to next position
+          } catch (error: any) {
+            const errMsg = `Failed to close position at SL for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
+            continue;
+          }
+        }
+        
+        if (tpAlreadyHit) {
+          console.log(`   🎯 TP ALREADY HIT! Current: ${currentPrice}, TP: ${newTP.toFixed(4)} - CLOSING PARTIAL`);
+          
+          const closePercent = config.tp1Percent || 50.0;
+          const closeQty = (quantity * closePercent) / 100;
+          
+          try {
+            const orderId = await closePositionPartial(
+              symbol, 
+              side, 
+              closeQty, 
+              apiKey, 
+              apiSecret, 
+              passphrase, 
+              demo
+            );
+            
+            console.log(`   ✅ Closed ${closePercent}% @ market due to TP hit - Order: ${orderId}`);
+            
+            await db.update(botPositions)
+              .set({
+                tp1Hit: true,
+                quantity: quantity - closeQty,
+                lastUpdated: new Date().toISOString(),
+              })
+              .where(eq(botPositions.id, dbPos.id));
+            
+            tpHits++;
+            details.push({
+              symbol,
+              side,
+              action: "tp_hit_closed",
+              reason: `Closed ${closePercent}% - TP already hit @ ${currentPrice}`
+            });
+            
+            // After TP hit, recalculate SL with breakeven if configured
+            if (config.slManagementAfterTp1 === "breakeven") {
+              newSL = entryPrice;
+            }
+          } catch (error: any) {
+            const errMsg = `Failed to close partial at TP for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
+          }
+        }
+        
+        // Set SL if missing (and not already hit)
+        if (!hasSL && !slAlreadyHit) {
           try {
             const slAlgoId = await setAlgoOrder(
               symbol,
@@ -692,8 +808,8 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // Set TP if missing
-        if (!hasTP) {
+        // Set TP if missing (and not already hit)
+        if (!hasTP && !tpAlreadyHit) {
           try {
             const tpAlgoId = await setAlgoOrder(
               symbol,
