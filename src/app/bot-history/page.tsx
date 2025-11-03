@@ -347,20 +347,20 @@ export default function BotHistoryPage() {
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
                         <div>
-                          <div className="text-muted-foreground">Wejście</div>
-                          <div className="font-semibold">{position.entryPrice.toFixed(4)}</div>
+                          <div className="text-gray-400">Wejście</div>
+                          <div className="font-semibold text-white">{position.entryPrice.toFixed(4)}</div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">Wyjście</div>
-                          <div className="font-semibold">{position.closePrice.toFixed(4)}</div>
+                          <div className="text-gray-400">Wyjście</div>
+                          <div className="font-semibold text-white">{position.closePrice.toFixed(4)}</div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">Rozmiar</div>
-                          <div className="font-semibold">{position.quantity.toFixed(4)}</div>
+                          <div className="text-gray-400">Rozmiar</div>
+                          <div className="font-semibold text-white">{position.quantity.toFixed(4)}</div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">Czas Trwania</div>
-                          <div className="font-semibold">
+                          <div className="text-gray-400">Czas Trwania</div>
+                          <div className="font-semibold text-white">
                             {position.durationMinutes < 60
                               ? `${position.durationMinutes}m`
                               : `${Math.floor(position.durationMinutes / 60)}h ${
@@ -372,7 +372,7 @@ export default function BotHistoryPage() {
 
                       {/* TP Status */}
                       <div className="flex items-center gap-2 text-xs mb-2">
-                        <span className="text-muted-foreground">Take Profit:</span>
+                        <span className="text-gray-400">Take Profit:</span>
                         <Badge
                           variant={position.tp1Hit ? "default" : "outline"}
                           className={position.tp1Hit ? "bg-green-500" : ""}
@@ -393,7 +393,7 @@ export default function BotHistoryPage() {
                         </Badge>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="flex items-center justify-between text-xs text-gray-400">
                         <span>Confirmations: {position.confirmationCount}</span>
                         <span>
                           {new Date(position.openedAt).toLocaleString("pl-PL")} →{" "}
