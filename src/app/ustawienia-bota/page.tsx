@@ -9,11 +9,13 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
-import { Bot, Power } from "lucide-react"
+import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 export default function BotSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
 
   // Bot settings state
   const [botEnabled, setBotEnabled] = useState(false)
@@ -233,6 +235,236 @@ export default function BotSettingsPage() {
               />
               <span className="text-xs text-gray-500">Kliknij aby {botEnabled ? "wyłączyć" : "włączyć"}</span>
             </div>
+          </div>
+        </Card>
+
+        {/* NOWA SEKCJA: Podgląd Obecnych Ustawień */}
+        <Card className="border-blue-700/40 bg-gradient-to-br from-blue-600/10 to-gray-900/80 backdrop-blur-sm">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-blue-500/20 border border-blue-500/30">
+                  <Eye className="h-6 w-6 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Podgląd Obecnych Ustawień</h3>
+                  <p className="text-sm text-gray-400">Aktywna konfiguracja bota</p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPreview(!showPreview)}
+                className="text-gray-400 hover:text-white"
+              >
+                {showPreview ? "Zwiń" : "Rozwiń"}
+              </Button>
+            </div>
+
+            {showPreview && (
+              <div className="space-y-6">
+                {/* Position Size Settings */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <TrendingUp className="h-5 w-5 text-blue-400" />
+                    <h4 className="text-lg font-semibold text-white">Wielkość Pozycji</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pl-7">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Tryb</p>
+                      <p className="text-white font-semibold">
+                        {positionSizeMode === "percent" ? "Procent Kapitału" : "Stała Kwota USDT"}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Wartość</p>
+                      <p className="text-white font-semibold">
+                        {positionSizeMode === "percent" 
+                          ? `${positionSizePercent}% kapitału` 
+                          : `${positionSizeFixed} USDT`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-700/50" />
+
+                {/* Leverage Settings */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target className="h-5 w-5 text-purple-400" />
+                    <h4 className="text-lg font-semibold text-white">Dźwignia</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pl-7">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Tryb</p>
+                      <p className="text-white font-semibold">
+                        {leverageMode === "from_alert" ? "Z Alertu (Dynamiczna)" : "Stała Wartość"}
+                      </p>
+                    </div>
+                    {leverageMode === "fixed" && (
+                      <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                        <p className="text-xs text-gray-400 mb-1">Wartość</p>
+                        <p className="text-white font-semibold">{leverageFixed}x</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-700/50" />
+
+                {/* Tier Filtering */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Layers className="h-5 w-5 text-amber-400" />
+                    <h4 className="text-lg font-semibold text-white">Filtrowanie Tier</h4>
+                  </div>
+                  <div className="pl-7 space-y-3">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Tryb</p>
+                      <p className="text-white font-semibold">
+                        {tierFilteringMode === "all" ? "Wszystkie Tiery" : "Wybrane Tiery"}
+                      </p>
+                    </div>
+                    {tierFilteringMode === "custom" && disabledTiers.length > 0 && (
+                      <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                        <p className="text-xs text-gray-400 mb-2">Wyłączone tiery</p>
+                        <div className="flex flex-wrap gap-2">
+                          {disabledTiers.map((tier) => (
+                            <Badge key={tier} variant="destructive" className="text-xs">
+                              {tier}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-700/50" />
+
+                {/* TP Strategy */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target className="h-5 w-5 text-green-400" />
+                    <h4 className="text-lg font-semibold text-white">Take Profit</h4>
+                  </div>
+                  <div className="pl-7">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Strategia</p>
+                      <p className="text-white font-semibold">
+                        {tpStrategy === "single" ? "Pojedynczy TP (main_tp)" : "Wielokrotny TP (TP1/TP2/TP3)"}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        {tpStrategy === "single" 
+                          ? "Zamyka całą pozycję gdy main_tp zostanie osiągnięty"
+                          : "Zamyka pozycję częściowo: 50% na TP1, 30% na TP2, 20% na TP3"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-700/50" />
+
+                {/* SL/TP Safety */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Shield className="h-5 w-5 text-red-400" />
+                    <h4 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h4>
+                  </div>
+                  <div className="pl-7 space-y-3">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Status</p>
+                      <p className="text-white font-semibold">
+                        {useDefaultSlTp ? "Włączone ✅" : "Wyłączone ❌"}
+                      </p>
+                    </div>
+                    {useDefaultSlTp && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                          <p className="text-xs text-gray-400 mb-1">Domyślny SL</p>
+                          <p className="text-red-400 font-semibold">{defaultSlRR} RR</p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                          <p className="text-xs text-gray-400 mb-1">Domyślny TP1</p>
+                          <p className="text-green-400 font-semibold">{defaultTp1RR} RR</p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                          <p className="text-xs text-gray-400 mb-1">Domyślny TP2</p>
+                          <p className="text-green-400 font-semibold">{defaultTp2RR} RR</p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                          <p className="text-xs text-gray-400 mb-1">Domyślny TP3</p>
+                          <p className="text-green-400 font-semibold">{defaultTp3RR} RR</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-700/50" />
+
+                {/* Position Management */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Settings className="h-5 w-5 text-cyan-400" />
+                    <h4 className="text-lg font-semibold text-white">Zarządzanie Pozycjami</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pl-7">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Max pozycji jednocześnie</p>
+                      <p className="text-white font-semibold">{maxConcurrentPositions}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Ten sam symbol</p>
+                      <p className="text-white font-semibold text-xs">
+                        {sameSymbolBehavior === "ignore" && "Ignoruj nowy alert"}
+                        {sameSymbolBehavior === "track_confirmations" && "Śledź potwierdzenia"}
+                        {sameSymbolBehavior === "upgrade_tp" && "Upgrade TP"}
+                        {sameSymbolBehavior === "emergency_override" && "Emergency override"}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50 col-span-2">
+                      <p className="text-xs text-gray-400 mb-1">Przeciwny kierunek</p>
+                      <p className="text-white font-semibold text-xs">
+                        {oppositeDirectionStrategy === "market_reversal" && "Market reversal (zamknij + otwórz nową)"}
+                        {oppositeDirectionStrategy === "immediate_reverse" && "Natychmiastowe odwrócenie"}
+                        {oppositeDirectionStrategy === "defensive_close" && "Defensive close (tylko zamknij)"}
+                        {oppositeDirectionStrategy === "ignore_opposite" && "Ignoruj"}
+                        {oppositeDirectionStrategy === "tier_based" && "Na podstawie tier"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-700/50" />
+
+                {/* Emergency Override */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Shield className="h-5 w-5 text-orange-400" />
+                    <h4 className="text-lg font-semibold text-white">Emergency Override</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pl-7">
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Tryb nadpisania</p>
+                      <p className="text-white font-semibold text-xs">
+                        {emergencyOverrideMode === "never" && "Nigdy"}
+                        {emergencyOverrideMode === "always" && "Zawsze"}
+                        {emergencyOverrideMode === "only_profit" && "Tylko gdy pozycja w zysku"}
+                        {emergencyOverrideMode === "profit_above_x" && `Zysk powyżej ${emergencyMinProfitPercent}%`}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Odwrócenie Emergency</p>
+                      <p className="text-white font-semibold">
+                        {emergencyCanReverse ? "Dozwolone ✅" : "Zablokowane ❌"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
