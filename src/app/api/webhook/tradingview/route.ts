@@ -928,19 +928,20 @@ export async function POST(request: Request) {
       const tp3RR = botConfig.tp3RR || 3.0;
 
       if (data.side === "BUY") {
+        // ✅ BUY/LONG: SL below entry, TP above entry
         slPrice = entryPrice * (1 - (slRR / 100));
         tp1Price = entryPrice * (1 + (tp1RR / 100));
         if (tpCount >= 2) tp2Price = entryPrice * (1 + (tp2RR / 100));
         if (tpCount >= 3) tp3Price = entryPrice * (1 + (tp3RR / 100));
       } else {
-        // ✅ CRITICAL FIX: SHORT positions
+        // ✅ CRITICAL FIX: SELL/SHORT positions
         slPrice = entryPrice * (1 + (slRR / 100)); // SL ABOVE entry for SHORT
         tp1Price = entryPrice * (1 - (tp1RR / 100)); // TP BELOW entry for SHORT
         if (tpCount >= 2) tp2Price = entryPrice * (1 - (tp2RR / 100));
         if (tpCount >= 3) tp3Price = entryPrice * (1 - (tp3RR / 100));
       }
-      console.log(`🛡️ Using enhanced TP strategy: ${tpCount} TPs, SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`);
-      await logToBot('info', 'tp_strategy_enhanced', `Enhanced TP: ${tpCount} levels, SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`, {
+      console.log(`🛡️ Using enhanced TP strategy: ${tpCount} TPs, Side: ${data.side}, Entry: ${entryPrice}, SL=${slPrice?.toFixed(4)}, TP1=${tp1Price?.toFixed(4)}, TP2=${tp2Price?.toFixed(4)}, TP3=${tp3Price?.toFixed(4)}`);
+      await logToBot('info', 'tp_strategy_enhanced', `Enhanced TP: ${tpCount} levels, Side: ${data.side}, SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`, {
         tpCount,
         slRR,
         tp1RR,
@@ -955,36 +956,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP provided" });
     }
 
-    // ✅ CRITICAL FIX: Enhanced TP/SL validation for BOTH directions
-    const isBuy = data.side === "BUY";
-    if (slPrice && tp1Price) {
-      if (isBuy) {
-        // BUY: TP must be > entry, SL must be < entry
-        if (tp1Price <= entryPrice) {
-          const minTp = entryPrice * 1.005; // +0.5% minimum
-          console.warn(`⚠️ TP1 ${tp1Price} not above entry ${entryPrice} for BUY, adjusting to ${minTp}`);
-          tp1Price = minTp;
-        }
-        if (slPrice >= entryPrice) {
-          const maxSl = entryPrice * 0.995; // -0.5% maximum
-          console.warn(`⚠️ SL ${slPrice} not below entry ${entryPrice} for BUY, adjusting to ${maxSl}`);
-          slPrice = maxSl;
-        }
-      } else {
-        // SELL/SHORT: TP must be < entry, SL must be > entry
-        if (tp1Price >= entryPrice) {
-          const maxTp = entryPrice * 0.995; // -0.5% for TP
-          console.warn(`⚠️ TP1 ${tp1Price} not below entry ${entryPrice} for SELL, adjusting to ${maxTp}`);
-          tp1Price = maxTp;
-        }
-        if (slPrice <= entryPrice) {
-          const minSl = entryPrice * 1.005; // +0.5% for SL (MUST BE ABOVE!)
-          console.warn(`⚠️ SL ${slPrice} not above entry ${entryPrice} for SELL, adjusting to ${minSl}`);
-          slPrice = minSl;
-        }
-      }
-      console.log(`🎯 Validated TP/SL - Side: ${data.side}, Entry: ${entryPrice}, TP1: ${tp1Price}, SL: ${slPrice}`);
-    }
+    // ✅ CRITICAL: Remove old validation - let openOkxPosition handle it with current market price
+    console.log(`🎯 Initial TP/SL - Side: ${data.side}, Entry: ${entryPrice}, TP1: ${tp1Price}, SL: ${slPrice}`);
 
     // ============================================
     // 💰 CALCULATE POSITION SIZE

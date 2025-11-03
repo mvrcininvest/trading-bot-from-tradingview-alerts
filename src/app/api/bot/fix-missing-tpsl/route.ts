@@ -129,70 +129,6 @@ async function getCurrentMarketPrice(
 }
 
 // ============================================
-// 🔧 SET SL/TP FOR POSITION
-// ============================================
-
-async function setSlTpForPosition(
-  symbol: string,
-  slPrice: number | null,
-  tpPrice: number | null,
-  apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
-) {
-  const timestamp = new Date().toISOString();
-  const method = "POST";
-  const requestPath = "/api/v5/trade/order-algo";
-  
-  const payload: any = {
-    instId: symbol,
-    tdMode: "cross",
-    side: "buy", // Will be adjusted based on position
-    ordType: "conditional",
-  };
-
-  if (slPrice) {
-    payload.slTriggerPx = slPrice.toString();
-    payload.slOrdPx = "-1";
-  }
-
-  if (tpPrice) {
-    payload.tpTriggerPx = tpPrice.toString();
-    payload.tpOrdPx = "-1";
-  }
-
-  const bodyString = JSON.stringify(payload);
-  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
-
-  const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "Content-Type": "application/json",
-  };
-
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-
-  const response = await fetch(`https://www.okx.com${requestPath}`, {
-    method: "POST",
-    headers,
-    body: bodyString,
-  });
-
-  const data = await response.json();
-
-  if (data.code !== "0") {
-    throw new Error(`Failed to set SL/TP: ${data.msg}`);
-  }
-
-  return data.data;
-}
-
-// ============================================
 // 🔨 CLOSE POSITION
 // ============================================
 
@@ -242,6 +178,69 @@ async function closePosition(
   return data.data;
 }
 
+// ============================================
+// ✅ SET ATTACHED SL/TP ALGO ORDERS
+// ============================================
+
+async function setSlTpAlgoOrder(
+  symbol: string,
+  slPrice: number | null,
+  tpPrice: number | null,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean
+) {
+  const timestamp = new Date().toISOString();
+  const method = "POST";
+  const requestPath = "/api/v5/trade/order-algo";
+  
+  const payload: any = {
+    instId: symbol,
+    tdMode: "cross",
+    ordType: "oco", // One-Cancels-Other for SL + TP
+  };
+
+  if (slPrice) {
+    payload.slTriggerPx = slPrice.toString();
+    payload.slOrdPx = "-1"; // Market order when triggered
+  }
+
+  if (tpPrice) {
+    payload.tpTriggerPx = tpPrice.toString();
+    payload.tpOrdPx = "-1"; // Market order when triggered
+  }
+
+  const bodyString = JSON.stringify(payload);
+  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
+
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+  };
+
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+
+  const response = await fetch(`https://www.okx.com${requestPath}`, {
+    method: "POST",
+    headers,
+    body: bodyString,
+  });
+
+  const data = await response.json();
+
+  if (data.code !== "0") {
+    throw new Error(`Failed to set SL/TP: ${data.msg} (code: ${data.code})`);
+  }
+
+  return data.data;
+}
+
 export async function POST(request: NextRequest) {
   try {
     console.log("\n🔧 Starting fix-missing-tpsl process...");
@@ -264,7 +263,7 @@ export async function POST(request: NextRequest) {
     // Get default SL/TP settings
     const useDefaultSlTp = botConfig.useDefaultSlTp || false;
     const defaultSlRR = botConfig.defaultSlRR || 1.0;
-    const defaultTp1RR = botConfig.defaultTp1RR || 1.0;
+    const tp1RR = botConfig.tp1RR || 1.0;
 
     if (!useDefaultSlTp) {
       return NextResponse.json({
@@ -273,7 +272,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log(`📊 Default SL RR: ${defaultSlRR}%, Default TP RR: ${defaultTp1RR}%`);
+    console.log(`📊 Default SL RR: ${defaultSlRR}%, Default TP1 RR: ${tp1RR}%`);
 
     // Get all open positions from OKX
     console.log("\n📡 Fetching positions from OKX...");
@@ -312,10 +311,6 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Check if position has SL/TP set (OKX doesn't return SL/TP in positions endpoint directly)
-      // We'll assume positions without algo orders need SL/TP
-      // For simplicity, we'll try to set SL/TP for all positions
-      
       // Calculate SL and TP based on entry price and RR settings
       let slPrice: number;
       let tpPrice: number;
@@ -323,16 +318,16 @@ export async function POST(request: NextRequest) {
       if (side === "LONG") {
         // LONG: SL below entry, TP above entry
         slPrice = entryPrice * (1 - (defaultSlRR / 100));
-        tpPrice = entryPrice * (1 + (defaultTp1RR / 100));
+        tpPrice = entryPrice * (1 + (tp1RR / 100));
       } else {
-        // SHORT: SL above entry, TP below entry
+        // SHORT: SL above entry, TP below entry  
         slPrice = entryPrice * (1 + (defaultSlRR / 100));
-        tpPrice = entryPrice * (1 - (defaultTp1RR / 100));
+        tpPrice = entryPrice * (1 - (tp1RR / 100));
       }
 
-      console.log(`   Calculated SL: ${slPrice}, TP: ${tpPrice}`);
+      console.log(`   Calculated SL: ${slPrice.toFixed(4)}, TP: ${tpPrice.toFixed(4)}`);
 
-      // Check if current price already hit SL or TP
+      // ✅ CRITICAL FIX: Validate SL/TP against CURRENT price (not entry)
       const slHit = side === "LONG" ? currentPrice <= slPrice : currentPrice >= slPrice;
       const tpHit = side === "LONG" ? currentPrice >= tpPrice : currentPrice <= tpPrice;
 
@@ -420,30 +415,39 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // If neither SL nor TP hit, try to set SL/TP
-      console.log(`   🔧 Setting SL/TP for position...`);
+      // ✅ NEW: Actually SET SL/TP using algo orders
+      console.log(`   🔧 Setting SL/TP algo orders for position...`);
       try {
-        // Note: OKX algo orders are complex - for now we'll log that manual intervention may be needed
-        // This is a placeholder for the actual implementation
-        console.log(`   ⚠️ Automatic SL/TP setting requires manual configuration through OKX algo orders API`);
-        console.log(`   💡 Recommended: Use OKX web interface to set SL/TP manually for ${symbol}`);
+        await setSlTpAlgoOrder(symbol, slPrice, tpPrice, apiKey, apiSecret, passphrase, demo);
         
-        results.skipped++;
+        results.fixed++;
         results.details.push({
           symbol,
           side,
-          action: "skipped",
-          reason: "Manual SL/TP setting required - use OKX interface",
+          action: "fixed",
+          reason: "SL/TP algo orders set successfully",
           entryPrice,
           currentPrice,
-          recommendedSl: slPrice,
-          recommendedTp: tpPrice
+          slPrice,
+          tpPrice
         });
+        console.log(`   ✅ SL/TP set successfully - SL: ${slPrice.toFixed(4)}, TP: ${tpPrice.toFixed(4)}`);
 
       } catch (error) {
         const errorMsg = `Failed to set SL/TP for ${symbol}: ${error instanceof Error ? error.message : "Unknown"}`;
         console.error(`   ❌ ${errorMsg}`);
         results.errors.push(errorMsg);
+        results.skipped++;
+        results.details.push({
+          symbol,
+          side,
+          action: "skipped",
+          reason: errorMsg,
+          entryPrice,
+          currentPrice,
+          recommendedSl: slPrice,
+          recommendedTp: tpPrice
+        });
         continue;
       }
     }
