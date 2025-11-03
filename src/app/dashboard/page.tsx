@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle, Wrench } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +76,7 @@ export default function DashboardPage() {
   const [loadingPositions, setLoadingPositions] = useState(false);
   const [loadingBotPositions, setLoadingBotPositions] = useState(false);
   const [loadingSync, setLoadingSync] = useState(false);
+  const [loadingFixTpSl, setLoadingFixTpSl] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [botPositionsError, setBotPositionsError] = useState<string | null>(null);
@@ -554,6 +555,58 @@ export default function DashboardPage() {
       alert(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
     } finally {
       setLoadingSync(false);
+    }
+  };
+
+  const handleFixMissingTpSl = async () => {
+    setLoadingFixTpSl(true);
+    try {
+      const response = await fetch("/api/bot/fix-missing-tpsl", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh bot positions after fix
+        await fetchBotPositions();
+        await fetchPositions(credentials || undefined);
+        
+        const { results } = data;
+        let message = `🔧 Naprawa SL/TP ukończona!\n\n`;
+        message += `✅ Sprawdzono: ${results.checked} pozycji\n`;
+        
+        if (results.fixed > 0) {
+          message += `🔧 Naprawiono: ${results.fixed}\n`;
+        }
+        if (results.closed > 0) {
+          message += `🚫 Zamknięto: ${results.closed} (SL/TP już osiągnięte)\n`;
+        }
+        if (results.skipped > 0) {
+          message += `⚠️ Pominięto: ${results.skipped} (wymaga manualnej konfiguracji)\n`;
+        }
+        if (results.errors.length > 0) {
+          message += `\n❌ Błędy: ${results.errors.length}\n`;
+          message += results.errors.slice(0, 3).join('\n');
+          if (results.errors.length > 3) {
+            message += `\n... i ${results.errors.length - 3} więcej`;
+          }
+        }
+        
+        if (results.details && results.details.length > 0) {
+          message += `\n\n📋 Szczegóły:\n`;
+          results.details.slice(0, 5).forEach((detail: any) => {
+            message += `• ${detail.symbol} ${detail.side}: ${detail.action} - ${detail.reason}\n`;
+          });
+        }
+        
+        alert(message);
+      } else {
+        alert(`❌ Błąd naprawy SL/TP: ${data.message}`);
+      }
+    } catch (err) {
+      alert(`❌ Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setLoadingFixTpSl(false);
     }
   };
 
@@ -1590,6 +1643,23 @@ export default function DashboardPage() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
+                        onClick={handleFixMissingTpSl}
+                        disabled={loadingFixTpSl}
+                        className="h-24 flex-col gap-2 bg-gradient-to-br from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white hover:scale-105 transition-all shadow-xl border-0"
+                        variant="default"
+                      >
+                        <Wrench className={`h-8 w-8 ${loadingFixTpSl ? "animate-spin" : ""}`} />
+                        <span className="font-semibold">Napraw SL/TP</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">Wykrywa pozycje bez SL/TP i automatycznie je ustawia lub zamyka pozycje gdzie cena już osiągnęła SL/TP</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
                         onClick={() => {
                           fetchBalance();
                           fetchPositions();
@@ -1606,7 +1676,9 @@ export default function DashboardPage() {
                       <p>Odśwież jednocześnie saldo konta, pozycje giełdowe i pozycje bota</p>
                     </TooltipContent>
                   </Tooltip>
+                </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -1636,6 +1708,10 @@ export default function DashboardPage() {
                     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
                       <div className="h-2 w-2 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
                       <p>Użyj "Sync" aby zsynchronizować pozycje bota z rzeczywistymi pozycjami na giełdzie</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
+                      <div className="h-2 w-2 rounded-full bg-orange-400 mt-1.5 flex-shrink-0" />
+                      <p>Użyj "Napraw SL/TP" aby automatycznie wykryć i naprawić pozycje bez Stop Loss lub Take Profit</p>
                     </div>
                     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
                       <div className="h-2 w-2 rounded-full bg-green-400 mt-1.5 flex-shrink-0" />
