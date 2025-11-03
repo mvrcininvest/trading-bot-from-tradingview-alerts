@@ -10,6 +10,7 @@ const VALID_TP_STRATEGIES = ['multiple', 'main_only'];
 const VALID_SAME_SYMBOL_BEHAVIORS = ['ignore', 'track_confirmations', 'upgrade_tp', 'emergency_override'];
 const VALID_OPPOSITE_DIRECTION_STRATEGIES = ['market_reversal', 'immediate_reverse', 'defensive_close', 'ignore_opposite', 'tier_based'];
 const VALID_EMERGENCY_OVERRIDE_MODES = ['always', 'only_profit', 'profit_above_x', 'never'];
+const VALID_SL_MANAGEMENT_MODES = ['breakeven', 'trailing', 'no_change'];
 
 export async function GET(request: NextRequest) {
   try {
@@ -205,6 +206,103 @@ async function updateSettings(request: NextRequest) {
       }
     }
 
+    // Validate NEW TP Strategy fields
+    if (body.tpCount !== undefined) {
+      const tpCount = parseInt(body.tpCount);
+      if (isNaN(tpCount) || tpCount < 1 || tpCount > 3) {
+        return NextResponse.json({
+          error: 'tpCount must be 1, 2, or 3',
+          code: 'INVALID_TP_COUNT',
+          field: 'tpCount'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.tp1RR !== undefined) {
+      const tp1RR = parseFloat(body.tp1RR);
+      if (isNaN(tp1RR) || tp1RR <= 0) {
+        return NextResponse.json({
+          error: 'tp1RR must be greater than 0',
+          code: 'INVALID_TP1_RR',
+          field: 'tp1RR'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.tp2RR !== undefined) {
+      const tp2RR = parseFloat(body.tp2RR);
+      if (isNaN(tp2RR) || tp2RR <= 0) {
+        return NextResponse.json({
+          error: 'tp2RR must be greater than 0',
+          code: 'INVALID_TP2_RR',
+          field: 'tp2RR'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.tp3RR !== undefined) {
+      const tp3RR = parseFloat(body.tp3RR);
+      if (isNaN(tp3RR) || tp3RR <= 0) {
+        return NextResponse.json({
+          error: 'tp3RR must be greater than 0',
+          code: 'INVALID_TP3_RR',
+          field: 'tp3RR'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.tp1Percent !== undefined) {
+      const tp1Percent = parseFloat(body.tp1Percent);
+      if (isNaN(tp1Percent) || tp1Percent <= 0 || tp1Percent > 100) {
+        return NextResponse.json({
+          error: 'tp1Percent must be between 0 and 100',
+          code: 'INVALID_TP1_PERCENT',
+          field: 'tp1Percent'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.tp2Percent !== undefined) {
+      const tp2Percent = parseFloat(body.tp2Percent);
+      if (isNaN(tp2Percent) || tp2Percent <= 0 || tp2Percent > 100) {
+        return NextResponse.json({
+          error: 'tp2Percent must be between 0 and 100',
+          code: 'INVALID_TP2_PERCENT',
+          field: 'tp2Percent'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.tp3Percent !== undefined) {
+      const tp3Percent = parseFloat(body.tp3Percent);
+      if (isNaN(tp3Percent) || tp3Percent <= 0 || tp3Percent > 100) {
+        return NextResponse.json({
+          error: 'tp3Percent must be between 0 and 100',
+          code: 'INVALID_TP3_PERCENT',
+          field: 'tp3Percent'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.slManagementAfterTp1 !== undefined && !VALID_SL_MANAGEMENT_MODES.includes(body.slManagementAfterTp1)) {
+      return NextResponse.json({
+        error: `Invalid slManagementAfterTp1. Must be one of: ${VALID_SL_MANAGEMENT_MODES.join(', ')}`,
+        code: 'INVALID_SL_MANAGEMENT',
+        field: 'slManagementAfterTp1'
+      }, { status: 400 });
+    }
+
+    if (body.slTrailingDistance !== undefined) {
+      const distance = parseFloat(body.slTrailingDistance);
+      if (isNaN(distance) || distance < 0) {
+        return NextResponse.json({
+          error: 'slTrailingDistance must be greater than or equal to 0',
+          code: 'INVALID_SL_TRAILING_DISTANCE',
+          field: 'slTrailingDistance'
+        }, { status: 400 });
+      }
+    }
+
     // Build update object with only provided fields
     const updates: any = {
       updatedAt: new Date().toISOString()
@@ -241,6 +339,17 @@ async function updateSettings(request: NextRequest) {
     if (body.defaultTp1RR !== undefined) updates.defaultTp1RR = parseFloat(body.defaultTp1RR);
     if (body.defaultTp2RR !== undefined) updates.defaultTp2RR = parseFloat(body.defaultTp2RR);
     if (body.defaultTp3RR !== undefined) updates.defaultTp3RR = parseFloat(body.defaultTp3RR);
+
+    // NEW: Enhanced TP Strategy fields
+    if (body.tpCount !== undefined) updates.tpCount = parseInt(body.tpCount);
+    if (body.tp1RR !== undefined) updates.tp1RR = parseFloat(body.tp1RR);
+    if (body.tp1Percent !== undefined) updates.tp1Percent = parseFloat(body.tp1Percent);
+    if (body.tp2RR !== undefined) updates.tp2RR = parseFloat(body.tp2RR);
+    if (body.tp2Percent !== undefined) updates.tp2Percent = parseFloat(body.tp2Percent);
+    if (body.tp3RR !== undefined) updates.tp3RR = parseFloat(body.tp3RR);
+    if (body.tp3Percent !== undefined) updates.tp3Percent = parseFloat(body.tp3Percent);
+    if (body.slManagementAfterTp1 !== undefined) updates.slManagementAfterTp1 = body.slManagementAfterTp1;
+    if (body.slTrailingDistance !== undefined) updates.slTrailingDistance = parseFloat(body.slTrailingDistance);
 
     const settingsId = existingSettings[0].id;
     const updated = await db.update(botSettings)

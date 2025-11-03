@@ -185,7 +185,7 @@ async function getCurrentMarketPrice(
 }
 
 // ============================================
-// 🚀 OKX POSITION OPENING (SIMPLIFIED & FIXED)
+// 🚀 OKX POSITION OPENING (FIXED: lot size + TP strategy)
 // ============================================
 
 async function openOkxPosition(
@@ -299,7 +299,7 @@ async function openOkxPosition(
   }
   
   // ============================================
-  // 🔢 STEP 4: CALCULATE QUANTITY (SIMPLIFIED)
+  // 🔢 STEP 4: CALCULATE QUANTITY (FIXED lot size rounding)
   // ============================================
   console.log(`\n🔢 Calculating order quantity...`);
   const ctVal = parseFloat(instrumentInfo.ctVal);
@@ -312,16 +312,34 @@ async function openOkxPosition(
   const coinAmount = positionSizeUsd / currentMarketPrice;
   contracts = coinAmount / ctVal;
   
-  const roundedContracts = Math.floor(contracts / lotSz) * lotSz;
-  const finalContracts = Math.max(roundedContracts, minSz);
+  // ✅ CRITICAL FIX: Proper lot size rounding
+  const rawRounded = Math.floor(contracts / lotSz) * lotSz;
+  
+  // If rounded to 0, try ceiling
+  let finalContracts = rawRounded;
+  if (finalContracts < minSz) {
+    finalContracts = Math.ceil(contracts / lotSz) * lotSz;
+  }
+  
+  // Still too small? Use minSz
+  if (finalContracts < minSz) {
+    finalContracts = minSz;
+  }
+  
+  // Format to lotSz decimal places
+  const lotDecimals = lotSz.toString().includes('.') 
+    ? lotSz.toString().split('.')[1].length 
+    : 0;
+  finalContracts = parseFloat(finalContracts.toFixed(lotDecimals));
   
   console.log(`   Position Size USD: $${positionSizeUsd}`);
   console.log(`   Current Market Price: ${currentMarketPrice}`);
   console.log(`   Coin Amount Needed: ${coinAmount.toFixed(8)} ${ctValCcy}`);
   console.log(`   Contract Value: ${ctVal} ${ctValCcy}`);
   console.log(`   Raw Contracts: ${contracts.toFixed(4)}`);
-  console.log(`   Rounded (lotSz ${lotSz}): ${roundedContracts.toFixed(4)}`);
-  console.log(`   Final (min ${minSz}): ${finalContracts.toFixed(4)}`);
+  console.log(`   Lot Size: ${lotSz}, Min Size: ${minSz}`);
+  console.log(`   Rounded Contracts: ${rawRounded.toFixed(lotDecimals)}`);
+  console.log(`   Final Contracts: ${finalContracts}`);
   
   if (finalContracts < minSz) {
     throw new Error(`Calculated ${finalContracts} contracts is below minimum ${minSz} for ${okxSymbol}`);
@@ -376,8 +394,8 @@ async function openOkxPosition(
     
     if (isBuy) {
       // BUY/LONG: TP must be ABOVE current price, SL must be BELOW current price
-      const minTpPrice = currentMarketPrice * 1.02; // +2% minimum
-      const maxSlPrice = currentMarketPrice * 0.98; // -2% maximum
+      const minTpPrice = currentMarketPrice * 1.005; // +0.5% minimum safety margin
+      const maxSlPrice = currentMarketPrice * 0.995; // -0.5% maximum safety margin
       
       if (tpPrice < minTpPrice) {
         console.warn(`⚠️ TP ${tpPrice} too close/below current ${currentMarketPrice} for LONG, adjusting to ${minTpPrice}...`);
@@ -394,8 +412,8 @@ async function openOkxPosition(
       }
     } else {
       // SELL/SHORT: TP must be BELOW current price, SL must be ABOVE current price
-      const maxTpPrice = currentMarketPrice * 0.98; // -2% minimum for TP
-      const minSlPrice = currentMarketPrice * 1.02; // +2% minimum for SL
+      const maxTpPrice = currentMarketPrice * 0.995; // -0.5% minimum for TP (below market)
+      const minSlPrice = currentMarketPrice * 1.005; // +0.5% minimum for SL (above market)
       
       if (tpPrice > maxTpPrice) {
         console.warn(`⚠️ TP ${tpPrice} too close/above current ${currentMarketPrice} for SHORT, adjusting to ${maxTpPrice}...`);
@@ -502,7 +520,7 @@ async function openOkxPosition(
     symbol: okxSymbol, 
     side, 
     leverage, 
-    quantity,
+    quantity: finalContracts,
     positionSizeUsd,
     sl: slPrice, 
     tp: tpPrice
@@ -744,7 +762,7 @@ export async function POST(request: Request) {
     await logToBot('info', 'alert_received', `Alert received: ${data.symbol} ${data.side} ${data.tier}`, { symbol: data.symbol, side: data.side, tier: data.tier }, alert.id);
 
     // ============================================
-    // 🤖 BOT TRADING LOGIC
+    // 🤖 BOT TRADING LOGIC (UPDATED: Use new TP settings)
     // ============================================
 
     const settings = await db.select().from(botSettings).limit(1);
@@ -874,80 +892,98 @@ export async function POST(request: Request) {
     }
 
     // ============================================
-    // 🎯 CALCULATE SL/TP
+    // 🎯 CALCULATE SL/TP (UPDATED: Use new TP strategy settings)
     // ============================================
 
     const entryPrice = parseFloat(data.entryPrice);
     let slPrice: number | null = null;
     let tp1Price: number | null = null;
+    let tp2Price: number | null = null;
+    let tp3Price: number | null = null;
 
-    const hasSlTpInAlert = data.sl && data.tp3;
+    const hasSlTpInAlert = data.sl && (data.tp1 || data.tp2 || data.tp3);
 
     if (hasSlTpInAlert) {
       slPrice = parseFloat(data.sl);
-      tp1Price = parseFloat(data.tp3);
-      console.log("✅ Using SL/TP from alert (TP3 → TP1 for better RR)");
-      await logToBot('info', 'tp_strategy', `Using TP3 from alert as TP1 for better Risk:Reward - Alert TP3: ${tp1Price}`, { 
+      
+      // Use alert TPs if provided
+      if (data.tp1) tp1Price = parseFloat(data.tp1);
+      if (data.tp2) tp2Price = parseFloat(data.tp2);
+      if (data.tp3) tp3Price = parseFloat(data.tp3);
+      
+      console.log("✅ Using SL/TP from alert");
+      await logToBot('info', 'tp_strategy', `Using TPs from alert - TP1: ${tp1Price}, TP2: ${tp2Price}, TP3: ${tp3Price}`, { 
         entryPrice, 
         slPrice, 
-        tp1Price, 
-        alertTp1: data.tp1, 
-        alertTp2: data.tp2, 
-        alertTp3: data.tp3 
+        tp1Price,
+        tp2Price,
+        tp3Price
       }, alert.id);
     } else if (botConfig.useDefaultSlTp) {
-      // ✅ FIXED: Use RR values from UI (defaultSlRR, defaultTp1RR)
-      // These are stored as database columns: defaultSlRR, defaultTp1RR
+      // ✅ NEW: Use enhanced TP strategy settings
+      const tpCount = botConfig.tpCount || 3;
       const slRR = botConfig.defaultSlRR || 1.0;
-      const tp1RR = botConfig.defaultTp1RR || 1.0;
+      const tp1RR = botConfig.tp1RR || 1.0;
+      const tp2RR = botConfig.tp2RR || 2.0;
+      const tp3RR = botConfig.tp3RR || 3.0;
 
       if (data.side === "BUY") {
         slPrice = entryPrice * (1 - (slRR / 100));
         tp1Price = entryPrice * (1 + (tp1RR / 100));
+        if (tpCount >= 2) tp2Price = entryPrice * (1 + (tp2RR / 100));
+        if (tpCount >= 3) tp3Price = entryPrice * (1 + (tp3RR / 100));
       } else {
-        slPrice = entryPrice * (1 + (slRR / 100));
-        tp1Price = entryPrice * (1 - (tp1RR / 100));
+        // ✅ CRITICAL FIX: SHORT positions
+        slPrice = entryPrice * (1 + (slRR / 100)); // SL ABOVE entry for SHORT
+        tp1Price = entryPrice * (1 - (tp1RR / 100)); // TP BELOW entry for SHORT
+        if (tpCount >= 2) tp2Price = entryPrice * (1 - (tp2RR / 100));
+        if (tpCount >= 3) tp3Price = entryPrice * (1 - (tp3RR / 100));
       }
-      console.log(`🛡️ Using default SL/TP: SL=${slPrice}, TP1=${tp1Price} (RR: ${slRR}% / ${tp1RR}%)`);
+      console.log(`🛡️ Using enhanced TP strategy: ${tpCount} TPs, SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`);
+      await logToBot('info', 'tp_strategy_enhanced', `Enhanced TP: ${tpCount} levels, SL=${slPrice}, TP1=${tp1Price}, TP2=${tp2Price}, TP3=${tp3Price}`, {
+        tpCount,
+        slRR,
+        tp1RR,
+        tp2RR,
+        tp3RR,
+        entryPrice,
+        side: data.side
+      }, alert.id);
     } else {
       await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_sl_tp' }).where(eq(alerts.id, alert.id));
       await logToBot('error', 'rejected', 'No SL/TP provided', { reason: 'no_sl_tp' }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP provided" });
     }
 
-    // ✅ CRITICAL FIX: Validate TP/SL direction
+    // ✅ CRITICAL FIX: Enhanced TP/SL validation for BOTH directions
     const isBuy = data.side === "BUY";
     if (slPrice && tp1Price) {
       if (isBuy) {
         // BUY: TP must be > entry, SL must be < entry
-        // ⚠️ IMPORTANT: Add safety margin because OKX validates against CURRENT market price, not alert entry price
-        const minTpPrice = entryPrice * 1.015; // +1.5% minimum
-        const maxSlPrice = entryPrice * 0.985; // -1.5% maximum
-        
-        if (tp1Price < minTpPrice) {
-          console.warn(`⚠️ TP ${tp1Price} too close to entry ${entryPrice} for BUY, adjusting to ${minTpPrice}...`);
-          tp1Price = minTpPrice;
+        if (tp1Price <= entryPrice) {
+          const minTp = entryPrice * 1.005; // +0.5% minimum
+          console.warn(`⚠️ TP1 ${tp1Price} not above entry ${entryPrice} for BUY, adjusting to ${minTp}`);
+          tp1Price = minTp;
         }
-        if (slPrice > maxSlPrice) {
-          console.warn(`⚠️ SL ${slPrice} too close to entry ${entryPrice} for BUY, adjusting to ${maxSlPrice}...`);
-          slPrice = maxSlPrice;
+        if (slPrice >= entryPrice) {
+          const maxSl = entryPrice * 0.995; // -0.5% maximum
+          console.warn(`⚠️ SL ${slPrice} not below entry ${entryPrice} for BUY, adjusting to ${maxSl}`);
+          slPrice = maxSl;
         }
       } else {
         // SELL/SHORT: TP must be < entry, SL must be > entry
-        // ⚠️ CRITICAL FIX: For SHORT, SL MUST be HIGHER than entry!
-        const maxTpPrice = entryPrice * 0.985; // -1.5% minimum for TP (below entry)
-        const minSlPrice = entryPrice * 1.015; // +1.5% minimum for SL (above entry)
-        
-        if (tp1Price > maxTpPrice) {
-          console.warn(`⚠️ TP ${tp1Price} too close to entry ${entryPrice} for SELL, adjusting to ${maxTpPrice}...`);
-          tp1Price = maxTpPrice;
+        if (tp1Price >= entryPrice) {
+          const maxTp = entryPrice * 0.995; // -0.5% for TP
+          console.warn(`⚠️ TP1 ${tp1Price} not below entry ${entryPrice} for SELL, adjusting to ${maxTp}`);
+          tp1Price = maxTp;
         }
-        if (slPrice < minSlPrice) {
-          console.warn(`⚠️ SL ${slPrice} TOO LOW for SELL! Must be ABOVE entry. Adjusting from ${slPrice} to ${minSlPrice}...`);
-          slPrice = minSlPrice;
+        if (slPrice <= entryPrice) {
+          const minSl = entryPrice * 1.005; // +0.5% for SL (MUST BE ABOVE!)
+          console.warn(`⚠️ SL ${slPrice} not above entry ${entryPrice} for SELL, adjusting to ${minSl}`);
+          slPrice = minSl;
         }
       }
-      console.log(`🎯 Validated TP/SL - Side: ${data.side}, Entry: ${entryPrice}, TP: ${tp1Price}, SL: ${slPrice}`);
+      console.log(`🎯 Validated TP/SL - Side: ${data.side}, Entry: ${entryPrice}, TP1: ${tp1Price}, SL: ${slPrice}`);
     }
 
     // ============================================
@@ -981,7 +1017,7 @@ export async function POST(request: Request) {
         positionSizeUsd,
         leverage,
         slPrice,
-        tp1Price,
+        tp1Price, // Use TP1 as primary TP
         entryPrice,
         apiKey,
         apiSecret,
@@ -989,10 +1025,10 @@ export async function POST(request: Request) {
         environment === "demo",
         alert.id,
         parseFloat(data.sl || "0"),
-        parseFloat(data.tp3 || "0")
+        parseFloat(data.tp1 || "0")
       );
 
-      // Save position to database
+      // Save position to database with all TP levels
       const [botPosition] = await db.insert(botPositions).values({
         symbol: data.symbol,
         side: data.side,
@@ -1001,8 +1037,8 @@ export async function POST(request: Request) {
         leverage,
         stopLoss: slPrice || 0,
         tp1Price,
-        tp2Price: data.tp2 ? parseFloat(data.tp2) : null,
-        tp3Price: data.tp3 ? parseFloat(data.tp3) : null,
+        tp2Price,
+        tp3Price,
         mainTpPrice: tp1Price || 0,
         tier: data.tier,
         confidenceScore: data.strength || 0.5,
@@ -1031,31 +1067,12 @@ export async function POST(request: Request) {
         alertId: alert.id,
         positionId: botPosition.id,
         reason: "new_signal",
-        details: JSON.stringify({ orderId, exchange: "okx", environment }),
+        details: JSON.stringify({ orderId, exchange: "okx", environment, tpLevels: botConfig.tpCount }),
         success: true,
         createdAt: new Date().toISOString(),
       });
 
-      // ============================================
-      // 🎯 ADD TP2 AND TP3 IF PROVIDED (OKX Limitation Workaround)
-      // ============================================
-      // NOTE: OKX only allows 1 TP + 1 SL in attachAlgoOrds
-      // For multiple TPs, we need to manually monitor and close positions
-      // This is logged for future implementation
-      if (data.tp2 || data.tp3) {
-        const tp2 = data.tp2 ? parseFloat(data.tp2) : null;
-        const tp3 = data.tp3 ? parseFloat(data.tp3) : null;
-        
-        await logToBot('info', 'multiple_tp_detected', `Alert contains multiple TPs: TP1=${tp1Price}, TP2=${tp2}, TP3=${tp3}. Saved to DB for manual monitoring.`, {
-          symbol,
-          tp1: tp1Price,
-          tp2,
-          tp3,
-          note: "OKX API limitation: Only 1 TP per order. TP2/TP3 require separate monitoring system."
-        }, alert.id, botPosition.id);
-      }
-
-      await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x on OKX`, {
+      await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x on OKX with ${botConfig.tpCount} TP levels`, {
         positionId: botPosition.id,
         orderId,
         symbol,
@@ -1064,7 +1081,10 @@ export async function POST(request: Request) {
         quantity: finalQuantity,
         entryPrice,
         sl: slPrice,
-        tp: tp1Price,
+        tp1: tp1Price,
+        tp2: tp2Price,
+        tp3: tp3Price,
+        tpLevels: botConfig.tpCount,
         environment
       }, alert.id, botPosition.id);
 
@@ -1075,7 +1095,7 @@ export async function POST(request: Request) {
         message: "Position opened successfully on OKX",
         exchange: "okx",
         environment,
-        position: { symbol: okxSymbol, side, entry: entryPrice, quantity: finalQuantity, sl: slPrice, tp: tp1Price }
+        position: { symbol: okxSymbol, side, entry: entryPrice, quantity: finalQuantity, sl: slPrice, tp1: tp1Price, tp2: tp2Price, tp3: tp3Price, tpLevels: botConfig.tpCount }
       });
     } catch (error: any) {
       console.error("❌ Position opening failed:", error);
