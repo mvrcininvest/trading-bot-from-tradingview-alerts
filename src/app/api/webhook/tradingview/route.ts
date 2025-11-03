@@ -881,11 +881,11 @@ export async function POST(request: Request) {
     let slPrice: number | null = null;
     let tp1Price: number | null = null;
 
-    const hasSlTpInAlert = data.sl && data.tp3; // ✅ ZMIENIONE: Sprawdzamy tp3 zamiast tp1
+    const hasSlTpInAlert = data.sl && data.tp3;
 
     if (hasSlTpInAlert) {
       slPrice = parseFloat(data.sl);
-      tp1Price = parseFloat(data.tp3); // ✅ ZMIENIONE: Używamy TP3 z alertu jako główny TP na giełdzie
+      tp1Price = parseFloat(data.tp3);
       console.log("✅ Using SL/TP from alert (TP3 → TP1 for better RR)");
       await logToBot('info', 'tp_strategy', `Using TP3 from alert as TP1 for better Risk:Reward - Alert TP3: ${tp1Price}`, { 
         entryPrice, 
@@ -896,17 +896,19 @@ export async function POST(request: Request) {
         alertTp3: data.tp3 
       }, alert.id);
     } else if (botConfig.useDefaultSlTp) {
-      const slPercent = botConfig.defaultSlPercent / 100;
-      const tp1Percent = botConfig.defaultTp1Percent / 100;
+      // ✅ FIXED: Use RR values from UI (defaultSlRR, defaultTp1RR)
+      // These are stored as database columns: defaultSlRR, defaultTp1RR
+      const slRR = botConfig.defaultSlRR || 1.0;
+      const tp1RR = botConfig.defaultTp1RR || 1.0;
 
       if (data.side === "BUY") {
-        slPrice = entryPrice * (1 - slPercent);
-        tp1Price = entryPrice * (1 + tp1Percent);
+        slPrice = entryPrice * (1 - (slRR / 100));
+        tp1Price = entryPrice * (1 + (tp1RR / 100));
       } else {
-        slPrice = entryPrice * (1 + slPercent);
-        tp1Price = entryPrice * (1 - tp1Percent);
+        slPrice = entryPrice * (1 + (slRR / 100));
+        tp1Price = entryPrice * (1 - (tp1RR / 100));
       }
-      console.log(`🛡️ Using default SL/TP: SL=${slPrice}, TP1=${tp1Price}`);
+      console.log(`🛡️ Using default SL/TP: SL=${slPrice}, TP1=${tp1Price} (RR: ${slRR}% / ${tp1RR}%)`);
     } else {
       await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_sl_tp' }).where(eq(alerts.id, alert.id));
       await logToBot('error', 'rejected', 'No SL/TP provided', { reason: 'no_sl_tp' }, alert.id);

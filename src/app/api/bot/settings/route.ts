@@ -160,6 +160,51 @@ async function updateSettings(request: NextRequest) {
       }
     }
 
+    // Validate RR fields
+    if (body.defaultSlRR !== undefined) {
+      const slRR = parseFloat(body.defaultSlRR);
+      if (isNaN(slRR) || slRR <= 0) {
+        return NextResponse.json({
+          error: 'defaultSlRR must be greater than 0',
+          code: 'INVALID_DEFAULT_SL_RR',
+          field: 'defaultSlRR'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.defaultTp1RR !== undefined) {
+      const tp1RR = parseFloat(body.defaultTp1RR);
+      if (isNaN(tp1RR) || tp1RR <= 0) {
+        return NextResponse.json({
+          error: 'defaultTp1RR must be greater than 0',
+          code: 'INVALID_DEFAULT_TP1_RR',
+          field: 'defaultTp1RR'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.defaultTp2RR !== undefined) {
+      const tp2RR = parseFloat(body.defaultTp2RR);
+      if (isNaN(tp2RR) || tp2RR <= 0) {
+        return NextResponse.json({
+          error: 'defaultTp2RR must be greater than 0',
+          code: 'INVALID_DEFAULT_TP2_RR',
+          field: 'defaultTp2RR'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.defaultTp3RR !== undefined) {
+      const tp3RR = parseFloat(body.defaultTp3RR);
+      if (isNaN(tp3RR) || tp3RR <= 0) {
+        return NextResponse.json({
+          error: 'defaultTp3RR must be greater than 0',
+          code: 'INVALID_DEFAULT_TP3_RR',
+          field: 'defaultTp3RR'
+        }, { status: 400 });
+      }
+    }
+
     // Build update object with only provided fields
     const updates: any = {
       updatedAt: new Date().toISOString()
@@ -192,10 +237,10 @@ async function updateSettings(request: NextRequest) {
     if (body.reversalMinStrength !== undefined) updates.reversalMinStrength = parseFloat(body.reversalMinStrength);
     if (body.emergencyOverrideMode !== undefined) updates.emergencyOverrideMode = body.emergencyOverrideMode;
     if (body.emergencyMinProfitPercent !== undefined) updates.emergencyMinProfitPercent = parseFloat(body.emergencyMinProfitPercent);
-    if (body.defaultSlPercent !== undefined) updates.defaultSlPercent = parseFloat(body.defaultSlPercent);
-    if (body.defaultTp1Percent !== undefined) updates.defaultTp1Percent = parseFloat(body.defaultTp1Percent);
-    if (body.defaultTp2Percent !== undefined) updates.defaultTp2Percent = parseFloat(body.defaultTp2Percent);
-    if (body.defaultTp3Percent !== undefined) updates.defaultTp3Percent = parseFloat(body.defaultTp3Percent);
+    if (body.defaultSlRR !== undefined) updates.defaultSlRR = parseFloat(body.defaultSlRR);
+    if (body.defaultTp1RR !== undefined) updates.defaultTp1RR = parseFloat(body.defaultTp1RR);
+    if (body.defaultTp2RR !== undefined) updates.defaultTp2RR = parseFloat(body.defaultTp2RR);
+    if (body.defaultTp3RR !== undefined) updates.defaultTp3RR = parseFloat(body.defaultTp3RR);
 
     const settingsId = existingSettings[0].id;
     const updated = await db.update(botSettings)
