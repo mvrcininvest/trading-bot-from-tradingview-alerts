@@ -185,7 +185,7 @@ async function getCurrentMarketPrice(
 }
 
 // ============================================
-// 🚀 OKX POSITION OPENING (FIXED: TP strategy + SHORT validation)
+// 🚀 OKX POSITION OPENING (FIXED: TP strategy + SHORT validation + lot size)
 // ============================================
 
 async function openOkxPosition(
@@ -297,7 +297,7 @@ async function openOkxPosition(
   }
   
   // ============================================
-  // 🔢 STEP 4: CALCULATE QUANTITY (FIXED lot size rounding)
+  // 🔢 STEP 4: CALCULATE QUANTITY (FIXED: Proper lot size rounding)
   // ============================================
   console.log(`\n🔢 Calculating order quantity...`);
   const ctVal = parseFloat(instrumentInfo.ctVal);
@@ -305,31 +305,42 @@ async function openOkxPosition(
   const minSz = parseFloat(instrumentInfo.minSz);
   const tickSz = parseFloat(instrumentInfo.tickSz);
   
-  let contracts: number;
-  const coinAmount = positionSizeUsd / currentMarketPrice;
-  contracts = coinAmount / ctVal;
-  
-  const rawRounded = Math.floor(contracts / lotSz) * lotSz;
-  let finalContracts = rawRounded;
-  if (finalContracts < minSz) {
-    finalContracts = Math.ceil(contracts / lotSz) * lotSz;
-  }
-  if (finalContracts < minSz) {
-    finalContracts = minSz;
-  }
-  
+  // Calculate lot size decimal precision
   const lotDecimals = lotSz.toString().includes('.') 
     ? lotSz.toString().split('.')[1].length 
     : 0;
-  finalContracts = parseFloat(finalContracts.toFixed(lotDecimals));
   
-  console.log(`   Final Contracts: ${finalContracts}`);
+  // Calculate required contracts
+  const coinAmount = positionSizeUsd / currentMarketPrice;
+  let contracts = coinAmount / ctVal;
+  
+  console.log(`   Coin amount needed: ${coinAmount}`);
+  console.log(`   Contract value: ${ctVal}`);
+  console.log(`   Raw contracts: ${contracts}`);
+  console.log(`   Lot size: ${lotSz}, Min size: ${minSz}`);
+  
+  // ✅ CRITICAL FIX: Proper rounding to avoid floating point errors
+  // Round DOWN to nearest lot size multiple first
+  let roundedContracts = Math.floor(contracts / lotSz) * lotSz;
+  
+  // If below minimum, round UP
+  if (roundedContracts < minSz) {
+    roundedContracts = Math.ceil(minSz / lotSz) * lotSz;
+  }
+  
+  // ✅ FIX: Use toFixed with proper decimals to avoid floating point artifacts like "1.7000000000000002"
+  const finalContracts = parseFloat(roundedContracts.toFixed(lotDecimals));
+  
+  console.log(`   Rounded contracts: ${roundedContracts}`);
+  console.log(`   Final contracts (string): ${finalContracts.toFixed(lotDecimals)}`);
   
   if (finalContracts < minSz) {
     throw new Error(`Calculated ${finalContracts} contracts is below minimum ${minSz} for ${okxSymbol}`);
   }
   
-  const quantity = finalContracts.toString();
+  // ✅ CRITICAL: Use toFixed string directly to avoid JS floating point issues
+  const quantity = finalContracts.toFixed(lotDecimals);
+  console.log(`   ✅ Final quantity string: "${quantity}"`);
   
   // ============================================
   // 📏 STEP 5: SET LEVERAGE
@@ -366,9 +377,13 @@ async function openOkxPosition(
   // ✅ STEP 6: VALIDATE AND ADJUST TP/SL (CRITICAL FIX FOR SHORT)
   // ============================================
   console.log(`\n✅ Validating TP/SL against current market price...`);
+  console.log(`   Side: ${side}, Current Market: ${currentMarketPrice}`);
+  console.log(`   Original - TP: ${tpPrice}, SL: ${slPrice}`);
   
   if (slPrice && tpPrice) {
-    const isBuy = side === "BUY";
+    const isBuy = side.toUpperCase() === "BUY";
+    
+    // Helper to format price to tick size
     const formatPrice = (price: number) => {
       const decimals = tickSz.toString().includes('.') 
         ? tickSz.toString().split('.')[1].length 
@@ -376,47 +391,89 @@ async function openOkxPosition(
       return parseFloat(price.toFixed(decimals));
     };
     
-    // ✅ CRITICAL FIX: Proper safety margins based on direction
+    // ✅ CRITICAL FIX: Correct validation logic for LONG and SHORT
     if (isBuy) {
-      // BUY/LONG: TP must be ABOVE current price, SL must be BELOW current price
-      const minTpPrice = currentMarketPrice * 1.005; // +0.5% minimum
-      const maxSlPrice = currentMarketPrice * 0.995; // -0.5% maximum
+      // ========================================
+      // BUY/LONG: TP ABOVE entry, SL BELOW entry
+      // ========================================
+      console.log(`   📈 LONG position validation...`);
       
-      if (tpPrice < minTpPrice) {
-        console.warn(`⚠️ TP ${tpPrice} too close/below current ${currentMarketPrice} for LONG, adjusting to ${minTpPrice}...`);
+      // TP must be ABOVE current price with safety margin
+      const minTpPrice = currentMarketPrice * 1.008; // +0.8% minimum safety margin
+      if (tpPrice <= currentMarketPrice || tpPrice < minTpPrice) {
         const adjustedTp = formatPrice(minTpPrice);
-        await logToBot('warning', 'tp_adjusted', `TP adjusted from ${tpPrice} to ${adjustedTp} (market: ${currentMarketPrice})`, { original: originalTp, adjusted: adjustedTp, market: currentMarketPrice }, alertId);
+        console.warn(`   ⚠️ TP ${tpPrice} too close/below current ${currentMarketPrice} for LONG`);
+        console.warn(`   → Adjusting to ${adjustedTp} (+0.8% safety margin)`);
+        await logToBot('warning', 'tp_adjusted_long', `LONG: TP adjusted from ${tpPrice} to ${adjustedTp}`, { 
+          original: originalTp, 
+          adjusted: adjustedTp, 
+          market: currentMarketPrice,
+          reason: 'too_close_to_market'
+        }, alertId);
         tpPrice = adjustedTp;
       }
       
-      if (slPrice > maxSlPrice) {
-        console.warn(`⚠️ SL ${slPrice} too close/above current ${currentMarketPrice} for LONG, adjusting to ${maxSlPrice}...`);
+      // SL must be BELOW current price with safety margin
+      const maxSlPrice = currentMarketPrice * 0.992; // -0.8% maximum safety margin
+      if (slPrice >= currentMarketPrice || slPrice > maxSlPrice) {
         const adjustedSl = formatPrice(maxSlPrice);
-        await logToBot('warning', 'sl_adjusted', `SL adjusted from ${slPrice} to ${adjustedSl} (market: ${currentMarketPrice})`, { original: originalSl, adjusted: adjustedSl, market: currentMarketPrice }, alertId);
+        console.warn(`   ⚠️ SL ${slPrice} too close/above current ${currentMarketPrice} for LONG`);
+        console.warn(`   → Adjusting to ${adjustedSl} (-0.8% safety margin)`);
+        await logToBot('warning', 'sl_adjusted_long', `LONG: SL adjusted from ${slPrice} to ${adjustedSl}`, { 
+          original: originalSl, 
+          adjusted: adjustedSl, 
+          market: currentMarketPrice,
+          reason: 'too_close_to_market'
+        }, alertId);
         slPrice = adjustedSl;
       }
-    } else {
-      // ✅ CRITICAL FIX: SELL/SHORT positions
-      // SHORT: TP must be BELOW current price, SL must be ABOVE current price
-      const maxTpPrice = currentMarketPrice * 0.995; // -0.5% (TP below market for SHORT)
-      const minSlPrice = currentMarketPrice * 1.005; // +0.5% (SL above market for SHORT)
       
-      if (tpPrice > maxTpPrice) {
-        console.warn(`⚠️ TP ${tpPrice} too high for SHORT (should be below ${maxTpPrice}), adjusting...`);
+      console.log(`   ✅ LONG validated - TP: ${tpPrice} (above), SL: ${slPrice} (below)`);
+    } else {
+      // ========================================
+      // ✅ CRITICAL FIX: SELL/SHORT positions
+      // SHORT: TP BELOW entry, SL ABOVE entry
+      // ========================================
+      console.log(`   📉 SHORT position validation...`);
+      
+      // TP must be BELOW current price with safety margin
+      const maxTpPrice = currentMarketPrice * 0.992; // -0.8% (TP below market for SHORT)
+      if (tpPrice >= currentMarketPrice || tpPrice > maxTpPrice) {
         const adjustedTp = formatPrice(maxTpPrice);
-        await logToBot('warning', 'tp_adjusted', `TP adjusted from ${tpPrice} to ${adjustedTp} (market: ${currentMarketPrice})`, { original: originalTp, adjusted: adjustedTp, market: currentMarketPrice }, alertId);
+        console.warn(`   ⚠️ TP ${tpPrice} too high/equal for SHORT (must be below ${maxTpPrice})`);
+        console.warn(`   → Adjusting to ${adjustedTp} (-0.8% safety margin)`);
+        await logToBot('warning', 'tp_adjusted_short', `SHORT: TP adjusted from ${tpPrice} to ${adjustedTp}`, { 
+          original: originalTp, 
+          adjusted: adjustedTp, 
+          market: currentMarketPrice,
+          reason: 'too_close_to_market'
+        }, alertId);
         tpPrice = adjustedTp;
       }
       
-      if (slPrice < minSlPrice) {
-        console.warn(`⚠️ SL ${slPrice} too low for SHORT (should be above ${minSlPrice}), adjusting...`);
+      // SL must be ABOVE current price with safety margin
+      const minSlPrice = currentMarketPrice * 1.008; // +0.8% (SL above market for SHORT)
+      if (slPrice <= currentMarketPrice || slPrice < minSlPrice) {
         const adjustedSl = formatPrice(minSlPrice);
-        await logToBot('warning', 'sl_adjusted', `SL adjusted from ${slPrice} to ${adjustedSl} (market: ${currentMarketPrice})`, { original: originalSl, adjusted: adjustedSl, market: currentMarketPrice }, alertId);
+        console.warn(`   ⚠️ SL ${slPrice} too low/equal for SHORT (must be above ${minSlPrice})`);
+        console.warn(`   → Adjusting to ${adjustedSl} (+0.8% safety margin)`);
+        await logToBot('warning', 'sl_adjusted_short', `SHORT: SL adjusted from ${slPrice} to ${adjustedSl}`, { 
+          original: originalSl, 
+          adjusted: adjustedSl, 
+          market: currentMarketPrice,
+          reason: 'too_close_to_market'
+        }, alertId);
         slPrice = adjustedSl;
       }
+      
+      console.log(`   ✅ SHORT validated - TP: ${tpPrice} (below), SL: ${slPrice} (above)`);
     }
     
-    console.log(`✅ Final validated prices - Side: ${side}, Market: ${currentMarketPrice}, TP: ${tpPrice}, SL: ${slPrice}`);
+    console.log(`\n   ✅ Final validated prices:`);
+    console.log(`      Direction: ${isBuy ? 'LONG' : 'SHORT'}`);
+    console.log(`      Market: ${currentMarketPrice}`);
+    console.log(`      TP: ${tpPrice} ${isBuy ? '(+above)' : '(-below)'}`);
+    console.log(`      SL: ${slPrice} ${isBuy ? '(-below)' : '(+above)'}`);
   }
 
   // ============================================
@@ -436,7 +493,7 @@ async function openOkxPosition(
     tdMode: 'cross',
     side: side.toLowerCase(),
     ordType: 'market',
-    sz: quantity,
+    sz: quantity, // Already properly formatted string
   };
 
   if (slPrice || tpPrice) {

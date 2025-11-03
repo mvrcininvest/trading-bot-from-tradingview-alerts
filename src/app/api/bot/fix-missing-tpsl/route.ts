@@ -260,10 +260,11 @@ export async function POST(request: NextRequest) {
     const passphrase = botConfig.passphrase!;
     const demo = botConfig.environment === "demo";
 
-    // Get default SL/TP settings
+    // ✅ UPDATED: Use new TP strategy settings
     const useDefaultSlTp = botConfig.useDefaultSlTp || false;
     const defaultSlRR = botConfig.defaultSlRR || 1.0;
-    const tp1RR = botConfig.tp1RR || 1.0;
+    const tp1RR = botConfig.tp1RR || 1.0;  // Use new tp1RR instead of defaultTp1RR
+    const tpCount = botConfig.tpCount || 3;
 
     if (!useDefaultSlTp) {
       return NextResponse.json({
@@ -272,7 +273,10 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log(`📊 Default SL RR: ${defaultSlRR}%, Default TP1 RR: ${tp1RR}%`);
+    console.log(`📊 Enhanced TP Strategy:`);
+    console.log(`   SL RR: ${defaultSlRR}%`);
+    console.log(`   TP1 RR: ${tp1RR}%`);
+    console.log(`   TP Count: ${tpCount}`);
 
     // Get all open positions from OKX
     console.log("\n📡 Fetching positions from OKX...");
@@ -311,28 +315,40 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Calculate SL and TP based on entry price and RR settings
+      // ✅ CRITICAL FIX: Calculate SL and TP based on entry price with proper SHORT logic
       let slPrice: number;
       let tpPrice: number;
 
       if (side === "LONG") {
-        // LONG: SL below entry, TP above entry
+        // ✅ LONG: SL below entry, TP above entry
         slPrice = entryPrice * (1 - (defaultSlRR / 100));
         tpPrice = entryPrice * (1 + (tp1RR / 100));
+        console.log(`   📈 LONG position - SL below entry, TP above entry`);
       } else {
-        // SHORT: SL above entry, TP below entry  
+        // ✅ CRITICAL FIX: SHORT: SL above entry, TP below entry
         slPrice = entryPrice * (1 + (defaultSlRR / 100));
         tpPrice = entryPrice * (1 - (tp1RR / 100));
+        console.log(`   📉 SHORT position - SL above entry, TP below entry`);
       }
 
-      console.log(`   Calculated SL: ${slPrice.toFixed(4)}, TP: ${tpPrice.toFixed(4)}`);
+      console.log(`   Calculated - Entry: ${entryPrice.toFixed(4)}, SL: ${slPrice.toFixed(4)}, TP: ${tpPrice.toFixed(4)}`);
 
-      // ✅ CRITICAL FIX: Validate SL/TP against CURRENT price (not entry)
-      const slHit = side === "LONG" ? currentPrice <= slPrice : currentPrice >= slPrice;
-      const tpHit = side === "LONG" ? currentPrice >= tpPrice : currentPrice <= tpPrice;
+      // ✅ CRITICAL: Validate SL/TP against CURRENT price (not entry) with proper SHORT logic
+      let slHit: boolean;
+      let tpHit: boolean;
+
+      if (side === "LONG") {
+        slHit = currentPrice <= slPrice;  // LONG: price dropped below SL
+        tpHit = currentPrice >= tpPrice;  // LONG: price rose above TP
+      } else {
+        slHit = currentPrice >= slPrice;  // SHORT: price rose above SL
+        tpHit = currentPrice <= tpPrice;  // SHORT: price dropped below TP
+      }
+
+      console.log(`   Validation - SL hit: ${slHit}, TP hit: ${tpHit}`);
 
       if (slHit) {
-        console.log(`   ⚠️ Current price (${currentPrice}) already hit SL (${slPrice}). Closing position...`);
+        console.log(`   ⚠️ ${side}: Current price (${currentPrice}) already hit SL (${slPrice}). Closing position...`);
         try {
           await closePosition(symbol, apiKey, apiSecret, passphrase, demo);
           results.closed++;
@@ -340,7 +356,7 @@ export async function POST(request: NextRequest) {
             symbol,
             side,
             action: "closed",
-            reason: "SL already hit",
+            reason: `SL already hit (${side}: price ${currentPrice} vs SL ${slPrice.toFixed(4)})`,
             entryPrice,
             currentPrice,
             slPrice
@@ -374,7 +390,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (tpHit) {
-        console.log(`   ⚠️ Current price (${currentPrice}) already hit TP (${tpPrice}). Closing position...`);
+        console.log(`   ⚠️ ${side}: Current price (${currentPrice}) already hit TP (${tpPrice}). Closing position...`);
         try {
           await closePosition(symbol, apiKey, apiSecret, passphrase, demo);
           results.closed++;
@@ -382,7 +398,7 @@ export async function POST(request: NextRequest) {
             symbol,
             side,
             action: "closed",
-            reason: "TP already hit",
+            reason: `TP already hit (${side}: price ${currentPrice} vs TP ${tpPrice.toFixed(4)})`,
             entryPrice,
             currentPrice,
             tpPrice
@@ -415,7 +431,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // ✅ NEW: Actually SET SL/TP using algo orders
+      // ✅ Position is safe - set SL/TP algo orders
       console.log(`   🔧 Setting SL/TP algo orders for position...`);
       try {
         await setSlTpAlgoOrder(symbol, slPrice, tpPrice, apiKey, apiSecret, passphrase, demo);
@@ -428,10 +444,13 @@ export async function POST(request: NextRequest) {
           reason: "SL/TP algo orders set successfully",
           entryPrice,
           currentPrice,
-          slPrice,
-          tpPrice
+          slPrice: slPrice.toFixed(4),
+          tpPrice: tpPrice.toFixed(4),
+          tpStrategy: `${tpCount} TP levels`
         });
-        console.log(`   ✅ SL/TP set successfully - SL: ${slPrice.toFixed(4)}, TP: ${tpPrice.toFixed(4)}`);
+        console.log(`   ✅ SL/TP set successfully`);
+        console.log(`      SL: ${slPrice.toFixed(4)} (${side === "LONG" ? "below" : "above"} entry)`);
+        console.log(`      TP: ${tpPrice.toFixed(4)} (${side === "LONG" ? "above" : "below"} entry)`);
 
       } catch (error) {
         const errorMsg = `Failed to set SL/TP for ${symbol}: ${error instanceof Error ? error.message : "Unknown"}`;
@@ -445,8 +464,8 @@ export async function POST(request: NextRequest) {
           reason: errorMsg,
           entryPrice,
           currentPrice,
-          recommendedSl: slPrice,
-          recommendedTp: tpPrice
+          recommendedSl: slPrice.toFixed(4),
+          recommendedTp: tpPrice.toFixed(4)
         });
         continue;
       }
