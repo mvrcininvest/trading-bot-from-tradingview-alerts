@@ -118,6 +118,36 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [credentials]);
 
+  // ✅ NEW: Auto-fix missing SL/TP every 10 seconds in background
+  useEffect(() => {
+    if (!credentials) return;
+
+    const autoFixInterval = setInterval(async () => {
+      try {
+        console.log("🔧 [Background] Running auto-fix for missing SL/TP...");
+        const response = await fetch("/api/bot/fix-missing-tpsl", {
+          method: "POST",
+        });
+        const data = await response.json();
+
+        if (data.success && data.results) {
+          const { fixed, closed } = data.results;
+          if (fixed > 0 || closed > 0) {
+            console.log(`✅ [Background] Auto-fix: Fixed ${fixed}, Closed ${closed}`);
+            // Refresh positions after auto-fix
+            fetchBotPositions(true);
+            fetchPositions(credentials, true);
+          }
+        }
+      } catch (error) {
+        // Silent fail - don't disturb user
+        console.error("❌ [Background] Auto-fix failed:", error);
+      }
+    }, 10000); // Run every 10 seconds
+
+    return () => clearInterval(autoFixInterval);
+  }, [credentials]);
+
   // Auto-refresh positions every 0.5 seconds (always on)
   useEffect(() => {
     if (!credentials) return;

@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
+import { autoFixMissingSlTp } from '@/lib/fix-missing-tpsl-helper';
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -1130,6 +1131,25 @@ export async function POST(request: Request) {
         environment
       }, alert.id, botPosition.id);
 
+      // ✅ CRITICAL: AUTO-FIX MISSING SL/TP IMMEDIATELY AFTER OPENING POSITION
+      console.log("\n🔧 Running auto-fix for missing SL/TP immediately after position opening...");
+      try {
+        const fixResult = await autoFixMissingSlTp(false);
+        if (fixResult.success) {
+          console.log(`✅ Auto-fix completed: Fixed ${fixResult.fixed}, Closed ${fixResult.closed}`);
+          await logToBot('success', 'auto_fix_completed', `Auto-fix after position open: Fixed ${fixResult.fixed}, Closed ${fixResult.closed}`, {
+            fixed: fixResult.fixed,
+            closed: fixResult.closed,
+            errors: fixResult.errors
+          }, alert.id, botPosition.id);
+        } else {
+          console.log(`⚠️ Auto-fix skipped: ${fixResult.reason}`);
+        }
+      } catch (error) {
+        console.error("❌ Auto-fix failed:", error);
+        // Don't fail the whole request if auto-fix fails
+      }
+
       return NextResponse.json({
         success: true,
         alert_id: alert.id,
@@ -1147,8 +1167,10 @@ export async function POST(request: Request) {
           tp2: tp2Price, 
           tp3: tp3Price, 
           tpLevels: botConfig.tpCount 
-        }
+        },
+        autoFixRan: true
       });
+
     } catch (error: any) {
       console.error("❌ Position opening failed:", error);
 
