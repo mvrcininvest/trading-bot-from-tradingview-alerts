@@ -179,66 +179,163 @@ async function closePosition(
 }
 
 // ============================================
-// ✅ SET ATTACHED SL/TP ALGO ORDERS
+// ✅ SET ATTACHED SL/TP ALGO ORDERS (FIXED)
 // ============================================
 
 async function setSlTpAlgoOrder(
   symbol: string,
   slPrice: number | null,
   tpPrice: number | null,
+  quantity: number,
+  side: string,
   apiKey: string,
   apiSecret: string,
   passphrase: string,
   demo: boolean
 ) {
+  console.log(`\n🎯 Setting SL/TP for ${symbol} ${side} qty=${quantity}`);
+  
   const timestamp = new Date().toISOString();
   const method = "POST";
   const requestPath = "/api/v5/trade/order-algo";
   
-  const payload: any = {
-    instId: symbol,
-    tdMode: "cross",
-    ordType: "oco", // One-Cancels-Other for SL + TP
+  // Determine position side for algo order
+  // If position is LONG (buy), we need to set SELL algo orders
+  // If position is SHORT (sell), we need to set BUY algo orders
+  const algoSide = side === "LONG" ? "sell" : "buy";
+  const posSide = side === "LONG" ? "long" : "short";
+  
+  const results = {
+    slSuccess: false,
+    tpSuccess: false,
+    slAlgoId: null as string | null,
+    tpAlgoId: null as string | null,
+    errors: [] as string[]
   };
 
+  // ✅ CRITICAL: Set Stop Loss first (higher priority)
   if (slPrice) {
-    payload.slTriggerPx = slPrice.toString();
-    payload.slOrdPx = "-1"; // Market order when triggered
+    console.log(`   Setting SL @ ${slPrice} (${algoSide} when triggered)`);
+    
+    const slPayload: any = {
+      instId: symbol,
+      tdMode: "cross",
+      side: algoSide,
+      posSide: posSide,
+      ordType: "conditional",
+      sz: quantity.toString(),
+      slTriggerPx: slPrice.toString(),
+      slOrdPx: "-1", // Market price when triggered
+    };
+
+    const slBodyString = JSON.stringify(slPayload);
+    const slSignature = createOkxSignature(timestamp, method, requestPath, slBodyString, apiSecret);
+
+    const headers: Record<string, string> = {
+      "OK-ACCESS-KEY": apiKey,
+      "OK-ACCESS-SIGN": slSignature,
+      "OK-ACCESS-TIMESTAMP": timestamp,
+      "OK-ACCESS-PASSPHRASE": passphrase,
+      "Content-Type": "application/json",
+    };
+
+    if (demo) {
+      headers["x-simulated-trading"] = "1";
+    }
+
+    try {
+      const response = await fetch(`https://www.okx.com${requestPath}`, {
+        method: "POST",
+        headers,
+        body: slBodyString,
+      });
+
+      const data = await response.json();
+
+      if (data.code === "0" && data.data && data.data.length > 0) {
+        results.slSuccess = true;
+        results.slAlgoId = data.data[0].algoId;
+        console.log(`   ✅ SL set successfully: ${results.slAlgoId}`);
+      } else {
+        const error = `SL failed: ${data.msg} (code: ${data.code})`;
+        console.error(`   ❌ ${error}`);
+        results.errors.push(error);
+      }
+    } catch (error) {
+      const errorMsg = `SL request failed: ${error instanceof Error ? error.message : "Unknown"}`;
+      console.error(`   ❌ ${errorMsg}`);
+      results.errors.push(errorMsg);
+    }
   }
 
+  // ✅ Set Take Profit
   if (tpPrice) {
-    payload.tpTriggerPx = tpPrice.toString();
-    payload.tpOrdPx = "-1"; // Market order when triggered
+    console.log(`   Setting TP @ ${tpPrice} (${algoSide} when triggered)`);
+    
+    // Need fresh timestamp for second request
+    const tpTimestamp = new Date().toISOString();
+    
+    const tpPayload: any = {
+      instId: symbol,
+      tdMode: "cross",
+      side: algoSide,
+      posSide: posSide,
+      ordType: "conditional",
+      sz: quantity.toString(),
+      tpTriggerPx: tpPrice.toString(),
+      tpOrdPx: "-1", // Market price when triggered
+    };
+
+    const tpBodyString = JSON.stringify(tpPayload);
+    const tpSignature = createOkxSignature(tpTimestamp, method, requestPath, tpBodyString, apiSecret);
+
+    const headers: Record<string, string> = {
+      "OK-ACCESS-KEY": apiKey,
+      "OK-ACCESS-SIGN": tpSignature,
+      "OK-ACCESS-TIMESTAMP": tpTimestamp,
+      "OK-ACCESS-PASSPHRASE": passphrase,
+      "Content-Type": "application/json",
+    };
+
+    if (demo) {
+      headers["x-simulated-trading"] = "1";
+    }
+
+    try {
+      const response = await fetch(`https://www.okx.com${requestPath}`, {
+        method: "POST",
+        headers,
+        body: tpBodyString,
+      });
+
+      const data = await response.json();
+
+      if (data.code === "0" && data.data && data.data.length > 0) {
+        results.tpSuccess = true;
+        results.tpAlgoId = data.data[0].algoId;
+        console.log(`   ✅ TP set successfully: ${results.tpAlgoId}`);
+      } else {
+        const error = `TP failed: ${data.msg} (code: ${data.code})`;
+        console.error(`   ❌ ${error}`);
+        results.errors.push(error);
+      }
+    } catch (error) {
+      const errorMsg = `TP request failed: ${error instanceof Error ? error.message : "Unknown"}`;
+      console.error(`   ❌ ${errorMsg}`);
+      results.errors.push(errorMsg);
+    }
   }
 
-  const bodyString = JSON.stringify(payload);
-  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
-
-  const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "Content-Type": "application/json",
-  };
-
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
+  // Check if at least one succeeded
+  if (!results.slSuccess && !results.tpSuccess) {
+    throw new Error(`Failed to set both SL and TP: ${results.errors.join(", ")}`);
   }
 
-  const response = await fetch(`https://www.okx.com${requestPath}`, {
-    method: "POST",
-    headers,
-    body: bodyString,
-  });
-
-  const data = await response.json();
-
-  if (data.code !== "0") {
-    throw new Error(`Failed to set SL/TP: ${data.msg} (code: ${data.code})`);
+  if (results.errors.length > 0) {
+    console.warn(`   ⚠️ Partial success with errors: ${results.errors.join(", ")}`);
   }
 
-  return data.data;
+  return results;
 }
 
 export async function POST(request: NextRequest) {
@@ -300,8 +397,9 @@ export async function POST(request: NextRequest) {
       const side = pos > 0 ? "LONG" : "SHORT";
       const entryPrice = parseFloat(position.avgPx);
       const leverage = parseFloat(position.lever);
+      const quantity = Math.abs(pos); // Absolute value of position size
 
-      console.log(`\n🔍 Checking ${symbol} ${side} @ ${entryPrice}`);
+      console.log(`\n🔍 Checking ${symbol} ${side} @ ${entryPrice}, qty=${quantity}`);
 
       // Get current market price
       let currentPrice: number;
@@ -434,7 +532,17 @@ export async function POST(request: NextRequest) {
       // ✅ Position is safe - set SL/TP algo orders
       console.log(`   🔧 Setting SL/TP algo orders for position...`);
       try {
-        await setSlTpAlgoOrder(symbol, slPrice, tpPrice, apiKey, apiSecret, passphrase, demo);
+        const algoResults = await setSlTpAlgoOrder(
+          symbol, 
+          slPrice, 
+          tpPrice, 
+          quantity,
+          side,
+          apiKey, 
+          apiSecret, 
+          passphrase, 
+          demo
+        );
         
         results.fixed++;
         results.details.push({
@@ -444,13 +552,17 @@ export async function POST(request: NextRequest) {
           reason: "SL/TP algo orders set successfully",
           entryPrice,
           currentPrice,
+          quantity,
           slPrice: slPrice.toFixed(4),
           tpPrice: tpPrice.toFixed(4),
-          tpStrategy: `${tpCount} TP levels`
+          slAlgoId: algoResults.slAlgoId,
+          tpAlgoId: algoResults.tpAlgoId,
+          tpStrategy: `${tpCount} TP levels`,
+          partialErrors: algoResults.errors.length > 0 ? algoResults.errors : undefined
         });
         console.log(`   ✅ SL/TP set successfully`);
-        console.log(`      SL: ${slPrice.toFixed(4)} (${side === "LONG" ? "below" : "above"} entry)`);
-        console.log(`      TP: ${tpPrice.toFixed(4)} (${side === "LONG" ? "above" : "below"} entry)`);
+        console.log(`      SL: ${slPrice.toFixed(4)} (${side === "LONG" ? "below" : "above"} entry) - Algo ID: ${algoResults.slAlgoId || 'N/A'}`);
+        console.log(`      TP: ${tpPrice.toFixed(4)} (${side === "LONG" ? "above" : "below"} entry) - Algo ID: ${algoResults.tpAlgoId || 'N/A'}`);
 
       } catch (error) {
         const errorMsg = `Failed to set SL/TP for ${symbol}: ${error instanceof Error ? error.message : "Unknown"}`;
@@ -464,6 +576,7 @@ export async function POST(request: NextRequest) {
           reason: errorMsg,
           entryPrice,
           currentPrice,
+          quantity,
           recommendedSl: slPrice.toFixed(4),
           recommendedTp: tpPrice.toFixed(4)
         });

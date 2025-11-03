@@ -26,7 +26,6 @@ export default function BotSettingsPage() {
   const [leverageFixed, setLeverageFixed] = useState(10)
   const [tierFilteringMode, setTierFilteringMode] = useState("all")
   const [disabledTiers, setDisabledTiers] = useState<string[]>([])
-  const [tpStrategy, setTpStrategy] = useState("multiple")
   const [maxConcurrentPositions, setMaxConcurrentPositions] = useState(10)
   const [sameSymbolBehavior, setSameSymbolBehavior] = useState("track_confirmations")
   const [oppositeDirectionStrategy, setOppositeDirectionStrategy] = useState("market_reversal")
@@ -38,9 +37,6 @@ export default function BotSettingsPage() {
   
   const [useDefaultSlTp, setUseDefaultSlTp] = useState(false)
   const [defaultSlRR, setDefaultSlRR] = useState(1.0)
-  const [defaultTp1RR, setDefaultTp1RR] = useState(1.0)
-  const [defaultTp2RR, setDefaultTp2RR] = useState(2.0)
-  const [defaultTp3RR, setDefaultTp3RR] = useState(3.0)
 
   // NEW: Enhanced TP Strategy state
   const [tpCount, setTpCount] = useState(3)
@@ -72,7 +68,6 @@ export default function BotSettingsPage() {
         setLeverageFixed(s.leverageFixed)
         setTierFilteringMode(s.tierFilteringMode)
         setDisabledTiers(JSON.parse(s.disabledTiers))
-        setTpStrategy(s.tpStrategy)
         setMaxConcurrentPositions(s.maxConcurrentPositions)
         setSameSymbolBehavior(s.sameSymbolBehavior)
         setOppositeDirectionStrategy(s.oppositeDirectionStrategy)
@@ -83,9 +78,6 @@ export default function BotSettingsPage() {
         setEmergencyMinProfitPercent(s.emergencyMinProfitPercent)
         setUseDefaultSlTp(s.useDefaultSlTp || false)
         setDefaultSlRR(s.defaultSlRR || 1.0)
-        setDefaultTp1RR(s.defaultTp1RR || 1.0)
-        setDefaultTp2RR(s.defaultTp2RR || 2.0)
-        setDefaultTp3RR(s.defaultTp3RR || 3.0)
         
         // NEW: Load enhanced TP settings
         setTpCount(s.tpCount || 3)
@@ -121,7 +113,6 @@ export default function BotSettingsPage() {
           leverageFixed,
           tierFilteringMode,
           disabledTiers: JSON.stringify(disabledTiers),
-          tpStrategy,
           maxConcurrentPositions,
           sameSymbolBehavior,
           oppositeDirectionStrategy,
@@ -132,9 +123,6 @@ export default function BotSettingsPage() {
           emergencyMinProfitPercent,
           useDefaultSlTp,
           defaultSlRR,
-          defaultTp1RR,
-          defaultTp2RR,
-          defaultTp3RR,
           // NEW: Enhanced TP Strategy
           tpCount,
           tp1RR,
@@ -375,22 +363,41 @@ export default function BotSettingsPage() {
 
                 <Separator className="bg-gray-700/50" />
 
-                {/* TP Strategy */}
+                {/* Enhanced TP Strategy Preview */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 mb-3">
                     <Target className="h-5 w-5 text-green-400" />
-                    <h4 className="text-lg font-semibold text-white">Take Profit</h4>
+                    <h4 className="text-lg font-semibold text-white">Strategia Take Profit (Zaawansowana)</h4>
                   </div>
-                  <div className="pl-7">
+                  <div className="pl-7 space-y-3">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Strategia</p>
-                      <p className="text-white font-semibold">
-                        {tpStrategy === "single" ? "Pojedynczy TP (main_tp)" : "Wielokrotny TP (TP1/TP2/TP3)"}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {tpStrategy === "single" 
-                          ? "Zamyka całą pozycję gdy main_tp zostanie osiągnięty"
-                          : "Zamyka pozycję częściowo: 50% na TP1, 30% na TP2, 20% na TP3"}
+                      <p className="text-xs text-gray-400 mb-1">Liczba poziomów TP</p>
+                      <p className="text-white font-semibold">{tpCount} TP</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                        <p className="text-xs text-gray-400 mb-1">TP1</p>
+                        <p className="text-green-400 font-semibold">{tp1RR}% RR → Zamknij {tp1Percent}%</p>
+                      </div>
+                      {tpCount >= 2 && (
+                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                          <p className="text-xs text-gray-400 mb-1">TP2</p>
+                          <p className="text-green-400 font-semibold">{tp2RR}% RR → Zamknij {tp2Percent}%</p>
+                        </div>
+                      )}
+                      {tpCount >= 3 && (
+                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50 col-span-2">
+                          <p className="text-xs text-gray-400 mb-1">TP3</p>
+                          <p className="text-green-400 font-semibold">{tp3RR}% RR → Zamknij {tp3Percent}%</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                      <p className="text-xs text-gray-400 mb-1">Zarządzanie SL po TP1</p>
+                      <p className="text-white font-semibold text-xs">
+                        {slManagementAfterTp1 === "breakeven" && "🎯 Break-even (przesuń SL na entry)"}
+                        {slManagementAfterTp1 === "trailing" && `📈 Trailing Stop (${slTrailingDistance}% dystans)`}
+                        {slManagementAfterTp1 === "no_change" && "🔒 Bez zmian"}
                       </p>
                     </div>
                   </div>
@@ -412,23 +419,10 @@ export default function BotSettingsPage() {
                       </p>
                     </div>
                     {useDefaultSlTp && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                          <p className="text-xs text-gray-400 mb-1">Domyślny SL</p>
-                          <p className="text-red-400 font-semibold">{defaultSlRR} RR</p>
-                        </div>
-                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                          <p className="text-xs text-gray-400 mb-1">Domyślny TP1</p>
-                          <p className="text-green-400 font-semibold">{defaultTp1RR} RR</p>
-                        </div>
-                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                          <p className="text-xs text-gray-400 mb-1">Domyślny TP2</p>
-                          <p className="text-green-400 font-semibold">{defaultTp2RR} RR</p>
-                        </div>
-                        <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                          <p className="text-xs text-gray-400 mb-1">Domyślny TP3</p>
-                          <p className="text-green-400 font-semibold">{defaultTp3RR} RR</p>
-                        </div>
+                      <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
+                        <p className="text-xs text-gray-400 mb-1">Domyślny SL</p>
+                        <p className="text-red-400 font-semibold">{defaultSlRR}% RR</p>
+                        <p className="text-xs text-gray-400 mt-2">TP używa wartości z sekcji zaawansowanej powyżej</p>
                       </div>
                     )}
                   </div>
@@ -612,36 +606,12 @@ export default function BotSettingsPage() {
           )}
         </Card>
 
-        {/* TP Strategy */}
-        <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-          <h3 className="text-lg font-semibold text-white">Strategia Take Profit</h3>
-          
-          <div className="space-y-2">
-            <Label className="text-white">Tryb TP</Label>
-            <Select value={tpStrategy} onValueChange={setTpStrategy}>
-              <SelectTrigger className="text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="single">Pojedynczy TP (main_tp)</SelectItem>
-                <SelectItem value="multiple">Wielokrotny TP (TP1/TP2/TP3)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <p className="text-sm text-gray-400">
-            {tpStrategy === "single" 
-              ? "Zamyka całą pozycję gdy main_tp zostanie osiągnięty"
-              : "Zamyka pozycję częściowo: 50% na TP1, 30% na TP2, 20% na TP3"}
-          </p>
-        </Card>
-
         {/* SL/TP Safety */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h3>
-              <p className="text-sm text-gray-400">Automatyczne ustawienie gdy alert nie zawiera wartości (Risk:Reward)</p>
+              <p className="text-sm text-gray-400">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
             </div>
             <Switch checked={useDefaultSlTp} onCheckedChange={setUseDefaultSlTp} />
           </div>
@@ -649,66 +619,23 @@ export default function BotSettingsPage() {
           {useDefaultSlTp && (
             <>
               <Separator className="bg-gray-700" />
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-white">Domyślny SL (RR)</Label>
-                  <Input 
-                    type="number" 
-                    value={defaultSlRR} 
-                    onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0.1"
-                    className="text-white"
-                  />
-                  <p className="text-xs text-gray-400">Risk ratio dla Stop Loss</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-white">Domyślny TP1 (RR)</Label>
-                  <Input 
-                    type="number" 
-                    value={defaultTp1RR} 
-                    onChange={(e) => setDefaultTp1RR(parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0.1"
-                    className="text-white"
-                  />
-                  <p className="text-xs text-gray-400">Reward ratio dla TP1</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-white">Domyślny TP2 (RR)</Label>
-                  <Input 
-                    type="number" 
-                    value={defaultTp2RR} 
-                    onChange={(e) => setDefaultTp2RR(parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0.1"
-                    className="text-white"
-                  />
-                  <p className="text-xs text-gray-400">Reward ratio dla TP2</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-white">Domyślny TP3 (RR)</Label>
-                  <Input 
-                    type="number" 
-                    value={defaultTp3RR} 
-                    onChange={(e) => setDefaultTp3RR(parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0.1"
-                    className="text-white"
-                  />
-                  <p className="text-xs text-gray-400">Reward ratio dla TP3</p>
-                </div>
+              <div className="space-y-2">
+                <Label className="text-white">Domyślny SL (% RR)</Label>
+                <Input 
+                  type="number" 
+                  value={defaultSlRR} 
+                  onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
+                  step="0.1"
+                  min="0.1"
+                  className="text-white"
+                />
+                <p className="text-xs text-gray-400">Procent od ceny entry dla Stop Loss</p>
               </div>
 
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                 <p className="text-sm text-blue-300">
-                  <strong>Przykład dla pozycji BUY @ $100:</strong><br/>
-                  Jeśli SL = 1.0 RR, to ryzyko = $1 od ceny wejścia<br/>
-                  SL: $99 | TP1 (1.0 RR): $101 | TP2 (2.0 RR): $102 | TP3 (3.0 RR): $103<br/>
-                  <span className="text-xs text-blue-400/70">RR = Risk:Reward - stosunek zysku do ryzyka</span>
+                  <strong>Uwaga:</strong> Wartości Take Profit są konfigurowane w sekcji "Strategia Take Profit (Zaawansowana)" poniżej.<br/>
+                  <span className="text-xs text-blue-400/70">System automatycznie użyje wartości TP1/TP2/TP3 z sekcji zaawansowanej.</span>
                 </p>
               </div>
             </>
@@ -757,7 +684,7 @@ export default function BotSettingsPage() {
               <div className="space-y-2">
                 <Label className="text-white flex items-center gap-2">
                   <Target className="h-4 w-4 text-green-400" />
-                  Risk:Reward (R:R)
+                  % od Entry
                 </Label>
                 <Input 
                   type="number" 
@@ -799,7 +726,7 @@ export default function BotSettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-white flex items-center gap-2">
                     <Target className="h-4 w-4 text-amber-400" />
-                    Risk:Reward (R:R)
+                    % od Entry
                   </Label>
                   <Input 
                     type="number" 
@@ -842,7 +769,7 @@ export default function BotSettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-white flex items-center gap-2">
                     <Target className="h-4 w-4 text-purple-400" />
-                    Risk:Reward (R:R)
+                    % od Entry
                   </Label>
                   <Input 
                     type="number" 
@@ -929,18 +856,18 @@ export default function BotSettingsPage() {
             </h5>
             <div className="space-y-2 text-sm text-gray-300">
               <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded">
-                <span className="text-green-400 font-semibold">TP1 ({tp1RR} R:R)</span>
+                <span className="text-green-400 font-semibold">TP1 ({tp1RR}%)</span>
                 <span>${(50000 * (1 + tp1RR / 100)).toFixed(2)} → Zamknij {tp1Percent}%</span>
               </div>
               {tpCount >= 2 && (
                 <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded">
-                  <span className="text-amber-400 font-semibold">TP2 ({tp2RR} R:R)</span>
+                  <span className="text-amber-400 font-semibold">TP2 ({tp2RR}%)</span>
                   <span>${(50000 * (1 + tp2RR / 100)).toFixed(2)} → Zamknij {tp2Percent}%</span>
                 </div>
               )}
               {tpCount >= 3 && (
                 <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded">
-                  <span className="text-purple-400 font-semibold">TP3 ({tp3RR} R:R)</span>
+                  <span className="text-purple-400 font-semibold">TP3 ({tp3RR}%)</span>
                   <span>${(50000 * (1 + tp3RR / 100)).toFixed(2)} → Zamknij {tp3Percent}%</span>
                 </div>
               )}
