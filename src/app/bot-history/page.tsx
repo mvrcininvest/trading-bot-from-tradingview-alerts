@@ -61,8 +61,8 @@ export default function BotHistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // Fetch position history
-      const positionsResponse = await fetch("/api/bot/history");
+      // Fetch position history with OKX history included
+      const positionsResponse = await fetch("/api/bot/history?includeOkxHistory=true");
       const positionsData = await positionsResponse.json();
 
       if (positionsData.success && Array.isArray(positionsData.history)) {

@@ -149,6 +149,42 @@ async function makeOkxRequest(
 }
 
 // ============================================
+// 📊 GET CURRENT MARKET PRICE FROM OKX
+// ============================================
+
+async function getCurrentMarketPrice(
+  symbol: string,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean
+): Promise<number> {
+  const okxSymbol = convertSymbolToOkx(symbol);
+  
+  try {
+    const { data } = await makeOkxRequest(
+      'GET',
+      `/api/v5/market/ticker?instId=${okxSymbol}`,
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo
+    );
+    
+    if (data.code === '0' && data.data && data.data.length > 0) {
+      const lastPrice = parseFloat(data.data[0].last);
+      console.log(`📊 Current market price for ${okxSymbol}: ${lastPrice}`);
+      return lastPrice;
+    }
+    
+    throw new Error(`Failed to get market price for ${okxSymbol}`);
+  } catch (error: any) {
+    console.error(`❌ Failed to get market price:`, error.message);
+    throw error;
+  }
+}
+
+// ============================================
 // 🚀 OKX POSITION OPENING (SIMPLIFIED & FIXED)
 // ============================================
 
@@ -164,7 +200,9 @@ async function openOkxPosition(
   apiSecret: string,
   passphrase: string,
   demo: boolean,
-  alertId?: number
+  alertId?: number,
+  originalSl?: number,
+  originalTp?: number
 ) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`🚀 OPENING OKX POSITION - START`);
@@ -182,7 +220,20 @@ async function openOkxPosition(
   const okxSymbol = convertSymbolToOkx(symbol);
   
   // ============================================
-  // 🔍 STEP 1: TEST CREDENTIALS WITH BALANCE CHECK
+  // 🔍 STEP 1: GET CURRENT MARKET PRICE
+  // ============================================
+  console.log(`\n🔍 Getting current market price for validation...`);
+  let currentMarketPrice: number;
+  try {
+    currentMarketPrice = await getCurrentMarketPrice(symbol, apiKey, apiSecret, passphrase, demo);
+    console.log(`✅ Current market price: ${currentMarketPrice}`);
+  } catch (error: any) {
+    console.error(`❌ Failed to get market price, using entry price as fallback`);
+    currentMarketPrice = entryPrice;
+  }
+  
+  // ============================================
+  // 🔍 STEP 2: TEST CREDENTIALS WITH BALANCE CHECK
   // ============================================
   console.log(`\n🔍 Testing credentials with balance check...`);
   try {
@@ -212,7 +263,7 @@ async function openOkxPosition(
   }
   
   // ============================================
-  // 🔍 STEP 2: GET INSTRUMENT INFO
+  // 🔍 STEP 3: GET INSTRUMENT INFO
   // ============================================
   console.log(`\n🔍 Fetching instrument info for ${okxSymbol}...`);
   let instrumentInfo;
@@ -248,7 +299,7 @@ async function openOkxPosition(
   }
   
   // ============================================
-  // 🔢 STEP 3: CALCULATE QUANTITY (SIMPLIFIED)
+  // 🔢 STEP 4: CALCULATE QUANTITY (SIMPLIFIED)
   // ============================================
   console.log(`\n🔢 Calculating order quantity...`);
   const ctVal = parseFloat(instrumentInfo.ctVal);
@@ -257,22 +308,15 @@ async function openOkxPosition(
   const minSz = parseFloat(instrumentInfo.minSz);
   const tickSz = parseFloat(instrumentInfo.tickSz);
   
-  // CRITICAL FIX: For USDT-margined perpetuals (e.g., ETH-USDT-SWAP):
-  // - ctVal = contract value in base currency (e.g., 0.01 ETH)
-  // - ctValCcy = base currency (e.g., ETH)
-  // - To calculate sz (number of contracts):
-  //   sz = (Position Size USD / Entry Price) / ctVal
-  
   let contracts: number;
-  const coinAmount = positionSizeUsd / entryPrice; // Amount of base currency needed
-  contracts = coinAmount / ctVal; // Number of contracts
+  const coinAmount = positionSizeUsd / currentMarketPrice;
+  contracts = coinAmount / ctVal;
   
-  // Round to lot size
   const roundedContracts = Math.floor(contracts / lotSz) * lotSz;
   const finalContracts = Math.max(roundedContracts, minSz);
   
   console.log(`   Position Size USD: $${positionSizeUsd}`);
-  console.log(`   Entry Price: ${entryPrice}`);
+  console.log(`   Current Market Price: ${currentMarketPrice}`);
   console.log(`   Coin Amount Needed: ${coinAmount.toFixed(8)} ${ctValCcy}`);
   console.log(`   Contract Value: ${ctVal} ${ctValCcy}`);
   console.log(`   Raw Contracts: ${contracts.toFixed(4)}`);
@@ -286,7 +330,7 @@ async function openOkxPosition(
   const quantity = finalContracts.toString();
   
   // ============================================
-  // 📏 STEP 4: SET LEVERAGE
+  // 📏 STEP 5: SET LEVERAGE
   // ============================================
   console.log(`\n📏 Setting leverage to ${leverage}x...`);
   try {
@@ -306,7 +350,6 @@ async function openOkxPosition(
     );
 
     if (leverageData.code !== '0') {
-      // Leverage errors are often non-critical (already set), log as warning
       console.warn(`⚠️ Leverage response (code ${leverageData.code}): ${leverageData.msg}`);
       await logToBot('warning', 'leverage_warning', `Leverage: ${leverageData.msg}`, { leverageData }, alertId);
     } else {
@@ -315,15 +358,68 @@ async function openOkxPosition(
   } catch (error: any) {
     console.error(`❌ Leverage failed:`, error.message);
     await logToBot('error', 'leverage_failed', `Leverage failed: ${error.message}`, { error: error.message }, alertId);
-    // Don't throw - continue with order placement
   }
 
   // ============================================
-  // 📈 STEP 5: PLACE ORDER WITH SL/TP
+  // ✅ STEP 6: VALIDATE AND ADJUST TP/SL (CRITICAL FIX)
+  // ============================================
+  console.log(`\n✅ Validating TP/SL against current market price...`);
+  
+  if (slPrice && tpPrice) {
+    const isBuy = side === "BUY";
+    const formatPrice = (price: number) => {
+      const decimals = tickSz.toString().includes('.') 
+        ? tickSz.toString().split('.')[1].length 
+        : 0;
+      return parseFloat(price.toFixed(decimals));
+    };
+    
+    if (isBuy) {
+      // BUY/LONG: TP must be ABOVE current price, SL must be BELOW current price
+      const minTpPrice = currentMarketPrice * 1.02; // +2% minimum
+      const maxSlPrice = currentMarketPrice * 0.98; // -2% maximum
+      
+      if (tpPrice < minTpPrice) {
+        console.warn(`⚠️ TP ${tpPrice} too close/below current ${currentMarketPrice} for LONG, adjusting to ${minTpPrice}...`);
+        const adjustedTp = formatPrice(minTpPrice);
+        await logToBot('warning', 'tp_adjusted', `TP adjusted from ${tpPrice} to ${adjustedTp} (market: ${currentMarketPrice})`, { original: originalTp, adjusted: adjustedTp, market: currentMarketPrice }, alertId);
+        tpPrice = adjustedTp;
+      }
+      
+      if (slPrice > maxSlPrice) {
+        console.warn(`⚠️ SL ${slPrice} too close/above current ${currentMarketPrice} for LONG, adjusting to ${maxSlPrice}...`);
+        const adjustedSl = formatPrice(maxSlPrice);
+        await logToBot('warning', 'sl_adjusted', `SL adjusted from ${slPrice} to ${adjustedSl} (market: ${currentMarketPrice})`, { original: originalSl, adjusted: adjustedSl, market: currentMarketPrice }, alertId);
+        slPrice = adjustedSl;
+      }
+    } else {
+      // SELL/SHORT: TP must be BELOW current price, SL must be ABOVE current price
+      const maxTpPrice = currentMarketPrice * 0.98; // -2% minimum for TP
+      const minSlPrice = currentMarketPrice * 1.02; // +2% minimum for SL
+      
+      if (tpPrice > maxTpPrice) {
+        console.warn(`⚠️ TP ${tpPrice} too close/above current ${currentMarketPrice} for SHORT, adjusting to ${maxTpPrice}...`);
+        const adjustedTp = formatPrice(maxTpPrice);
+        await logToBot('warning', 'tp_adjusted', `TP adjusted from ${tpPrice} to ${adjustedTp} (market: ${currentMarketPrice})`, { original: originalTp, adjusted: adjustedTp, market: currentMarketPrice }, alertId);
+        tpPrice = adjustedTp;
+      }
+      
+      if (slPrice < minSlPrice) {
+        console.warn(`⚠️ SL ${slPrice} TOO LOW for SHORT! Must be ABOVE current price. Adjusting from ${slPrice} to ${minSlPrice}...`);
+        const adjustedSl = formatPrice(minSlPrice);
+        await logToBot('warning', 'sl_adjusted', `SL adjusted from ${slPrice} to ${adjustedSl} (market: ${currentMarketPrice})`, { original: originalSl, adjusted: adjustedSl, market: currentMarketPrice }, alertId);
+        slPrice = adjustedSl;
+      }
+    }
+    
+    console.log(`✅ Final validated prices - Side: ${side}, Market: ${currentMarketPrice}, TP: ${tpPrice}, SL: ${slPrice}`);
+  }
+
+  // ============================================
+  // 📈 STEP 7: PLACE ORDER WITH SL/TP
   // ============================================
   console.log(`\n📈 Placing market order...`);
   
-  // Format prices with correct precision
   const formatPrice = (price: number) => {
     const decimals = tickSz.toString().includes('.') 
       ? tickSz.toString().split('.')[1].length 
@@ -334,12 +430,11 @@ async function openOkxPosition(
   const orderPayload: any = {
     instId: okxSymbol,
     tdMode: 'cross',
-    side: side.toLowerCase(), // 'buy' or 'sell'
+    side: side.toLowerCase(),
     ordType: 'market',
     sz: quantity,
   };
 
-  // ✅ CRITICAL FIX: Use attachAlgoOrds array instead of direct SL/TP
   if (slPrice || tpPrice) {
     const algoOrd: any = {
       attachAlgoClOrdId: `a${Date.now()}${Math.random().toString(36).substring(2, 8)}`,
@@ -347,13 +442,13 @@ async function openOkxPosition(
 
     if (tpPrice) {
       algoOrd.tpTriggerPx = formatPrice(tpPrice);
-      algoOrd.tpOrdPx = '-1'; // Market price when triggered
+      algoOrd.tpOrdPx = '-1';
       console.log(`🎯 Take Profit: ${algoOrd.tpTriggerPx}`);
     }
 
     if (slPrice) {
       algoOrd.slTriggerPx = formatPrice(slPrice);
-      algoOrd.slOrdPx = '-1'; // Market price when triggered
+      algoOrd.slOrdPx = '-1';
       console.log(`🛑 Stop Loss: ${algoOrd.slTriggerPx}`);
     }
 
@@ -890,7 +985,9 @@ export async function POST(request: Request) {
         apiSecret,
         passphrase,
         environment === "demo",
-        alert.id
+        alert.id,
+        parseFloat(data.sl || "0"),
+        parseFloat(data.tp3 || "0")
       );
 
       // Save position to database
