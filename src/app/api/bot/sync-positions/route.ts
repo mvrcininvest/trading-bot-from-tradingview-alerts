@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { botPositions, positionHistory, botActions, botSettings } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import crypto from 'crypto';
 
 /**
@@ -89,6 +89,52 @@ async function getOkxPositions(
   return data.data?.filter((p: any) => parseFloat(p.pos) !== 0) || [];
 }
 
+// ============================================
+// 📜 GET CLOSED POSITIONS HISTORY FROM OKX
+// ============================================
+
+async function getOkxPositionsHistory(
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  limit: number = 100
+) {
+  const timestamp = new Date().toISOString();
+  const method = "GET";
+  const requestPath = "/api/v5/account/positions-history";
+  const queryString = `?instType=SWAP&limit=${limit}`;
+  const body = "";
+  
+  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  
+  const baseUrl = "https://www.okx.com";
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+  };
+  
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+  
+  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
+    method: "GET",
+    headers,
+  });
+
+  const data = await response.json();
+
+  if (data.code !== "0") {
+    throw new Error(`OKX positions history error: ${data.msg}`);
+  }
+
+  return data.data || [];
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Get bot settings for API credentials
@@ -109,13 +155,18 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Sync] Using OKX (${environment}) - API Key: ${apiKey?.substring(0, 8) ?? 'N/A'}...`);
 
-    // Get all open positions from database
+    // Get all open AND partial_close positions from database
     const dbPositions = await db
       .select()
       .from(botPositions)
-      .where(eq(botPositions.status, "open"));
+      .where(
+        or(
+          eq(botPositions.status, "open"),
+          eq(botPositions.status, "partial_close")
+        )
+      );
 
-    console.log(`[Sync] Found ${dbPositions.length} open positions in database`);
+    console.log(`[Sync] Found ${dbPositions.length} open/partial positions in database`);
 
     // Get all open positions from OKX
     let okxPositions;

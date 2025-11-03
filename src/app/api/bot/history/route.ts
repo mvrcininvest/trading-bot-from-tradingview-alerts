@@ -1,7 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { positionHistory } from '@/db/schema';
+import { positionHistory, botSettings } from '@/db/schema';
 import { eq, like, desc, and, gte, lte, gt, lt, sql } from 'drizzle-orm';
+import crypto from 'crypto';
+
+// ============================================
+// 🔐 OKX SIGNATURE HELPER
+// ============================================
+
+function createOkxSignature(
+  timestamp: string,
+  method: string,
+  requestPath: string,
+  body: string,
+  apiSecret: string
+): string {
+  const message = timestamp + method + requestPath + body;
+  return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
+}
+
+// ============================================
+// 🔄 SYMBOL CONVERSION
+// ============================================
+
+function convertSymbolFromOkx(okxSymbol: string): string {
+  // Convert "BTC-USDT-SWAP" -> "BTCUSDT"
+  const match = okxSymbol.match(/^([A-Z0-9]+)-([A-Z]+)-SWAP$/i);
+  if (match) {
+    return `${match[1]}${match[2]}`;
+  }
+  return okxSymbol;
+}
+
+// ============================================
+// 📜 GET CLOSED POSITIONS HISTORY FROM OKX
+// ============================================
+
+async function getOkxPositionsHistory(
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  limit: number = 100
+) {
+  const timestamp = new Date().toISOString();
+  const method = "GET";
+  const requestPath = "/api/v5/account/positions-history";
+  const queryString = `?instType=SWAP&limit=${limit}`;
+  const body = "";
+  
+  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  
+  const baseUrl = "https://www.okx.com";
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+  };
+  
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+  
+  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
+    method: "GET",
+    headers,
+  });
+
+  const data = await response.json();
+
+  if (data.code !== "0") {
+    console.error("OKX positions history error:", data);
+    return [];
+  }
+
+  return data.data || [];
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,6 +121,7 @@ export async function GET(request: NextRequest) {
     const maxPnl = searchParams.get('maxPnl');
     const profitOnly = searchParams.get('profitOnly') === 'true';
     const lossOnly = searchParams.get('lossOnly') === 'true';
+    const includeOkxHistory = searchParams.get('includeOkxHistory') === 'true';
 
     // Validate side parameter
     if (side && side !== 'Buy' && side !== 'Sell') {
@@ -134,6 +211,74 @@ export async function GET(request: NextRequest) {
           .limit(limit)
           .offset(offset);
 
+    // ============================================
+    // 🔥 NEW: FETCH CLOSED POSITIONS FROM OKX
+    // ============================================
+    
+    let okxHistory: any[] = [];
+    let okxHistoryEnabled = false;
+    
+    if (includeOkxHistory) {
+      const settings = await db.select().from(botSettings).limit(1);
+      
+      if (settings.length > 0) {
+        const botConfig = settings[0];
+        const { apiKey, apiSecret, passphrase } = botConfig;
+        
+        if (apiKey && apiSecret && passphrase) {
+          const demo = botConfig.environment === "demo";
+          
+          try {
+            console.log("[History] Fetching closed positions from OKX...");
+            const okxData = await getOkxPositionsHistory(apiKey, apiSecret, passphrase, demo, 100);
+            
+            // Transform OKX data to match our format
+            okxHistory = okxData.map((p: any) => {
+              const symbol = convertSymbolFromOkx(p.instId);
+              const side = parseFloat(p.pos) > 0 ? "BUY" : "SELL";
+              const pnl = parseFloat(p.pnl || "0");
+              const closedAt = new Date(parseInt(p.uTime)).toISOString();
+              const leverage = parseFloat(p.lever || "1");
+              
+              return {
+                id: `okx_${p.posId}`,
+                positionId: null,
+                symbol,
+                side,
+                tier: "unknown",
+                entryPrice: parseFloat(p.avgPx || "0"),
+                closePrice: parseFloat(p.avgPx || "0"),
+                quantity: Math.abs(parseFloat(p.pos || "0")),
+                leverage,
+                pnl,
+                pnlPercent: 0,
+                closeReason: "okx_history",
+                tp1Hit: false,
+                tp2Hit: false,
+                tp3Hit: false,
+                confirmationCount: 0,
+                openedAt: new Date(parseInt(p.cTime)).toISOString(),
+                closedAt,
+                durationMinutes: Math.floor((parseInt(p.uTime) - parseInt(p.cTime)) / 1000 / 60),
+                source: "okx" as const,
+              };
+            });
+            
+            okxHistoryEnabled = true;
+            console.log(`[History] Fetched ${okxHistory.length} positions from OKX`);
+          } catch (error) {
+            console.error("[History] Failed to fetch OKX history:", error);
+          }
+        }
+      }
+    }
+
+    // Combine DB history and OKX history
+    const combinedHistory = [
+      ...history.map(h => ({ ...h, source: "database" as const })),
+      ...okxHistory
+    ].sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
+
     // Get total count for filtered results
     const countResult = whereCondition
       ? await db.select({ count: sql<number>`count(*)` })
@@ -170,10 +315,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      history,
-      total,
+      history: includeOkxHistory ? combinedHistory : history,
+      total: includeOkxHistory ? combinedHistory.length : total,
       limit,
       offset,
+      okxHistoryEnabled,
+      okxHistoryCount: okxHistory.length,
       stats: {
         totalPnl: Math.round(stats.totalPnl * 100) / 100,
         avgPnl: Math.round(stats.avgPnl * 100) / 100,

@@ -836,16 +836,17 @@ export async function POST(request: Request) {
           slPrice = maxSlPrice;
         }
       } else {
-        // SELL: TP must be < entry, SL must be > entry
-        const maxTpPrice = entryPrice * 0.985; // -1.5% minimum
-        const minSlPrice = entryPrice * 1.015; // +1.5% maximum
+        // SELL/SHORT: TP must be < entry, SL must be > entry
+        // ⚠️ CRITICAL FIX: For SHORT, SL MUST be HIGHER than entry!
+        const maxTpPrice = entryPrice * 0.985; // -1.5% minimum for TP (below entry)
+        const minSlPrice = entryPrice * 1.015; // +1.5% minimum for SL (above entry)
         
         if (tp1Price > maxTpPrice) {
           console.warn(`⚠️ TP ${tp1Price} too close to entry ${entryPrice} for SELL, adjusting to ${maxTpPrice}...`);
           tp1Price = maxTpPrice;
         }
         if (slPrice < minSlPrice) {
-          console.warn(`⚠️ SL ${slPrice} too close to entry ${entryPrice} for SELL, adjusting to ${minSlPrice}...`);
+          console.warn(`⚠️ SL ${slPrice} TOO LOW for SELL! Must be ABOVE entry. Adjusting from ${slPrice} to ${minSlPrice}...`);
           slPrice = minSlPrice;
         }
       }
