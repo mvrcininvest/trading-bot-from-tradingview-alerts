@@ -1,7 +1,10 @@
 import { db } from '@/db';
-import { botSettings, botPositions, botLogs } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { botSettings, botPositions, botLogs, positionHistory, symbolLocks, diagnosticFailures, tpslRetryAttempts } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
+import { okxRateLimiter } from './rate-limiter';
+import { classifyOkxError } from './error-classifier';
+import { cleanupOrphanedOrders, getRealizedPnlFromOkx } from './okx-helpers';
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -212,6 +215,36 @@ async function cancelAlgoOrder(
 }
 
 // ============================================
+// 🔄 CANCEL ALGO ORDER WITH RETRY
+// ============================================
+
+async function cancelAlgoOrderWithRetry(
+  algoId: string,
+  symbol: string,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  maxRetries = 3
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await cancelAlgoOrder(algoId, symbol, apiKey, apiSecret, passphrase, demo);
+      if (result) {
+        console.log(`✅ Cancelled algo ${algoId} (attempt ${attempt})`);
+        return true;
+      }
+    } catch (error: any) {
+      console.error(`❌ Cancel attempt ${attempt} failed:`, error.message);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+  }
+  return false;
+}
+
+// ============================================
 // 🎯 SET NEW ALGO ORDER (SL/TP)
 // ============================================
 
@@ -300,6 +333,188 @@ async function setAlgoOrder(
 }
 
 // ============================================
+// 🎯 SET ALGO ORDER WITH RETRY AND ERROR TRACKING
+// ============================================
+
+async function setAlgoOrderWithRetry(
+  symbol: string,
+  side: string,
+  quantity: number,
+  triggerPrice: number,
+  orderType: "sl" | "tp",
+  positionId: number,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  maxRetries = 3
+): Promise<string | null> {
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔧 [RETRY ${attempt}/${maxRetries}] Setting ${orderType.toUpperCase()} @ ${triggerPrice.toFixed(4)}...`);
+
+      const algoId = await setAlgoOrder(
+        symbol,
+        side,
+        quantity,
+        triggerPrice,
+        orderType,
+        apiKey,
+        apiSecret,
+        passphrase,
+        demo
+      );
+
+      if (algoId) {
+        // Success - log to tpslRetryAttempts
+        await db.insert(tpslRetryAttempts).values({
+          positionId,
+          attemptNumber: attempt,
+          orderType: orderType === 'sl' ? 'sl' : 'tp1',
+          triggerPrice,
+          success: true,
+          errorCode: null,
+          errorMessage: null,
+          errorType: null,
+          createdAt: new Date().toISOString(),
+        });
+
+        console.log(`✅ ${orderType.toUpperCase()} set successfully on attempt ${attempt}`);
+        return algoId;
+      } else {
+        throw new Error('API returned null algoId');
+      }
+    } catch (error: any) {
+      lastError = error;
+      
+      // Classify error
+      const classified = classifyOkxError(
+        error.code || 'unknown',
+        error.message || String(error)
+      );
+
+      // Log attempt
+      await db.insert(tpslRetryAttempts).values({
+        positionId,
+        attemptNumber: attempt,
+        orderType: orderType === 'sl' ? 'sl' : 'tp1',
+        triggerPrice,
+        success: false,
+        errorCode: error.code || 'unknown',
+        errorMessage: error.message || String(error),
+        errorType: classified.type,
+        createdAt: new Date().toISOString(),
+      });
+
+      console.error(`❌ Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+      console.error(`   Error type: ${classified.type}, Permanent: ${classified.isPermanent}`);
+
+      // If permanent error (trade_fault), don't retry
+      if (classified.isPermanent) {
+        console.error(`🚫 Permanent error detected - stopping retries`);
+        return null;
+      }
+
+      // Wait before retry (exponential backoff)
+      if (attempt < maxRetries) {
+        const waitTime = (classified.retryAfterMs || 2000) * attempt;
+        console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
+  console.error(`❌ All ${maxRetries} attempts failed for ${orderType.toUpperCase()}`);
+  return null;
+}
+
+// ============================================
+// 📊 SAVE POSITION TO HISTORY WITH REALIZED PNL
+// ============================================
+
+async function savePositionToHistory(
+  dbPos: any,
+  currentPrice: number,
+  closeReason: string,
+  closeOrderId: string | null,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean
+): Promise<void> {
+  try {
+    console.log(`💾 Saving position ${dbPos.id} to history...`);
+
+    const openedAt = new Date(dbPos.openedAt);
+    const closedAt = new Date();
+    const durationMinutes = Math.floor((closedAt.getTime() - openedAt.getTime()) / 60000);
+
+    // Try to get realized PnL from OKX
+    let realizedPnl: number | null = null;
+    let finalClosePrice = currentPrice;
+
+    if (closeOrderId) {
+      const pnlData = await getRealizedPnlFromOkx(
+        closeOrderId,
+        dbPos.symbol.includes('-') ? dbPos.symbol : `${dbPos.symbol.replace('USDT', '')}-USDT-SWAP`,
+        apiKey,
+        apiSecret,
+        passphrase,
+        demo
+      );
+
+      if (pnlData) {
+        realizedPnl = pnlData.realizedPnl;
+        finalClosePrice = pnlData.fillPrice;
+        console.log(`✅ Got realized PnL from OKX: ${realizedPnl.toFixed(2)} USD`);
+      }
+    }
+
+    // Fallback: Calculate estimated PnL
+    if (realizedPnl === null) {
+      const isLong = dbPos.side === 'BUY';
+      const priceDiff = isLong 
+        ? (finalClosePrice - dbPos.entryPrice) 
+        : (dbPos.entryPrice - finalClosePrice);
+      
+      realizedPnl = priceDiff * dbPos.quantity;
+      console.log(`⚠️ Using estimated PnL: ${realizedPnl.toFixed(2)} USD (no OKX data)`);
+    }
+
+    const pnlPercent = (realizedPnl / dbPos.initialMargin) * 100;
+
+    // Insert to positionHistory
+    await db.insert(positionHistory).values({
+      positionId: dbPos.id,
+      symbol: dbPos.symbol,
+      side: dbPos.side,
+      tier: dbPos.tier,
+      entryPrice: dbPos.entryPrice,
+      closePrice: finalClosePrice,
+      quantity: dbPos.quantity,
+      leverage: dbPos.leverage,
+      pnl: realizedPnl,
+      pnlPercent,
+      closeReason,
+      tp1Hit: dbPos.tp1Hit || false,
+      tp2Hit: dbPos.tp2Hit || false,
+      tp3Hit: dbPos.tp3Hit || false,
+      confirmationCount: dbPos.confirmationCount || 1,
+      openedAt: dbPos.openedAt,
+      closedAt: closedAt.toISOString(),
+      durationMinutes,
+    });
+
+    console.log(`✅ Position saved to history: PnL ${realizedPnl.toFixed(2)} USD (${pnlPercent.toFixed(2)}%), Duration: ${durationMinutes}min`);
+  } catch (error: any) {
+    console.error(`❌ Failed to save position to history:`, error.message);
+    // Don't throw - position is already closed, just log error
+  }
+}
+
+// ============================================
 // 🏦 GET OPEN POSITIONS FROM OKX
 // ============================================
 
@@ -344,13 +559,24 @@ async function getOkxPositions(
 }
 
 // ============================================
-// 🤖 MAIN MONITOR FUNCTION
+// 🤖 MAIN MONITOR FUNCTION (UPDATED)
 // ============================================
 
 export async function monitorAndManagePositions(silent = true) {
   try {
-    // ALWAYS log when starting monitor (even in silent mode)
     console.log("\n🔍 [MONITOR] Starting position monitoring...");
+
+    // Check for symbol locks FIRST
+    const activeLocks = await db.select()
+      .from(symbolLocks)
+      .where(isNull(symbolLocks.unlockedAt));
+
+    if (activeLocks.length > 0) {
+      console.log(`🚫 [MONITOR] ${activeLocks.length} symbol(s) locked:`);
+      activeLocks.forEach(lock => {
+        console.log(`   - ${lock.symbol}: ${lock.lockReason} (${lock.failureCount} failures)`);
+      });
+    }
 
     // Get settings
     const settings = await db.select().from(botSettings).limit(1);
@@ -395,6 +621,13 @@ export async function monitorAndManagePositions(silent = true) {
       
       console.log(`\n🔍 [MONITOR] Checking ${symbol} (${dbPos.side})...`);
       
+      // Check if symbol is locked
+      const symbolLock = activeLocks.find(lock => lock.symbol === symbol);
+      if (symbolLock) {
+        console.log(`   🚫 Symbol ${symbol} is LOCKED (${symbolLock.lockReason}) - skipping`);
+        continue;
+      }
+
       // Find matching OKX position
       const okxPos = okxPositions.find((p: any) => p.instId === symbol);
       
@@ -606,9 +839,10 @@ export async function monitorAndManagePositions(silent = true) {
           console.log(`   🎯 TP3 HIT @ ${dbPos.tp3Price}! Closing remaining position...`);
           
           const currentQty = dbPos.quantity;
+          let closeOrderId: string | null = null;
           
           try {
-            const orderId = await closePositionPartial(
+            closeOrderId = await closePositionPartial(
               symbol, 
               side, 
               currentQty, 
@@ -618,7 +852,7 @@ export async function monitorAndManagePositions(silent = true) {
               demo
             );
             
-            console.log(`   ✅ Closed remaining ${currentQty} @ market - Order: ${orderId}`);
+            console.log(`   ✅ Closed remaining ${currentQty} @ market - Order: ${closeOrderId}`);
             
             await db.update(botPositions)
               .set({
@@ -636,6 +870,48 @@ export async function monitorAndManagePositions(silent = true) {
               action: "tp3_hit",
               reason: `Closed remaining @ ${currentPrice}`
             });
+
+            // ✅ NEW: Save to history
+            await savePositionToHistory(
+              dbPos,
+              currentPrice,
+              'tp3_hit',
+              closeOrderId,
+              apiKey,
+              apiSecret,
+              passphrase,
+              demo
+            );
+
+            // ✅ NEW: Cleanup orphaned orders
+            console.log(`🧹 Cleaning up orphaned orders for ${symbol}...`);
+            const cleanupResult = await cleanupOrphanedOrders(
+              symbol,
+              apiKey,
+              apiSecret,
+              passphrase,
+              demo,
+              3
+            );
+
+            if (!cleanupResult.success) {
+              console.error(`⚠️ Cleanup failed for ${symbol}: ${cleanupResult.errors.join(', ')}`);
+              
+              // Lock symbol if cleanup failed
+              await db.insert(symbolLocks).values({
+                symbol,
+                lockReason: 'order_cleanup_failed',
+                lockedAt: new Date().toISOString(),
+                failureCount: cleanupResult.failedCount,
+                lastError: cleanupResult.errors[0] || 'Unknown cleanup error',
+                isPermanent: false,
+                createdAt: new Date().toISOString(),
+              });
+
+              console.log(`🚫 Symbol ${symbol} LOCKED due to cleanup failure`);
+            } else {
+              console.log(`✅ Cleanup successful: ${cleanupResult.cancelledCount} orders cancelled`);
+            }
             
           } catch (error: any) {
             const errMsg = `Failed to close TP3 for ${symbol}: ${error.message}`;
@@ -674,10 +950,7 @@ export async function monitorAndManagePositions(silent = true) {
           newTP = entryPrice * (1 - nextTpRR / 100);
         }
         
-        // ============================================
-        // ⚠️ CRITICAL: Check if position already hit SL/TP
-        // ============================================
-        
+        // Check if already hit
         const slAlreadyHit = isLong 
           ? currentPrice <= newSL 
           : currentPrice >= newSL;
@@ -687,20 +960,10 @@ export async function monitorAndManagePositions(silent = true) {
           : currentPrice <= newTP;
         
         if (slAlreadyHit) {
-          console.error(`   ⚠️ SL ALREADY HIT! Current: ${currentPrice}, SL: ${newSL.toFixed(4)} - CLOSING POSITION`);
+          console.error(`   ⚠️ SL ALREADY HIT! Closing position immediately...`);
           
           try {
-            const orderId = await closePositionPartial(
-              symbol, 
-              side, 
-              quantity, 
-              apiKey, 
-              apiSecret, 
-              passphrase, 
-              demo
-            );
-            
-            console.log(`   ✅ Position closed @ market due to SL - Order: ${orderId}`);
+            const closeOrderId = await closePositionPartial(symbol, side, quantity, apiKey, apiSecret, passphrase, demo);
             
             await db.update(botPositions)
               .set({
@@ -709,19 +972,17 @@ export async function monitorAndManagePositions(silent = true) {
                 closedAt: new Date().toISOString(),
               })
               .where(eq(botPositions.id, dbPos.id));
+
+            // ✅ NEW: Save to history
+            await savePositionToHistory(dbPos, currentPrice, 'sl_hit', closeOrderId, apiKey, apiSecret, passphrase, demo);
+
+            // ✅ NEW: Cleanup orphaned orders
+            await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
             
-            details.push({
-              symbol,
-              side,
-              action: "sl_hit_closed",
-              reason: `Position closed - SL already hit @ ${currentPrice}`
-            });
-            
-            continue; // Skip to next position
+            continue;
           } catch (error: any) {
-            const errMsg = `Failed to close position at SL for ${symbol}: ${error.message}`;
-            console.error(`   ❌ ${errMsg}`);
-            errors.push(errMsg);
+            console.error(`   ❌ ${error.message}`);
+            errors.push(error.message);
             continue;
           }
         }
@@ -772,75 +1033,94 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // Set SL if missing (and not already hit)
+        // ✅ NEW: Use setAlgoOrderWithRetry instead of setAlgoOrder
         if (!hasSL && !slAlreadyHit) {
-          try {
-            const slAlgoId = await setAlgoOrder(
-              symbol,
-              side,
-              dbPos.quantity,
-              newSL,
-              "sl",
-              apiKey,
-              apiSecret,
-              passphrase,
-              demo
-            );
+          const slAlgoId = await setAlgoOrderWithRetry(
+            symbol,
+            side,
+            dbPos.quantity,
+            newSL,
+            "sl",
+            dbPos.id,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo,
+            3
+          );
+          
+          if (slAlgoId) {
+            console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)}`);
+            slTpFixed++;
+          } else {
+            // All retries failed - emergency close
+            console.error(`   🚨 EMERGENCY: Failed to set SL after 3 attempts - closing position`);
             
-            if (slAlgoId) {
-              console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)} - Algo: ${slAlgoId}`);
-              slTpFixed++;
-              details.push({
-                symbol,
-                side,
-                action: "sl_fixed",
-                reason: `SL set @ ${newSL.toFixed(4)}`
+            try {
+              const closeOrderId = await closePositionPartial(symbol, side, dbPos.quantity, apiKey, apiSecret, passphrase, demo);
+              
+              await db.update(botPositions)
+                .set({
+                  status: "closed",
+                  closeReason: "emergency_tpsl_failure",
+                  closedAt: new Date().toISOString(),
+                })
+                .where(eq(botPositions.id, dbPos.id));
+
+              // Log to diagnostic failures
+              await db.insert(diagnosticFailures).values({
+                positionId: dbPos.id,
+                failureType: 'emergency_close',
+                reason: 'tpsl_set_failed_after_3_attempts',
+                attemptCount: 3,
+                errorDetails: JSON.stringify({ orderType: 'sl', triggerPrice: newSL }),
+                createdAt: new Date().toISOString(),
               });
-            } else {
-              const errMsg = `Failed to set SL for ${symbol} - API returned null`;
-              console.error(`   ❌ ${errMsg}`);
-              errors.push(errMsg);
+
+              // Lock symbol
+              await db.insert(symbolLocks).values({
+                symbol,
+                lockReason: 'tpsl_failures',
+                lockedAt: new Date().toISOString(),
+                failureCount: 3,
+                lastError: 'Failed to set SL after 3 attempts',
+                isPermanent: false,
+                createdAt: new Date().toISOString(),
+              });
+
+              console.log(`🚫 Symbol ${symbol} LOCKED due to TP/SL failures`);
+              
+              // Do NOT save to positionHistory - this is diagnostic only
+              
+            } catch (closeError: any) {
+              console.error(`   ❌ Emergency close failed:`, closeError.message);
+              errors.push(`Emergency close failed for ${symbol}: ${closeError.message}`);
             }
-          } catch (error: any) {
-            const errMsg = `Failed to set SL for ${symbol}: ${error.message}`;
-            console.error(`   ❌ ${errMsg}`);
-            errors.push(errMsg);
           }
         }
         
-        // Set TP if missing (and not already hit)
+        // Similar for TP
         if (!hasTP && !tpAlreadyHit) {
-          try {
-            const tpAlgoId = await setAlgoOrder(
-              symbol,
-              side,
-              dbPos.quantity,
-              newTP,
-              "tp",
-              apiKey,
-              apiSecret,
-              passphrase,
-              demo
-            );
-            
-            if (tpAlgoId) {
-              console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)} - Algo: ${tpAlgoId}`);
-              slTpFixed++;
-              details.push({
-                symbol,
-                side,
-                action: "tp_fixed",
-                reason: `TP set @ ${newTP.toFixed(4)}`
-              });
-            } else {
-              const errMsg = `Failed to set TP for ${symbol} - API returned null`;
-              console.error(`   ❌ ${errMsg}`);
-              errors.push(errMsg);
-            }
-          } catch (error: any) {
-            const errMsg = `Failed to set TP for ${symbol}: ${error.message}`;
-            console.error(`   ❌ ${errMsg}`);
-            errors.push(errMsg);
+          const tpAlgoId = await setAlgoOrderWithRetry(
+            symbol,
+            side,
+            dbPos.quantity,
+            newTP,
+            "tp",
+            dbPos.id,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo,
+            3
+          );
+          
+          if (tpAlgoId) {
+            console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)}`);
+            slTpFixed++;
+          } else {
+            console.error(`   ⚠️ Failed to set TP after 3 attempts`);
+            // Don't emergency close for TP failure, just log
           }
         }
       } else {

@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, real } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, integer, text, real, index } from 'drizzle-orm/sqlite-core';
 
 export const alerts = sqliteTable('alerts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -32,6 +32,7 @@ export const alerts = sqliteTable('alerts', {
   rawJson: text('raw_json').notNull(),
   executionStatus: text('execution_status').notNull().default('pending'),
   rejectionReason: text('rejection_reason'),
+  errorType: text('error_type'),
   createdAt: text('created_at').notNull(),
 });
 
@@ -59,23 +60,21 @@ export const botSettings = sqliteTable('bot_settings', {
   defaultTp1RR: real('default_tp1_rr').notNull().default(1.0),
   defaultTp2RR: real('default_tp2_rr').notNull().default(2.0),
   defaultTp3RR: real('default_tp3_rr').notNull().default(3.0),
-  
-  // NEW: Enhanced TP Strategy
-  tpCount: integer('tp_count').notNull().default(3), // 1, 2, or 3 TP levels
+  tpCount: integer('tp_count').notNull().default(3),
   tp1RR: real('tp1_rr').notNull().default(1.0),
-  tp1Percent: real('tp1_percent').notNull().default(50.0), // % of position to close at TP1
+  tp1Percent: real('tp1_percent').notNull().default(50.0),
   tp2RR: real('tp2_rr').notNull().default(2.0),
-  tp2Percent: real('tp2_percent').notNull().default(30.0), // % of position to close at TP2
+  tp2Percent: real('tp2_percent').notNull().default(30.0),
   tp3RR: real('tp3_rr').notNull().default(3.0),
-  tp3Percent: real('tp3_percent').notNull().default(20.0), // % of position to close at TP3
-  slManagementAfterTp1: text('sl_management_after_tp1').notNull().default('breakeven'), // 'breakeven', 'trailing', 'no_change'
-  slTrailingDistance: real('sl_trailing_distance').notNull().default(0.5), // % distance for trailing SL
-  
+  tp3Percent: real('tp3_percent').notNull().default(20.0),
+  slManagementAfterTp1: text('sl_management_after_tp1').notNull().default('breakeven'),
+  slTrailingDistance: real('sl_trailing_distance').notNull().default(0.5),
   apiKey: text('api_key'),
   apiSecret: text('api_secret'),
   passphrase: text('passphrase'),
   exchange: text('exchange').notNull().default('bybit'),
   environment: text('environment').notNull().default('demo'),
+  migrationDate: text('migration_date'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
@@ -161,3 +160,44 @@ export const botLogs = sqliteTable('bot_logs', {
   positionId: integer('position_id').references(() => botPositions.id),
   createdAt: integer('created_at').notNull(),
 });
+
+export const symbolLocks = sqliteTable('symbol_locks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  symbol: text('symbol').notNull(),
+  lockReason: text('lock_reason').notNull(),
+  lockedAt: text('locked_at').notNull(),
+  failureCount: integer('failure_count').notNull(),
+  lastError: text('last_error'),
+  unlockedAt: text('unlocked_at'),
+  isPermanent: integer('is_permanent', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (table) => ({
+  symbolIdx: index('idx_symbol_locks_symbol').on(table.symbol),
+}));
+
+export const diagnosticFailures = sqliteTable('diagnostic_failures', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  positionId: integer('position_id').references(() => botPositions.id),
+  failureType: text('failure_type').notNull(),
+  reason: text('reason').notNull(),
+  attemptCount: integer('attempt_count').notNull(),
+  errorDetails: text('error_details'),
+  createdAt: text('created_at').notNull(),
+}, (table) => ({
+  positionIdx: index('idx_diagnostic_failures_position').on(table.positionId),
+}));
+
+export const tpslRetryAttempts = sqliteTable('tpsl_retry_attempts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  positionId: integer('position_id').notNull().references(() => botPositions.id),
+  attemptNumber: integer('attempt_number').notNull(),
+  orderType: text('order_type').notNull(),
+  triggerPrice: real('trigger_price').notNull(),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorCode: text('error_code'),
+  errorMessage: text('error_message'),
+  errorType: text('error_type'),
+  createdAt: text('created_at').notNull(),
+}, (table) => ({
+  positionIdx: index('idx_tpsl_retry_position').on(table.positionId),
+}));
