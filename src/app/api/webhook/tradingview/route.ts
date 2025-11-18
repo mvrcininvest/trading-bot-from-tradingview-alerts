@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { alerts, botSettings, botPositions, botActions, botLogs } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { alerts, botSettings, botPositions, botActions, botLogs, symbolLocks } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { monitorAndManagePositions } from '@/lib/position-monitor';
+import { classifyError } from '@/lib/error-classifier';
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -86,6 +87,36 @@ async function logToBot(
     });
   } catch (error) {
     console.error('Failed to log to botLogs:', error);
+  }
+}
+
+// ============================================
+// 🔒 CHECK SYMBOL LOCKS
+// ============================================
+
+async function checkSymbolLock(symbol: string): Promise<{ locked: boolean; reason?: string }> {
+  try {
+    const locks = await db.select()
+      .from(symbolLocks)
+      .where(and(
+        eq(symbolLocks.symbol, symbol),
+        isNull(symbolLocks.unlockedAt)
+      ))
+      .limit(1);
+    
+    if (locks.length > 0) {
+      const lock = locks[0];
+      console.log(`🔒 Symbol ${symbol} is LOCKED: ${lock.lockReason}`);
+      return { 
+        locked: true, 
+        reason: lock.lockReason 
+      };
+    }
+    
+    return { locked: false };
+  } catch (error) {
+    console.error('Failed to check symbol locks:', error);
+    return { locked: false };
   }
 }
 
@@ -799,6 +830,7 @@ export async function POST(request: Request) {
       rawJson: JSON.stringify(data),
       executionStatus: 'pending',
       rejectionReason: null,
+      errorType: null,
       createdAt: new Date().toISOString(),
     }).returning();
 
@@ -806,12 +838,16 @@ export async function POST(request: Request) {
     await logToBot('info', 'alert_received', `Alert received: ${data.symbol} ${data.side} ${data.tier}`, { symbol: data.symbol, side: data.side, tier: data.tier }, alert.id);
 
     // ============================================
-    // 🤖 BOT TRADING LOGIC (UPDATED: Use new TP settings)
+    // 🤖 BOT TRADING LOGIC (UPDATED: Error classification + Symbol locks)
     // ============================================
 
     const settings = await db.select().from(botSettings).limit(1);
     if (settings.length === 0) {
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_bot_settings' }).where(eq(alerts.id, alert.id));
+      await db.update(alerts).set({ 
+        executionStatus: 'error_rejected', 
+        rejectionReason: 'no_bot_settings',
+        errorType: 'configuration_missing'
+      }).where(eq(alerts.id, alert.id));
       await logToBot('error', 'rejected', 'Bot settings not configured', { reason: 'no_bot_settings' }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: "Alert saved, bot settings missing" });
     }
@@ -820,7 +856,11 @@ export async function POST(request: Request) {
 
     // Check API credentials
     if (!botConfig.apiKey || !botConfig.apiSecret || !botConfig.passphrase) {
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_api_credentials' }).where(eq(alerts.id, alert.id));
+      await db.update(alerts).set({ 
+        executionStatus: 'error_rejected', 
+        rejectionReason: 'no_api_credentials',
+        errorType: 'configuration_missing'
+      }).where(eq(alerts.id, alert.id));
       await logToBot('error', 'rejected', 'OKX API credentials incomplete', { reason: 'no_api_credentials' }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: "Alert saved, OKX credentials incomplete" });
     }
@@ -835,22 +875,50 @@ export async function POST(request: Request) {
 
     // CRITICAL: Only support OKX
     if (exchange !== "okx") {
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'unsupported_exchange' }).where(eq(alerts.id, alert.id));
+      await db.update(alerts).set({ 
+        executionStatus: 'error_rejected', 
+        rejectionReason: 'unsupported_exchange',
+        errorType: 'configuration_error'
+      }).where(eq(alerts.id, alert.id));
       await logToBot('error', 'rejected', `Unsupported exchange: ${exchange}. This webhook only supports OKX.`, { exchange }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: `Exchange ${exchange} not supported. Use OKX only.` });
     }
 
     // Check if bot enabled
     if (!botConfig.botEnabled) {
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'bot_disabled' }).where(eq(alerts.id, alert.id));
+      await db.update(alerts).set({ 
+        executionStatus: 'rejected', 
+        rejectionReason: 'bot_disabled' 
+      }).where(eq(alerts.id, alert.id));
       await logToBot('warning', 'rejected', 'Bot is disabled', { reason: 'bot_disabled' }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: "Bot is disabled" });
+    }
+
+    // ✅ NEW: Check symbol locks
+    const lockStatus = await checkSymbolLock(data.symbol);
+    if (lockStatus.locked) {
+      await db.update(alerts).set({ 
+        executionStatus: 'rejected', 
+        rejectionReason: 'symbol_locked' 
+      }).where(eq(alerts.id, alert.id));
+      await logToBot('warning', 'rejected', `Symbol ${data.symbol} is locked: ${lockStatus.reason}`, { 
+        symbol: data.symbol,
+        lockReason: lockStatus.reason
+      }, alert.id);
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id, 
+        message: `Symbol ${data.symbol} is locked due to: ${lockStatus.reason}` 
+      });
     }
 
     // Tier filtering
     const disabledTiers = JSON.parse(botConfig.disabledTiers || '[]');
     if (disabledTiers.includes(data.tier)) {
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'tier_disabled' }).where(eq(alerts.id, alert.id));
+      await db.update(alerts).set({ 
+        executionStatus: 'rejected', 
+        rejectionReason: 'tier_disabled' 
+      }).where(eq(alerts.id, alert.id));
       await logToBot('warning', 'rejected', `Tier ${data.tier} disabled`, { tier: data.tier }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: `Tier ${data.tier} disabled` });
     }
@@ -865,7 +933,10 @@ export async function POST(request: Request) {
       const existingPosition = existingPositions[0];
 
       if (botConfig.sameSymbolBehavior === "ignore") {
-        await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'same_symbol_exists' }).where(eq(alerts.id, alert.id));
+        await db.update(alerts).set({ 
+          executionStatus: 'rejected', 
+          rejectionReason: 'same_symbol_exists' 
+        }).where(eq(alerts.id, alert.id));
         await logToBot('info', 'rejected', `Position exists on ${data.symbol}`, { reason: 'same_symbol_exists' }, alert.id, existingPosition.id);
         return NextResponse.json({ success: true, alert_id: alert.id, message: "Same symbol position exists" });
       }
@@ -912,12 +983,27 @@ export async function POST(request: Request) {
 
             console.log("✅ Opposite position closed, proceeding with new trade");
           } catch (error: any) {
-            await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'failed_close_opposite' }).where(eq(alerts.id, alert.id));
-            await logToBot('error', 'close_failed', `Failed to close opposite: ${error.message}`, { error: error.message }, alert.id, existingPosition.id);
+            // ✅ NEW: Classify error
+            const errorType = classifyError('', error.message);
+            
+            await db.update(alerts).set({ 
+              executionStatus: 'error_rejected', 
+              rejectionReason: 'failed_close_opposite',
+              errorType
+            }).where(eq(alerts.id, alert.id));
+            
+            await logToBot('error', 'close_failed', `Failed to close opposite: ${error.message}`, { 
+              error: error.message,
+              errorType
+            }, alert.id, existingPosition.id);
+            
             return NextResponse.json({ success: true, alert_id: alert.id, error: "Failed to close opposite position" });
           }
         } else {
-          await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'opposite_ignored' }).where(eq(alerts.id, alert.id));
+          await db.update(alerts).set({ 
+            executionStatus: 'rejected', 
+            rejectionReason: 'opposite_ignored' 
+          }).where(eq(alerts.id, alert.id));
           await logToBot('info', 'rejected', 'Opposite direction ignored', { reason: 'opposite_ignored' }, alert.id, existingPosition.id);
           return NextResponse.json({ success: true, alert_id: alert.id, message: "Opposite direction ignored" });
         }
@@ -1024,7 +1110,7 @@ export async function POST(request: Request) {
     console.log(`💰 Position: $${positionSizeUsd}, Leverage: ${leverage}x`);
 
     // ============================================
-    // 🚀 OPEN POSITION ON OKX
+    // 🚀 OPEN POSITION ON OKX (UPDATED: Transaction safety)
     // ============================================
 
     try {
@@ -1043,155 +1129,258 @@ export async function POST(request: Request) {
         tp3RR: botConfig.tp3RR
       }, alert.id);
 
-      const { orderId, quantity: finalQuantity, okxSymbol } = await openOkxPosition(
-        symbol,
-        side,
-        positionSizeUsd,
-        leverage,
-        slPrice,
-        tp1Price, // Use TP1 as primary TP for initial order
-        entryPrice,
-        apiKey,
-        apiSecret,
-        passphrase,
-        environment === "demo",
-        alert.id,
-        parseFloat(data.sl || "0"),
-        parseFloat(data.tp1 || "0")
-      );
+      // ✅ NEW: Transaction safety - try to open position first
+      let orderId: string;
+      let finalQuantity: number;
+      let okxSymbol: string;
+      
+      try {
+        const result = await openOkxPosition(
+          symbol,
+          side,
+          positionSizeUsd,
+          leverage,
+          slPrice,
+          tp1Price,
+          entryPrice,
+          apiKey,
+          apiSecret,
+          passphrase,
+          environment === "demo",
+          alert.id,
+          parseFloat(data.sl || "0"),
+          parseFloat(data.tp1 || "0")
+        );
+        
+        orderId = result.orderId;
+        finalQuantity = result.quantity;
+        okxSymbol = result.okxSymbol;
+      } catch (openError: any) {
+        // ✅ NEW: Classify error and handle appropriately
+        const errorType = classifyError(openError.code || '', openError.message);
+        
+        console.error(`❌ Position opening failed (${errorType}):`, openError.message);
+        
+        await db.update(alerts).set({ 
+          executionStatus: 'error_rejected', 
+          rejectionReason: 'exchange_error',
+          errorType
+        }).where(eq(alerts.id, alert.id));
 
-      // ✅ Save position with ALL TP levels and percentages
-      const [botPosition] = await db.insert(botPositions).values({
-        symbol: data.symbol,
-        side: data.side,
-        entryPrice,
-        quantity: finalQuantity,
-        leverage,
-        stopLoss: slPrice || 0,
-        tp1Price,
-        tp2Price,
-        tp3Price,
-        mainTpPrice: tp1Price || 0,
-        tier: data.tier,
-        confidenceScore: data.strength || 0.5,
-        confirmationCount: 1,
-        tp1Hit: false,
-        tp2Hit: false,
-        tp3Hit: false,
-        currentSl: slPrice || 0,
-        positionValue: positionSizeUsd,
-        initialMargin: positionSizeUsd / leverage,
-        unrealisedPnl: 0,
-        status: "open",
-        alertId: alert.id,
-        bybitOrderId: orderId,
-        openedAt: new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
-      }).returning();
+        await db.insert(botActions).values({
+          actionType: "position_failed",
+          symbol: data.symbol,
+          side: data.side,
+          tier: data.tier,
+          alertId: alert.id,
+          reason: "exchange_error",
+          details: JSON.stringify({ 
+            error: openError.message, 
+            exchange: "okx",
+            errorType
+          }),
+          success: false,
+          errorMessage: openError.message,
+          createdAt: new Date().toISOString(),
+        });
 
-      await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
+        await logToBot('error', 'position_failed', `❌ Position opening failed (${errorType}): ${openError.message}`, { 
+          error: openError.message,
+          errorType,
+          symbol: data.symbol
+        }, alert.id);
 
-      await db.insert(botActions).values({
-        actionType: "position_opened",
-        symbol: data.symbol,
-        side: data.side,
-        tier: data.tier,
-        alertId: alert.id,
-        positionId: botPosition.id,
-        reason: "new_signal",
-        details: JSON.stringify({ 
-          orderId, 
-          exchange: "okx", 
-          environment, 
-          tpLevels: botConfig.tpCount,
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id, 
+          error: openError.message, 
+          errorType,
+          message: "Alert saved but position opening failed" 
+        });
+      }
+
+      // ✅ Position opened successfully, now save to DB
+      try {
+        const [botPosition] = await db.insert(botPositions).values({
+          symbol: data.symbol,
+          side: data.side,
+          entryPrice,
+          quantity: finalQuantity,
+          leverage,
+          stopLoss: slPrice || 0,
           tp1Price,
           tp2Price,
           tp3Price,
-          tp1Percent: botConfig.tp1Percent,
-          tp2Percent: botConfig.tp2Percent,
-          tp3Percent: botConfig.tp3Percent
-        }),
-        success: true,
-        createdAt: new Date().toISOString(),
-      });
+          mainTpPrice: tp1Price || 0,
+          tier: data.tier,
+          confidenceScore: data.strength || 0.5,
+          confirmationCount: 1,
+          tp1Hit: false,
+          tp2Hit: false,
+          tp3Hit: false,
+          currentSl: slPrice || 0,
+          positionValue: positionSizeUsd,
+          initialMargin: positionSizeUsd / leverage,
+          unrealisedPnl: 0,
+          status: "open",
+          alertId: alert.id,
+          bybitOrderId: orderId,
+          openedAt: new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+        }).returning();
 
-      await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x with ${botConfig.tpCount} TP levels`, {
-        positionId: botPosition.id,
-        orderId,
-        symbol,
-        side,
-        leverage,
-        quantity: finalQuantity,
-        entryPrice,
-        sl: slPrice,
-        tp1: tp1Price,
-        tp2: tp2Price,
-        tp3: tp3Price,
-        tpCount: botConfig.tpCount,
-        environment
-      }, alert.id, botPosition.id);
+        await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
 
-      // ✅ CRITICAL: RUN POSITION MONITOR IMMEDIATELY AFTER OPENING POSITION
-      console.log("\n🔍 Running position monitor immediately after position opening...");
-      try {
-        const monitorResult = await monitorAndManagePositions(false);
-        if (monitorResult.success) {
-          console.log(`✅ Monitor completed: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`);
-          await logToBot('success', 'monitor_completed', `Position monitor after open: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`, {
-            tpHits: monitorResult.tpHits,
-            slAdjustments: monitorResult.slAdjustments,
-            slTpFixed: monitorResult.slTpFixed,
-          }, alert.id, botPosition.id);
-        } else {
-          console.log(`⚠️ Monitor skipped: ${monitorResult.reason || monitorResult.error}`);
+        await db.insert(botActions).values({
+          actionType: "position_opened",
+          symbol: data.symbol,
+          side: data.side,
+          tier: data.tier,
+          alertId: alert.id,
+          positionId: botPosition.id,
+          reason: "new_signal",
+          details: JSON.stringify({ 
+            orderId, 
+            exchange: "okx", 
+            environment, 
+            tpLevels: botConfig.tpCount,
+            tp1Price,
+            tp2Price,
+            tp3Price,
+            tp1Percent: botConfig.tp1Percent,
+            tp2Percent: botConfig.tp2Percent,
+            tp3Percent: botConfig.tp3Percent
+          }),
+          success: true,
+          createdAt: new Date().toISOString(),
+        });
+
+        await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x with ${botConfig.tpCount} TP levels`, {
+          positionId: botPosition.id,
+          orderId,
+          symbol,
+          side,
+          leverage,
+          quantity: finalQuantity,
+          entryPrice,
+          sl: slPrice,
+          tp1: tp1Price,
+          tp2: tp2Price,
+          tp3: tp3Price,
+          tpCount: botConfig.tpCount,
+          environment
+        }, alert.id, botPosition.id);
+
+        // ✅ CRITICAL: RUN POSITION MONITOR IMMEDIATELY AFTER OPENING POSITION
+        console.log("\n🔍 Running position monitor immediately after position opening...");
+        try {
+          const monitorResult = await monitorAndManagePositions(false);
+          if (monitorResult.success) {
+            console.log(`✅ Monitor completed: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`);
+            await logToBot('success', 'monitor_completed', `Position monitor after open: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`, {
+              tpHits: monitorResult.tpHits,
+              slAdjustments: monitorResult.slAdjustments,
+              slTpFixed: monitorResult.slTpFixed,
+            }, alert.id, botPosition.id);
+          } else {
+            console.log(`⚠️ Monitor skipped: ${monitorResult.reason || monitorResult.error}`);
+          }
+        } catch (error) {
+          console.error("❌ Monitor failed:", error);
         }
-      } catch (error) {
-        console.error("❌ Monitor failed:", error);
-        // Don't fail the whole request if monitor fails
+
+        return NextResponse.json({
+          success: true,
+          alert_id: alert.id,
+          position_id: botPosition.id,
+          message: `Position opened with ${botConfig.tpCount} TP levels`,
+          exchange: "okx",
+          environment,
+          position: { 
+            symbol: okxSymbol, 
+            side, 
+            entry: entryPrice, 
+            quantity: finalQuantity, 
+            sl: slPrice, 
+            tp1: tp1Price, 
+            tp2: tp2Price, 
+            tp3: tp3Price, 
+            tpLevels: botConfig.tpCount 
+          },
+          monitorRan: true
+        });
+        
+      } catch (dbError: any) {
+        // ✅ CRITICAL: DB save failed but position opened!
+        // This is a TRADE_FAULT - we need to close the position manually
+        console.error(`🔴 CRITICAL: Position opened on OKX but DB save failed!`, dbError.message);
+        
+        await logToBot('error', 'critical_db_failure', `Position ${orderId} opened but DB save failed - attempting emergency close`, {
+          orderId,
+          symbol: okxSymbol,
+          side,
+          dbError: dbError.message
+        }, alert.id);
+        
+        // Try to close the position we just opened
+        try {
+          await closeOkxPosition(
+            okxSymbol,
+            side,
+            finalQuantity,
+            apiKey,
+            apiSecret,
+            passphrase,
+            environment === "demo",
+            alert.id
+          );
+          
+          await logToBot('success', 'emergency_close', `Emergency close successful for ${okxSymbol}`, {
+            orderId,
+            reason: 'db_save_failed'
+          }, alert.id);
+        } catch (closeError: any) {
+          await logToBot('error', 'emergency_close_failed', `CRITICAL: Failed to emergency close ${okxSymbol}`, {
+            orderId,
+            closeError: closeError.message
+          }, alert.id);
+        }
+        
+        await db.update(alerts).set({ 
+          executionStatus: 'error_rejected', 
+          rejectionReason: 'db_save_failed',
+          errorType: 'database_error'
+        }).where(eq(alerts.id, alert.id));
+        
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id, 
+          error: 'Position opened but DB save failed - emergency close attempted',
+          critical: true
+        });
       }
 
-      return NextResponse.json({
-        success: true,
-        alert_id: alert.id,
-        position_id: botPosition.id,
-        message: `Position opened with ${botConfig.tpCount} TP levels`,
-        exchange: "okx",
-        environment,
-        position: { 
-          symbol: okxSymbol, 
-          side, 
-          entry: entryPrice, 
-          quantity: finalQuantity, 
-          sl: slPrice, 
-          tp1: tp1Price, 
-          tp2: tp2Price, 
-          tp3: tp3Price, 
-          tpLevels: botConfig.tpCount 
-        },
-        monitorRan: true
-      });
-
     } catch (error: any) {
-      console.error("❌ Position opening failed:", error);
-
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'exchange_error' }).where(eq(alerts.id, alert.id));
-
-      await db.insert(botActions).values({
-        actionType: "position_failed",
-        symbol: data.symbol,
-        side: data.side,
-        tier: data.tier,
-        alertId: alert.id,
-        reason: "exchange_error",
-        details: JSON.stringify({ error: error.message, exchange: "okx" }),
-        success: false,
-        errorMessage: error.message,
-        createdAt: new Date().toISOString(),
+      // This should not be reached due to nested try-catch above
+      console.error("❌ Unexpected error:", error);
+      
+      await db.update(alerts).set({ 
+        executionStatus: 'error_rejected', 
+        rejectionReason: 'unexpected_error',
+        errorType: 'unknown'
+      }).where(eq(alerts.id, alert.id));
+      
+      await logToBot('error', 'unexpected_error', `Unexpected error: ${error.message}`, { 
+        error: error.message,
+        stack: error.stack
+      }, alert.id);
+      
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id, 
+        error: error.message, 
+        message: "Alert saved but unexpected error occurred" 
       });
-
-      await logToBot('error', 'position_failed', `❌ Position opening failed: ${error.message}`, { error: error.message, symbol: data.symbol }, alert.id);
-
-      return NextResponse.json({ success: true, alert_id: alert.id, error: error.message, message: "Alert saved but position opening failed" });
     }
   } catch (error: any) {
     console.error("❌ Webhook error:", error);
