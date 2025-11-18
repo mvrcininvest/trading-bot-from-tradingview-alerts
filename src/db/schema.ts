@@ -69,6 +69,11 @@ export const botSettings = sqliteTable('bot_settings', {
   tp3Percent: real('tp3_percent').notNull().default(20.0),
   slManagementAfterTp1: text('sl_management_after_tp1').notNull().default('breakeven'),
   slTrailingDistance: real('sl_trailing_distance').notNull().default(0.5),
+  adaptiveRR: integer('adaptive_rr', { mode: 'boolean' }).notNull().default(false),
+  adaptiveMultiplier: real('adaptive_multiplier').notNull().default(1.5),
+  adaptiveStrengthThreshold: real('adaptive_strength_threshold').notNull().default(0.5),
+  slAsMarginPercent: integer('sl_as_margin_percent', { mode: 'boolean' }).notNull().default(false),
+  slMarginRiskPercent: real('sl_margin_risk_percent').notNull().default(2.0),
   apiKey: text('api_key'),
   apiSecret: text('api_secret'),
   passphrase: text('passphrase'),
@@ -200,4 +205,34 @@ export const tpslRetryAttempts = sqliteTable('tpsl_retry_attempts', {
   createdAt: text('created_at').notNull(),
 }, (table) => ({
   positionIdx: index('idx_tpsl_retry_position').on(table.positionId),
+}));
+
+export const activePositionTracking = sqliteTable('active_position_tracking', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  symbol: text('symbol').notNull(),
+  side: text('side').notNull(),
+  positionId: integer('position_id').references(() => botPositions.id),
+  status: text('status').notNull(),
+  trackedAt: text('tracked_at').notNull(),
+  completedAt: text('completed_at'),
+}, (table) => ({
+  symbolStatusIdx: index('idx_active_position_tracking_symbol_status').on(table.symbol, table.status),
+}));
+
+export const positionConflictLog = sqliteTable('position_conflict_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  alertId: integer('alert_id').notNull().references(() => alerts.id),
+  existingPositionId: integer('existing_position_id').references(() => botPositions.id),
+  symbol: text('symbol').notNull(),
+  newSide: text('new_side').notNull(),
+  existingSide: text('existing_side'),
+  newTier: text('new_tier').notNull(),
+  existingTier: text('existing_tier'),
+  conflictType: text('conflict_type').notNull(),
+  resolution: text('resolution').notNull(),
+  resolvedAt: text('resolved_at').notNull(),
+  reason: text('reason').notNull(),
+}, (table) => ({
+  alertIdIdx: index('idx_position_conflict_log_alert').on(table.alertId),
+  symbolResolvedIdx: index('idx_position_conflict_log_symbol_resolved').on(table.symbol, table.resolvedAt),
 }));

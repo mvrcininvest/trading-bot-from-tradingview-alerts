@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
-import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent } from "lucide-react"
+import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent, Zap, DollarSign } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 export default function BotSettingsPage() {
@@ -38,7 +38,7 @@ export default function BotSettingsPage() {
   const [useDefaultSlTp, setUseDefaultSlTp] = useState(false)
   const [defaultSlRR, setDefaultSlRR] = useState(1.0)
 
-  // NEW: Enhanced TP Strategy state
+  // Enhanced TP Strategy state
   const [tpCount, setTpCount] = useState(3)
   const [tp1RR, setTp1RR] = useState(1.0)
   const [tp1Percent, setTp1Percent] = useState(50.0)
@@ -48,6 +48,15 @@ export default function BotSettingsPage() {
   const [tp3Percent, setTp3Percent] = useState(20.0)
   const [slManagementAfterTp1, setSlManagementAfterTp1] = useState("breakeven")
   const [slTrailingDistance, setSlTrailingDistance] = useState(0.5)
+
+  // ✅ NEW: Adaptive R:R state
+  const [adaptiveRR, setAdaptiveRR] = useState(false)
+  const [adaptiveMultiplier, setAdaptiveMultiplier] = useState(1.5)
+  const [adaptiveStrengthThreshold, setAdaptiveStrengthThreshold] = useState(0.5)
+
+  // ✅ NEW: SL as % margin state
+  const [slAsMarginPercent, setSlAsMarginPercent] = useState(false)
+  const [slMarginRiskPercent, setSlMarginRiskPercent] = useState(2.0)
 
   useEffect(() => {
     fetchSettings()
@@ -79,7 +88,7 @@ export default function BotSettingsPage() {
         setUseDefaultSlTp(s.useDefaultSlTp || false)
         setDefaultSlRR(s.defaultSlRR || 1.0)
         
-        // NEW: Load enhanced TP settings
+        // Enhanced TP settings
         setTpCount(s.tpCount || 3)
         setTp1RR(s.tp1RR || 1.0)
         setTp1Percent(s.tp1Percent || 50.0)
@@ -89,6 +98,15 @@ export default function BotSettingsPage() {
         setTp3Percent(s.tp3Percent || 20.0)
         setSlManagementAfterTp1(s.slManagementAfterTp1 || "breakeven")
         setSlTrailingDistance(s.slTrailingDistance || 0.5)
+
+        // ✅ NEW: Load Adaptive R:R settings
+        setAdaptiveRR(s.adaptiveRR || false)
+        setAdaptiveMultiplier(s.adaptiveMultiplier || 1.5)
+        setAdaptiveStrengthThreshold(s.adaptiveStrengthThreshold || 0.5)
+
+        // ✅ NEW: Load SL as margin settings
+        setSlAsMarginPercent(s.slAsMarginPercent || false)
+        setSlMarginRiskPercent(s.slMarginRiskPercent || 2.0)
       }
     } catch (error) {
       toast.error("Błąd ładowania ustawień")
@@ -123,7 +141,7 @@ export default function BotSettingsPage() {
           emergencyMinProfitPercent,
           useDefaultSlTp,
           defaultSlRR,
-          // NEW: Enhanced TP Strategy
+          // Enhanced TP Strategy
           tpCount,
           tp1RR,
           tp1Percent,
@@ -133,6 +151,13 @@ export default function BotSettingsPage() {
           tp3Percent,
           slManagementAfterTp1,
           slTrailingDistance,
+          // ✅ NEW: Adaptive R:R
+          adaptiveRR,
+          adaptiveMultiplier,
+          adaptiveStrengthThreshold,
+          // ✅ NEW: SL as % margin
+          slAsMarginPercent,
+          slMarginRiskPercent,
         })
       })
 
@@ -221,7 +246,6 @@ export default function BotSettingsPage() {
           </Button>
         </div>
 
-        {/* Bot Enable/Disable - PROMINENT */}
         <Card className={`p-6 border-2 transition-all ${
           botEnabled 
             ? "bg-gradient-to-br from-green-600/10 to-gray-900/80 border-green-500/30 shadow-green-500/20 shadow-lg" 
@@ -634,9 +658,165 @@ export default function BotSettingsPage() {
 
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                 <p className="text-sm text-blue-300">
-                  <strong>Uwaga:</strong> Wartości Take Profit są konfigurowane w sekcji "Strategia Take Profit (Zaawansowana)" poniżej.<br/>
-                  <span className="text-xs text-blue-400/70">System automatycznie użyje wartości TP1/TP2/TP3 z sekcji zaawansowanej.</span>
+                  <strong>Uwaga:</strong> Wartości Take Profit są konfigurowane w sekcji "Strategia Take Profit (Zaawansowana)" poniżej.
                 </p>
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* ✅ NEW: Adaptive R:R Configuration */}
+        <Card className="p-6 space-y-6 border-yellow-700/40 bg-gradient-to-br from-yellow-600/10 to-gray-900/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-yellow-500/20 border border-yellow-500/30">
+                <Zap className="h-6 w-6 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Adaptive Risk/Reward</h3>
+                <p className="text-sm text-gray-400">Dynamiczne dostosowanie TP/SL na podstawie siły sygnału</p>
+              </div>
+            </div>
+            <Switch checked={adaptiveRR} onCheckedChange={setAdaptiveRR} />
+          </div>
+
+          {adaptiveRR && (
+            <>
+              <Separator className="bg-gray-700/50" />
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-white flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-yellow-400" />
+                    Mnożnik Adaptacyjny (0.5 - 2.0)
+                  </Label>
+                  <Input 
+                    type="number" 
+                    value={adaptiveMultiplier} 
+                    onChange={(e) => setAdaptiveMultiplier(parseFloat(e.target.value))}
+                    step="0.1"
+                    min="0.5"
+                    max="2.0"
+                    className="text-white bg-gray-900/60"
+                  />
+                  <p className="text-xs text-gray-400">
+                    Jak mocno dostosować R:R. Wyższe wartości = bardziej agresywne TP dla silnych sygnałów
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white flex items-center gap-2">
+                    <Target className="h-4 w-4 text-yellow-400" />
+                    Minimalna Siła Sygnału (0.0 - 1.0)
+                  </Label>
+                  <Input 
+                    type="number" 
+                    value={adaptiveStrengthThreshold} 
+                    onChange={(e) => setAdaptiveStrengthThreshold(parseFloat(e.target.value))}
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    className="text-white bg-gray-900/60"
+                  />
+                  <p className="text-xs text-gray-400">
+                    Minimalna siła alertu wymagana do aktywacji Adaptive R:R (np. 0.5 = tylko sygnały ≥ 50% siły)
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-500/30 rounded-lg p-4">
+                  <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład działania Adaptive R:R:</h5>
+                  <div className="space-y-2 text-xs text-gray-300">
+                    <div className="p-2 bg-gray-900/60 rounded">
+                      <strong className="text-yellow-400">Słaby sygnał (strength = 0.3):</strong> Poniżej progu {adaptiveStrengthThreshold} → Używa standardowego R:R
+                    </div>
+                    <div className="p-2 bg-gray-900/60 rounded">
+                      <strong className="text-yellow-400">Średni sygnał (strength = 0.6):</strong><br/>
+                      Factor = {adaptiveMultiplier} × 0.6 = {(adaptiveMultiplier * 0.6).toFixed(2)}<br/>
+                      TP1: {tp1RR}% → {(tp1RR * adaptiveMultiplier * 0.6).toFixed(2)}%<br/>
+                      SL: {defaultSlRR}% → {(defaultSlRR / (adaptiveMultiplier * 0.6)).toFixed(2)}% (węziej)
+                    </div>
+                    <div className="p-2 bg-gray-900/60 rounded">
+                      <strong className="text-yellow-400">Silny sygnał (strength = 0.9):</strong><br/>
+                      Factor = {adaptiveMultiplier} × 0.9 = {(adaptiveMultiplier * 0.9).toFixed(2)}<br/>
+                      TP1: {tp1RR}% → {(tp1RR * adaptiveMultiplier * 0.9).toFixed(2)}%<br/>
+                      SL: {defaultSlRR}% → {(defaultSlRR / (adaptiveMultiplier * 0.9)).toFixed(2)}% (znacznie węziej)
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* ✅ NEW: SL as % Margin Configuration */}
+        <Card className="p-6 space-y-6 border-red-700/40 bg-gradient-to-br from-red-600/10 to-gray-900/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30">
+                <DollarSign className="h-6 w-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Stop Loss jako % Margin</h3>
+                <p className="text-sm text-gray-400">Oblicz SL na podstawie maksymalnej straty margin zamiast % od entry</p>
+              </div>
+            </div>
+            <Switch checked={slAsMarginPercent} onCheckedChange={setSlAsMarginPercent} />
+          </div>
+
+          {slAsMarginPercent && (
+            <>
+              <Separator className="bg-gray-700/50" />
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-white flex items-center gap-2">
+                    <Percent className="h-4 w-4 text-red-400" />
+                    Maksymalne ryzyko (% od initial margin)
+                  </Label>
+                  <Input 
+                    type="number" 
+                    value={slMarginRiskPercent} 
+                    onChange={(e) => setSlMarginRiskPercent(parseFloat(e.target.value))}
+                    step="0.1"
+                    min="0.1"
+                    max="10"
+                    className="text-white bg-gray-900/60"
+                  />
+                  <p className="text-xs text-gray-400">
+                    Ile % margin jesteś w stanie poświęcić na SL (np. 2.0 = maksymalnie 2% straty od margin)
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-lg p-4">
+                  <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład kalkulacji SL jako % margin:</h5>
+                  <div className="space-y-3 text-xs text-gray-300">
+                    <div className="p-3 bg-gray-900/60 rounded">
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <span className="text-gray-400">Position size:</span>
+                        <span className="text-white font-semibold">${positionSizeFixed}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <span className="text-gray-400">Leverage:</span>
+                        <span className="text-white font-semibold">{leverageMode === "fixed" ? `${leverageFixed}x` : "10x (przykład)"}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2 pb-2 border-b border-gray-700">
+                        <span className="text-gray-400">Initial margin:</span>
+                        <span className="text-white font-semibold">
+                          ${(positionSizeFixed / (leverageMode === "fixed" ? leverageFixed : 10)).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <span className="text-red-400 font-semibold">Max loss ({slMarginRiskPercent}%):</span>
+                        <span className="text-red-400 font-semibold">
+                          ${((positionSizeFixed / (leverageMode === "fixed" ? leverageFixed : 10)) * (slMarginRiskPercent / 100)).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-blue-300 bg-blue-900/20 p-2 rounded border border-blue-500/20">
+                      💡 <strong>Różnica:</strong> Standardowy SL to % od entry price. SL jako % margin to % od zainwestowanego kapitału (margin).
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -654,7 +834,6 @@ export default function BotSettingsPage() {
             </div>
           </div>
 
-          {/* TP Count Selection */}
           <div className="space-y-3">
             <Label className="text-white text-base font-semibold">Liczba poziomów Take Profit</Label>
             <Select value={tpCount.toString()} onValueChange={(v) => setTpCount(parseInt(v))}>
@@ -667,14 +846,10 @@ export default function BotSettingsPage() {
                 <SelectItem value="3">3 TP (trójpoziomowy)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-400">
-              Wybierz ile poziomów TP chcesz używać do częściowego zamykania pozycji
-            </p>
           </div>
 
           <Separator className="bg-gray-700/50" />
 
-          {/* TP1 Configuration */}
           <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
             <div className="flex items-center gap-2 mb-2">
               <Badge className="bg-green-600">TP1</Badge>
@@ -694,7 +869,6 @@ export default function BotSettingsPage() {
                   min="0.1"
                   className="text-white bg-gray-900/60"
                 />
-                <p className="text-xs text-gray-400">Np. 1.0 = TP1 będzie 1% od entry (BUY: +1%, SELL: -1%)</p>
               </div>
               <div className="space-y-2">
                 <Label className="text-white flex items-center gap-2">
@@ -710,12 +884,10 @@ export default function BotSettingsPage() {
                   max="100"
                   className="text-white bg-gray-900/60"
                 />
-                <p className="text-xs text-gray-400">Jaki % pozycji zamknąć gdy cena osiągnie TP1</p>
               </div>
             </div>
           </div>
 
-          {/* TP2 Configuration */}
           {tpCount >= 2 && (
             <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
               <div className="flex items-center gap-2 mb-2">
@@ -736,7 +908,6 @@ export default function BotSettingsPage() {
                     min="0.1"
                     className="text-white bg-gray-900/60"
                   />
-                  <p className="text-xs text-gray-400">Np. 2.0 = TP2 będzie 2% od entry</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-white flex items-center gap-2">
@@ -752,13 +923,11 @@ export default function BotSettingsPage() {
                     max="100"
                     className="text-white bg-gray-900/60"
                   />
-                  <p className="text-xs text-gray-400">Jaki % pozycji zamknąć gdy cena osiągnie TP2</p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TP3 Configuration */}
           {tpCount >= 3 && (
             <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
               <div className="flex items-center gap-2 mb-2">
@@ -779,7 +948,6 @@ export default function BotSettingsPage() {
                     min="0.1"
                     className="text-white bg-gray-900/60"
                   />
-                  <p className="text-xs text-gray-400">Np. 3.0 = TP3 będzie 3% od entry</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-white flex items-center gap-2">
@@ -795,7 +963,6 @@ export default function BotSettingsPage() {
                     max="100"
                     className="text-white bg-gray-900/60"
                   />
-                  <p className="text-xs text-gray-400">Jaki % pozycji zamknąć gdy cena osiągnie TP3</p>
                 </div>
               </div>
             </div>
@@ -803,7 +970,6 @@ export default function BotSettingsPage() {
 
           <Separator className="bg-gray-700/50" />
 
-          {/* SL Management After TP1 */}
           <div className="space-y-4 p-4 rounded-lg bg-red-900/10 border border-red-700/30">
             <div className="flex items-center gap-2 mb-2">
               <Shield className="h-5 w-5 text-red-400" />
@@ -822,11 +988,6 @@ export default function BotSettingsPage() {
                     <SelectItem value="no_change">🔒 Bez zmian (zostaw oryginalny SL)</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-400">
-                  {slManagementAfterTp1 === "breakeven" && "Po osiągnięciu TP1, SL zostanie przesunięty na cenę wejścia (zero ryzyka)"}
-                  {slManagementAfterTp1 === "trailing" && "SL będzie śledzić cenę w określonej odległości"}
-                  {slManagementAfterTp1 === "no_change" && "SL pozostanie na oryginalnej pozycji"}
-                </p>
               </div>
 
               {slManagementAfterTp1 === "trailing" && (
@@ -840,50 +1001,12 @@ export default function BotSettingsPage() {
                     min="0.1"
                     className="text-white bg-gray-900/60"
                   />
-                  <p className="text-xs text-gray-400">
-                    Np. 0.5% = SL będzie zawsze 0.5% za ceną (LONG: poniżej, SHORT: powyżej)
-                  </p>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Example Preview */}
-          <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg p-4">
-            <h5 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              Przykład dla pozycji LONG BTC @ $50,000 z twoimi ustawieniami:
-            </h5>
-            <div className="space-y-2 text-sm text-gray-300">
-              <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded">
-                <span className="text-green-400 font-semibold">TP1 ({tp1RR}%)</span>
-                <span>${(50000 * (1 + tp1RR / 100)).toFixed(2)} → Zamknij {tp1Percent}%</span>
-              </div>
-              {tpCount >= 2 && (
-                <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded">
-                  <span className="text-amber-400 font-semibold">TP2 ({tp2RR}%)</span>
-                  <span>${(50000 * (1 + tp2RR / 100)).toFixed(2)} → Zamknij {tp2Percent}%</span>
-                </div>
-              )}
-              {tpCount >= 3 && (
-                <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded">
-                  <span className="text-purple-400 font-semibold">TP3 ({tp3RR}%)</span>
-                  <span>${(50000 * (1 + tp3RR / 100)).toFixed(2)} → Zamknij {tp3Percent}%</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center p-2 bg-gray-900/40 rounded mt-3 pt-3 border-t border-gray-700/50">
-                <span className="text-red-400 font-semibold">Po TP1:</span>
-                <span>
-                  {slManagementAfterTp1 === "breakeven" && "SL → $50,000 (break-even)"}
-                  {slManagementAfterTp1 === "trailing" && `SL śledzi cenę (-${slTrailingDistance}%)`}
-                  {slManagementAfterTp1 === "no_change" && "SL bez zmian"}
-                </span>
-              </div>
             </div>
           </div>
         </Card>
 
-        {/* Max Concurrent Positions */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Maksymalna Liczba Pozycji</h3>
           <div className="space-y-2">
@@ -898,7 +1021,6 @@ export default function BotSettingsPage() {
           </div>
         </Card>
 
-        {/* Same Symbol Behavior */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Zachowanie dla Tego Samego Symbolu</h3>
           <p className="text-sm text-gray-400">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
@@ -912,14 +1034,13 @@ export default function BotSettingsPage() {
               <SelectContent>
                 <SelectItem value="ignore">Ignoruj nowy alert</SelectItem>
                 <SelectItem value="track_confirmations">Śledź potwierdzenia</SelectItem>
-                <SelectItem value="upgrade_tp">Upgrade TP dla wyższego tier</SelectItem>
+                <SelectItem value="upgrade_tp">Upgrade TP</SelectItem>
                 <SelectItem value="emergency_override">Emergency override</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </Card>
 
-        {/* Opposite Direction Strategy */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Strategia dla Przeciwnego Kierunku</h3>
           <p className="text-sm text-gray-400">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
@@ -974,7 +1095,6 @@ export default function BotSettingsPage() {
           </div>
         </Card>
 
-        {/* Emergency Override */}
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Emergency Override</h3>
           <p className="text-sm text-gray-400">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>

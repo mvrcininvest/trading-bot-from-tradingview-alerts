@@ -66,6 +66,15 @@ interface BotPosition {
   status: string;
 }
 
+interface SymbolLock {
+  id: number;
+  symbol: string;
+  lockReason: string;
+  failureCount: number;
+  lockedAt: string;
+  unlockedAt: string | null;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
@@ -84,6 +93,8 @@ export default function DashboardPage() {
   const [lastPositionsUpdate, setLastPositionsUpdate] = useState<string | null>(null);
   const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
   const [syncingCredentials, setSyncingCredentials] = useState(false);
+  const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
+  const [loadingLocks, setLoadingLocks] = useState(false);
 
   useEffect(() => {
     // Load credentials from localStorage
@@ -103,6 +114,7 @@ export default function DashboardPage() {
       fetchPositions(creds);
       fetchBotPositions();
       fetchBotStatus();
+      fetchSymbolLocks();
     }
   }, []);
 
@@ -158,6 +170,24 @@ export default function DashboardPage() {
 
     return () => clearInterval(interval);
   }, [credentials]);
+
+  // ✅ NEW: Fetch symbol locks
+  const fetchSymbolLocks = async () => {
+    setLoadingLocks(true);
+    try {
+      const response = await fetch("/api/bot/diagnostics/locks");
+      const data = await response.json();
+      if (data.success) {
+        // Filter only active locks
+        const activeLocks = data.locks.filter((lock: SymbolLock) => !lock.unlockedAt);
+        setSymbolLocks(activeLocks);
+      }
+    } catch (error) {
+      console.error("Failed to fetch symbol locks:", error);
+    } finally {
+      setLoadingLocks(false);
+    }
+  };
 
   const syncCredentialsToDatabase = async (credsOverride?: ExchangeCredentials) => {
     const credsToUse = credsOverride || credentials;
@@ -748,6 +778,65 @@ export default function DashboardPage() {
                     Konfiguracja API
                   </Button> i zmień środowisko na <strong className="text-green-300">TESTNET</strong> lub <strong className="text-green-300">PRODUKCJA</strong>
                 </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* ✅ NEW: Symbol Locks Alert */}
+        {symbolLocks.length > 0 && (
+          <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm animate-pulse">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <AlertDescription className="text-sm text-red-200">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <strong className="text-red-300 text-base">🚫 UWAGA: {symbolLocks.length} zablokowanych symboli!</strong>
+                  <div className="mt-2 space-y-2">
+                    <p className="font-medium">
+                      Bot nie będzie otwierał pozycji na następujących symbolach: {" "}
+                      <strong className="text-red-300">{symbolLocks.map(l => l.symbol).join(", ")}</strong>
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                      {symbolLocks.map(lock => (
+                        <div key={lock.id} className="bg-red-900/30 border border-red-700/50 rounded-lg p-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-bold text-red-200">{lock.symbol}</div>
+                              <div className="text-xs text-red-400">{lock.lockReason}</div>
+                            </div>
+                            <div className="text-xs text-red-500">
+                              {new Date(lock.lockedAt).toLocaleString("pl-PL", { 
+                                month: 'short', 
+                                day: 'numeric', 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="ml-4 flex flex-col gap-2">
+                  <Button
+                    onClick={() => router.push("/diagnostyka")}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    <AlertTriangle className="mr-2 h-4 w-4" />
+                    Przejdź do Diagnostyki
+                  </Button>
+                  <Button
+                    onClick={fetchSymbolLocks}
+                    disabled={loadingLocks}
+                    variant="outline"
+                    className="border-red-600 text-red-400 hover:bg-red-600/20"
+                    size="sm"
+                  >
+                    <RefreshCw className={`mr-2 h-3 w-3 ${loadingLocks ? "animate-spin" : ""}`} />
+                    Odśwież
+                  </Button>
+                </div>
               </div>
             </AlertDescription>
           </Alert>

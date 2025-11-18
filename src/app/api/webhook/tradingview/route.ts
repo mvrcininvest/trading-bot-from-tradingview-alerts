@@ -5,6 +5,12 @@ import { eq, and, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { monitorAndManagePositions } from '@/lib/position-monitor';
 import { classifyError } from '@/lib/error-classifier';
+import { 
+  resolveConflict, 
+  lockSymbolForOpening, 
+  markPositionOpened, 
+  markPositionOpenFailed 
+} from '@/lib/conflict-resolver';
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -744,6 +750,8 @@ export async function GET(request: Request) {
 // ============================================
 
 export async function POST(request: Request) {
+  let trackingId: number | null = null;
+  
   try {
     // Parse request body
     const rawBody = await request.text();
@@ -760,13 +768,11 @@ export async function POST(request: Request) {
     const data = snakeToCamel(rawData);
     console.log("🔄 Normalized alert data:", JSON.stringify(data, null, 2));
 
-    // Normalize symbol (remove .P suffix)
     const originalSymbol = data.symbol;
     const normalizedSymbol = data.symbol.replace(/\.P$/, '');
     data.symbol = normalizedSymbol;
     console.log(`🔧 Symbol: ${originalSymbol} → ${normalizedSymbol}`);
 
-    // Validate required fields
     const requiredFields = ["symbol", "side", "tier", "entryPrice"];
     for (const field of requiredFields) {
       if (!(field in data)) {
@@ -775,12 +781,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Calculate latency
     const receivedAt = Date.now();
     const alertTimestamp = data.timestamp || data.tvTs || Math.floor(receivedAt / 1000);
     const latency = Math.max(0, receivedAt - (alertTimestamp * 1000));
 
-    // Idempotency check
     const duplicateCheck = await db.select()
       .from(alerts)
       .where(and(
@@ -798,7 +802,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: "Duplicate alert ignored", duplicate: true });
     }
 
-    // Save alert to database
     const [alert] = await db.insert(alerts).values({
       timestamp: alertTimestamp,
       symbol: data.symbol,
@@ -837,10 +840,6 @@ export async function POST(request: Request) {
     console.log("✅ Alert saved:", alert.id);
     await logToBot('info', 'alert_received', `Alert received: ${data.symbol} ${data.side} ${data.tier}`, { symbol: data.symbol, side: data.side, tier: data.tier }, alert.id);
 
-    // ============================================
-    // 🤖 BOT TRADING LOGIC (UPDATED: Error classification + Symbol locks)
-    // ============================================
-
     const settings = await db.select().from(botSettings).limit(1);
     if (settings.length === 0) {
       await db.update(alerts).set({ 
@@ -854,7 +853,6 @@ export async function POST(request: Request) {
 
     const botConfig = settings[0];
 
-    // Check API credentials
     if (!botConfig.apiKey || !botConfig.apiSecret || !botConfig.passphrase) {
       await db.update(alerts).set({ 
         executionStatus: 'error_rejected', 
@@ -873,7 +871,6 @@ export async function POST(request: Request) {
 
     console.log(`🔑 Using ${exchange.toUpperCase()} (${environment}) - API Key: ${apiKey.substring(0, 8)}...`);
 
-    // CRITICAL: Only support OKX
     if (exchange !== "okx") {
       await db.update(alerts).set({ 
         executionStatus: 'error_rejected', 
@@ -884,7 +881,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, alert_id: alert.id, message: `Exchange ${exchange} not supported. Use OKX only.` });
     }
 
-    // Check if bot enabled
     if (!botConfig.botEnabled) {
       await db.update(alerts).set({ 
         executionStatus: 'rejected', 
@@ -894,7 +890,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, alert_id: alert.id, message: "Bot is disabled" });
     }
 
-    // ✅ NEW: Check symbol locks
     const lockStatus = await checkSymbolLock(data.symbol);
     if (lockStatus.locked) {
       await db.update(alerts).set({ 
@@ -912,7 +907,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Tier filtering
     const disabledTiers = JSON.parse(botConfig.disabledTiers || '[]');
     if (disabledTiers.includes(data.tier)) {
       await db.update(alerts).set({ 
@@ -923,109 +917,126 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, alert_id: alert.id, message: `Tier ${data.tier} disabled` });
     }
 
-    // Check for existing positions
-    const existingPositions = await db.select().from(botPositions).where(and(
-      eq(botPositions.symbol, data.symbol),
-      eq(botPositions.status, "open")
-    ));
+    console.log(`\n🔍 Checking for conflicts...`);
+    const conflictAnalysis = await resolveConflict(alert, botConfig);
+    
+    console.log(`   Conflict type: ${conflictAnalysis.conflictType}`);
+    console.log(`   Resolution: ${conflictAnalysis.resolution}`);
+    console.log(`   Reason: ${conflictAnalysis.reason}`);
+    console.log(`   Should proceed: ${conflictAnalysis.shouldProceed}`);
 
-    if (existingPositions.length > 0) {
-      const existingPosition = existingPositions[0];
+    if (conflictAnalysis.hasConflict) {
+      await logToBot('info', 'conflict_detected', conflictAnalysis.reason, {
+        conflictType: conflictAnalysis.conflictType,
+        resolution: conflictAnalysis.resolution,
+        existingPositionId: conflictAnalysis.existingPosition?.id
+      }, alert.id, conflictAnalysis.existingPosition?.id);
+    }
 
-      if (botConfig.sameSymbolBehavior === "ignore") {
+    if (conflictAnalysis.resolution === 'REJECT') {
+      await db.update(alerts).set({ 
+        executionStatus: 'rejected', 
+        rejectionReason: 'conflict_rejected' 
+      }).where(eq(alerts.id, alert.id));
+      
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id, 
+        message: conflictAnalysis.reason,
+        conflict: true
+      });
+    }
+
+    if (conflictAnalysis.resolution === 'UPGRADE' && conflictAnalysis.existingPosition) {
+      await db.update(botPositions).set({ 
+        confirmationCount: conflictAnalysis.existingPosition.confirmationCount + 1,
+        lastUpdated: new Date().toISOString(),
+      }).where(eq(botPositions.id, conflictAnalysis.existingPosition.id));
+      
+      await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
+      
+      await logToBot('info', 'confirmation_tracked', `Confirmation tracked for ${data.symbol}`, { 
+        count: conflictAnalysis.existingPosition.confirmationCount + 1 
+      }, alert.id, conflictAnalysis.existingPosition.id);
+      
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id, 
+        message: "Confirmation tracked",
+        conflict: true,
+        resolution: 'upgrade'
+      });
+    }
+
+    if (conflictAnalysis.resolution === 'CLOSE_AND_OPEN' && conflictAnalysis.existingPosition) {
+      console.log(`🔄 Reversing position on ${data.symbol}`);
+      
+      try {
+        const closeOrderId = await closeOkxPosition(
+          convertSymbolToOkx(data.symbol),
+          conflictAnalysis.existingPosition.side,
+          conflictAnalysis.existingPosition.quantity,
+          apiKey,
+          apiSecret,
+          passphrase,
+          environment === "demo",
+          alert.id,
+          conflictAnalysis.existingPosition.id
+        );
+
+        await db.update(botPositions).set({ 
+          status: "closed",
+          closeReason: "market_reversal",
+          closedAt: new Date().toISOString(),
+        }).where(eq(botPositions.id, conflictAnalysis.existingPosition.id));
+
+        await db.insert(botActions).values({
+          actionType: "position_closed",
+          symbol: data.symbol,
+          side: conflictAnalysis.existingPosition.side,
+          tier: conflictAnalysis.existingPosition.tier,
+          positionId: conflictAnalysis.existingPosition.id,
+          reason: "market_reversal",
+          details: JSON.stringify({ closeOrderId }),
+          success: true,
+          createdAt: new Date().toISOString(),
+        });
+
+        console.log("✅ Opposite position closed via conflict resolver, proceeding with new trade");
+        await logToBot('success', 'reversal_complete', `Position reversed: ${data.symbol}`, {
+          closedPositionId: conflictAnalysis.existingPosition.id,
+          closeOrderId
+        }, alert.id);
+        
+      } catch (error: any) {
+        const errorType = classifyError('', error.message);
+        
         await db.update(alerts).set({ 
-          executionStatus: 'rejected', 
-          rejectionReason: 'same_symbol_exists' 
+          executionStatus: 'error_rejected', 
+          rejectionReason: 'failed_close_opposite',
+          errorType
         }).where(eq(alerts.id, alert.id));
-        await logToBot('info', 'rejected', `Position exists on ${data.symbol}`, { reason: 'same_symbol_exists' }, alert.id, existingPosition.id);
-        return NextResponse.json({ success: true, alert_id: alert.id, message: "Same symbol position exists" });
-      }
-
-      const isOpposite = 
-        (existingPosition.side === "BUY" && data.side === "SELL") ||
-        (existingPosition.side === "SELL" && data.side === "BUY");
-
-      if (isOpposite) {
-        if (botConfig.oppositeDirectionStrategy === "market_reversal") {
-          console.log(`🔄 Reversing position on ${data.symbol}`);
-          await logToBot('info', 'reversal_attempt', `Reversing ${data.symbol}`, { existingPosition: existingPosition.side, newPosition: data.side }, alert.id, existingPosition.id);
-
-          try {
-            const closeOrderId = await closeOkxPosition(
-              convertSymbolToOkx(data.symbol),
-              existingPosition.side,
-              existingPosition.quantity,
-              apiKey,
-              apiSecret,
-              passphrase,
-              environment === "demo",
-              alert.id,
-              existingPosition.id
-            );
-
-            await db.update(botPositions).set({ 
-              status: "closed",
-              closeReason: "opposite_signal",
-              closedAt: new Date().toISOString(),
-            }).where(eq(botPositions.id, existingPosition.id));
-
-            await db.insert(botActions).values({
-              actionType: "position_closed",
-              symbol: data.symbol,
-              side: existingPosition.side,
-              tier: existingPosition.tier,
-              positionId: existingPosition.id,
-              reason: "opposite_signal",
-              details: JSON.stringify({ closeOrderId }),
-              success: true,
-              createdAt: new Date().toISOString(),
-            });
-
-            console.log("✅ Opposite position closed, proceeding with new trade");
-          } catch (error: any) {
-            // ✅ NEW: Classify error
-            const errorType = classifyError('', error.message);
-            
-            await db.update(alerts).set({ 
-              executionStatus: 'error_rejected', 
-              rejectionReason: 'failed_close_opposite',
-              errorType
-            }).where(eq(alerts.id, alert.id));
-            
-            await logToBot('error', 'close_failed', `Failed to close opposite: ${error.message}`, { 
-              error: error.message,
-              errorType
-            }, alert.id, existingPosition.id);
-            
-            return NextResponse.json({ success: true, alert_id: alert.id, error: "Failed to close opposite position" });
-          }
-        } else {
-          await db.update(alerts).set({ 
-            executionStatus: 'rejected', 
-            rejectionReason: 'opposite_ignored' 
-          }).where(eq(alerts.id, alert.id));
-          await logToBot('info', 'rejected', 'Opposite direction ignored', { reason: 'opposite_ignored' }, alert.id, existingPosition.id);
-          return NextResponse.json({ success: true, alert_id: alert.id, message: "Opposite direction ignored" });
-        }
-      } else {
-        if (botConfig.sameSymbolBehavior === "track_confirmations") {
-          await db.update(botPositions).set({ 
-            confirmationCount: existingPosition.confirmationCount + 1,
-            lastUpdated: new Date().toISOString(),
-          }).where(eq(botPositions.id, existingPosition.id));
-          
-          await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
-          await logToBot('info', 'confirmation_tracked', `Confirmation tracked for ${data.symbol}`, { count: existingPosition.confirmationCount + 1 }, alert.id, existingPosition.id);
-          return NextResponse.json({ success: true, alert_id: alert.id, message: "Confirmation tracked" });
-        }
+        
+        await logToBot('error', 'close_failed', `Failed to close for reversal: ${error.message}`, { 
+          error: error.message,
+          errorType
+        }, alert.id, conflictAnalysis.existingPosition.id);
+        
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id, 
+          error: "Failed to close opposite position",
+          conflict: true
+        });
       }
     }
 
     // ============================================
-    // 🎯 CALCULATE SL/TP (UPDATED: Use enhanced TP strategy)
+    // 🎯 CALCULATE SL/TP (UPDATED: Adaptive R:R + SL as % margin)
     // ============================================
 
     const entryPrice = parseFloat(data.entryPrice);
+    const alertStrength = data.strength || 0.5;
     let slPrice: number | null = null;
     let tp1Price: number | null = null;
     let tp2Price: number | null = null;
@@ -1049,42 +1060,113 @@ export async function POST(request: Request) {
         tp3Price
       }, alert.id);
     } else if (botConfig.useDefaultSlTp) {
-      // ✅ CRITICAL FIX: Use enhanced TP strategy with proper SHORT logic
+      // ✅ NEW: Adaptive R:R Logic
+      let slRR = botConfig.defaultSlRR || 1.0;
+      let tp1RR = botConfig.tp1RR || 1.0;
+      let tp2RR = botConfig.tp2RR || 2.0;
+      let tp3RR = botConfig.tp3RR || 3.0;
+      
+      const useAdaptive = botConfig.adaptiveRR && alertStrength >= botConfig.adaptiveStrengthThreshold;
+      
+      if (useAdaptive) {
+        const multiplier = botConfig.adaptiveMultiplier || 1.5;
+        const adaptiveFactor = multiplier * alertStrength;
+        
+        // Adjust all R:R ratios based on signal strength
+        slRR = slRR * (1 / adaptiveFactor); // Tighter SL for stronger signals
+        tp1RR = tp1RR * adaptiveFactor;
+        tp2RR = tp2RR * adaptiveFactor;
+        tp3RR = tp3RR * adaptiveFactor;
+        
+        console.log(`🎯 Adaptive R:R enabled:`);
+        console.log(`   Alert strength: ${alertStrength.toFixed(2)}`);
+        console.log(`   Multiplier: ${multiplier}`);
+        console.log(`   Adaptive factor: ${adaptiveFactor.toFixed(2)}`);
+        console.log(`   Adjusted - SL RR: ${slRR.toFixed(2)}, TP1 RR: ${tp1RR.toFixed(2)}, TP2 RR: ${tp2RR.toFixed(2)}, TP3 RR: ${tp3RR.toFixed(2)}`);
+        
+        await logToBot('info', 'adaptive_rr', `Adaptive R:R applied - strength: ${alertStrength.toFixed(2)}, factor: ${adaptiveFactor.toFixed(2)}`, {
+          alertStrength,
+          multiplier,
+          adaptiveFactor,
+          originalSlRR: botConfig.defaultSlRR,
+          adaptiveSlRR: slRR,
+          originalTp1RR: botConfig.tp1RR,
+          adaptiveTp1RR: tp1RR
+        }, alert.id);
+      }
+      
       const tpCount = botConfig.tpCount || 3;
-      const slRR = botConfig.defaultSlRR || 1.0;
-      const tp1RR = botConfig.tp1RR || 1.0;
-      const tp2RR = botConfig.tp2RR || 2.0;
-      const tp3RR = botConfig.tp3RR || 3.0;
+      
+      // ✅ NEW: SL as % margin calculation
+      let positionSizeUsd = botConfig.positionSizeFixed;
+      const leverage = botConfig.leverageMode === "from_alert" ? (data.leverage || botConfig.leverageFixed) : botConfig.leverageFixed;
+      
+      if (botConfig.slAsMarginPercent) {
+        console.log(`\n💰 SL as % margin enabled:`);
+        
+        const initialMargin = positionSizeUsd / leverage;
+        const maxLossUsd = initialMargin * (botConfig.slMarginRiskPercent / 100);
+        
+        console.log(`   Position size: $${positionSizeUsd}`);
+        console.log(`   Leverage: ${leverage}x`);
+        console.log(`   Initial margin: $${initialMargin.toFixed(2)}`);
+        console.log(`   Max loss (${botConfig.slMarginRiskPercent}% margin): $${maxLossUsd.toFixed(2)}`);
+        
+        // Calculate SL price based on max loss
+        // maxLoss = (entryPrice - slPrice) * contracts
+        // For simplification, assume 1 contract = ctVal * entryPrice value
+        const slDistancePercent = (maxLossUsd / positionSizeUsd) * 100;
+        
+        if (data.side === "BUY") {
+          slPrice = entryPrice * (1 - (slDistancePercent / 100));
+        } else {
+          slPrice = entryPrice * (1 + (slDistancePercent / 100));
+        }
+        
+        console.log(`   SL distance: ${slDistancePercent.toFixed(2)}%`);
+        console.log(`   SL price: ${slPrice?.toFixed(4)}`);
+        
+        await logToBot('info', 'sl_margin_calc', `SL calculated as ${botConfig.slMarginRiskPercent}% of margin`, {
+          initialMargin,
+          maxLossUsd,
+          slDistancePercent,
+          slPrice
+        }, alert.id);
+      } else {
+        // Standard SL calculation (% of entry price)
+        if (data.side === "BUY") {
+          slPrice = entryPrice * (1 - (slRR / 100));
+        } else {
+          slPrice = entryPrice * (1 + (slRR / 100));
+        }
+      }
 
+      // Calculate TPs (always as % of entry)
       if (data.side === "BUY") {
-        // ✅ BUY/LONG: SL below entry, TP above entry
-        slPrice = entryPrice * (1 - (slRR / 100));
         tp1Price = entryPrice * (1 + (tp1RR / 100));
         if (tpCount >= 2) tp2Price = entryPrice * (1 + (tp2RR / 100));
         if (tpCount >= 3) tp3Price = entryPrice * (1 + (tp3RR / 100));
       } else {
-        // ✅ CRITICAL FIX: SELL/SHORT positions
-        slPrice = entryPrice * (1 + (slRR / 100)); // SL ABOVE entry for SHORT
-        tp1Price = entryPrice * (1 - (tp1RR / 100)); // TP BELOW entry for SHORT
+        tp1Price = entryPrice * (1 - (tp1RR / 100));
         if (tpCount >= 2) tp2Price = entryPrice * (1 - (tp2RR / 100));
         if (tpCount >= 3) tp3Price = entryPrice * (1 - (tp3RR / 100));
       }
       
-      console.log(`🛡️ Enhanced TP strategy: ${tpCount} TPs, Side: ${data.side}, Entry: ${entryPrice}`);
-      console.log(`   SL: ${slPrice?.toFixed(4)}`);
-      console.log(`   TP1: ${tp1Price?.toFixed(4)} (${botConfig.tp1Percent}%)`);
-      if (tpCount >= 2) console.log(`   TP2: ${tp2Price?.toFixed(4)} (${botConfig.tp2Percent}%)`);
-      if (tpCount >= 3) console.log(`   TP3: ${tp3Price?.toFixed(4)} (${botConfig.tp3Percent}%)`);
+      console.log(`\n🛡️ Enhanced TP strategy: ${tpCount} TPs, Side: ${data.side}`);
+      console.log(`   Entry: ${entryPrice}`);
+      console.log(`   SL: ${slPrice?.toFixed(4)} (${useAdaptive ? 'Adaptive' : 'Standard'}${botConfig.slAsMarginPercent ? ' as % margin' : ''})`);
+      console.log(`   TP1: ${tp1Price?.toFixed(4)} (${botConfig.tp1Percent}%)${useAdaptive ? ' [Adaptive]' : ''}`);
+      if (tpCount >= 2) console.log(`   TP2: ${tp2Price?.toFixed(4)} (${botConfig.tp2Percent}%)${useAdaptive ? ' [Adaptive]' : ''}`);
+      if (tpCount >= 3) console.log(`   TP3: ${tp3Price?.toFixed(4)} (${botConfig.tp3Percent}%)${useAdaptive ? ' [Adaptive]' : ''}`);
       
-      await logToBot('info', 'tp_strategy_enhanced', `Enhanced TP: ${tpCount} levels, Side: ${data.side}`, {
+      await logToBot('info', 'tp_strategy_enhanced', `Enhanced TP: ${tpCount} levels${useAdaptive ? ' (Adaptive)' : ''}${botConfig.slAsMarginPercent ? ' + SL as margin' : ''}`, {
         tpCount,
+        useAdaptive,
+        slAsMarginPercent: botConfig.slAsMarginPercent,
         slRR,
         tp1RR,
         tp2RR,
         tp3RR,
-        tp1Percent: botConfig.tp1Percent,
-        tp2Percent: botConfig.tp2Percent,
-        tp3Percent: botConfig.tp3Percent,
         entryPrice,
         side: data.side,
         slPrice,
@@ -1110,26 +1192,26 @@ export async function POST(request: Request) {
     console.log(`💰 Position: $${positionSizeUsd}, Leverage: ${leverage}x`);
 
     // ============================================
-    // 🚀 OPEN POSITION ON OKX (UPDATED: Transaction safety)
+    // 🚀 OPEN POSITION ON OKX (WITH TRANSACTION SAFETY)
     // ============================================
 
     try {
       const symbol = data.symbol;
       const side = data.side;
 
-      await logToBot('info', 'opening_position', `Opening ${symbol} ${side} ${leverage}x on OKX with ${botConfig.tpCount} TP levels`, { 
+      console.log(`\n🔒 Locking symbol ${symbol} ${side} for opening...`);
+      trackingId = await lockSymbolForOpening(symbol, side);
+      console.log(`✅ Symbol locked with tracking ID: ${trackingId}`);
+
+      await logToBot('info', 'opening_position', `Opening ${symbol} ${side} ${leverage}x on OKX`, { 
         symbol, 
         side, 
         leverage, 
         positionSizeUsd,
         environment,
-        tpCount: botConfig.tpCount,
-        tp1RR: botConfig.tp1RR,
-        tp2RR: botConfig.tp2RR,
-        tp3RR: botConfig.tp3RR
+        trackingId
       }, alert.id);
 
-      // ✅ NEW: Transaction safety - try to open position first
       let orderId: string;
       let finalQuantity: number;
       let okxSymbol: string;
@@ -1156,10 +1238,14 @@ export async function POST(request: Request) {
         finalQuantity = result.quantity;
         okxSymbol = result.okxSymbol;
       } catch (openError: any) {
-        // ✅ NEW: Classify error and handle appropriately
         const errorType = classifyError(openError.code || '', openError.message);
         
         console.error(`❌ Position opening failed (${errorType}):`, openError.message);
+        
+        if (trackingId) {
+          await markPositionOpenFailed(trackingId);
+          console.log(`✅ Tracking ${trackingId} marked as failed`);
+        }
         
         await db.update(alerts).set({ 
           executionStatus: 'error_rejected', 
@@ -1199,7 +1285,6 @@ export async function POST(request: Request) {
         });
       }
 
-      // ✅ Position opened successfully, now save to DB
       try {
         const [botPosition] = await db.insert(botPositions).values({
           symbol: data.symbol,
@@ -1229,6 +1314,11 @@ export async function POST(request: Request) {
           lastUpdated: new Date().toISOString(),
         }).returning();
 
+        if (trackingId) {
+          await markPositionOpened(trackingId, botPosition.id);
+          console.log(`✅ Tracking ${trackingId} marked as active with position ${botPosition.id}`);
+        }
+
         await db.update(alerts).set({ executionStatus: 'executed' }).where(eq(alerts.id, alert.id));
 
         await db.insert(botActions).values({
@@ -1246,16 +1336,13 @@ export async function POST(request: Request) {
             tpLevels: botConfig.tpCount,
             tp1Price,
             tp2Price,
-            tp3Price,
-            tp1Percent: botConfig.tp1Percent,
-            tp2Percent: botConfig.tp2Percent,
-            tp3Percent: botConfig.tp3Percent
+            tp3Price
           }),
           success: true,
           createdAt: new Date().toISOString(),
         });
 
-        await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x with ${botConfig.tpCount} TP levels`, {
+        await logToBot('success', 'position_opened', `✅ Position opened: ${symbol} ${side} ${leverage}x`, {
           positionId: botPosition.id,
           orderId,
           symbol,
@@ -1267,23 +1354,14 @@ export async function POST(request: Request) {
           tp1: tp1Price,
           tp2: tp2Price,
           tp3: tp3Price,
-          tpCount: botConfig.tpCount,
           environment
         }, alert.id, botPosition.id);
 
-        // ✅ CRITICAL: RUN POSITION MONITOR IMMEDIATELY AFTER OPENING POSITION
         console.log("\n🔍 Running position monitor immediately after position opening...");
         try {
           const monitorResult = await monitorAndManagePositions(false);
           if (monitorResult.success) {
             console.log(`✅ Monitor completed: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`);
-            await logToBot('success', 'monitor_completed', `Position monitor after open: TP hits ${monitorResult.tpHits}, SL adj ${monitorResult.slAdjustments}, Fixed ${monitorResult.slTpFixed}`, {
-              tpHits: monitorResult.tpHits,
-              slAdjustments: monitorResult.slAdjustments,
-              slTpFixed: monitorResult.slTpFixed,
-            }, alert.id, botPosition.id);
-          } else {
-            console.log(`⚠️ Monitor skipped: ${monitorResult.reason || monitorResult.error}`);
           }
         } catch (error) {
           console.error("❌ Monitor failed:", error);
@@ -1293,7 +1371,7 @@ export async function POST(request: Request) {
           success: true,
           alert_id: alert.id,
           position_id: botPosition.id,
-          message: `Position opened with ${botConfig.tpCount} TP levels`,
+          message: `Position opened`,
           exchange: "okx",
           environment,
           position: { 
@@ -1304,16 +1382,17 @@ export async function POST(request: Request) {
             sl: slPrice, 
             tp1: tp1Price, 
             tp2: tp2Price, 
-            tp3: tp3Price, 
-            tpLevels: botConfig.tpCount 
+            tp3: tp3Price
           },
           monitorRan: true
         });
         
       } catch (dbError: any) {
-        // ✅ CRITICAL: DB save failed but position opened!
-        // This is a TRADE_FAULT - we need to close the position manually
         console.error(`🔴 CRITICAL: Position opened on OKX but DB save failed!`, dbError.message);
+        
+        if (trackingId) {
+          await markPositionOpenFailed(trackingId);
+        }
         
         await logToBot('error', 'critical_db_failure', `Position ${orderId} opened but DB save failed - attempting emergency close`, {
           orderId,
@@ -1322,7 +1401,6 @@ export async function POST(request: Request) {
           dbError: dbError.message
         }, alert.id);
         
-        // Try to close the position we just opened
         try {
           await closeOkxPosition(
             okxSymbol,
@@ -1361,7 +1439,10 @@ export async function POST(request: Request) {
       }
 
     } catch (error: any) {
-      // This should not be reached due to nested try-catch above
+      if (trackingId) {
+        await markPositionOpenFailed(trackingId);
+      }
+      
       console.error("❌ Unexpected error:", error);
       
       await db.update(alerts).set({ 
@@ -1383,6 +1464,14 @@ export async function POST(request: Request) {
       });
     }
   } catch (error: any) {
+    if (trackingId) {
+      try {
+        await markPositionOpenFailed(trackingId);
+      } catch (cleanupError) {
+        console.error("Failed to cleanup tracking:", cleanupError);
+      }
+    }
+    
     console.error("❌ Webhook error:", error);
     await logToBot('error', 'webhook_error', `Critical error: ${error.message}`, { error: error.message, stack: error.stack });
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
