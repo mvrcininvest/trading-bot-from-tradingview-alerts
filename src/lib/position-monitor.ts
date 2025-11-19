@@ -690,7 +690,20 @@ export async function monitorAndManagePositions(silent = true) {
       const side = dbPos.side;
       const entryPrice = dbPos.entryPrice;
       
-      console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}`);
+      // ✅ CRITICAL FIX #9: Update DB with live PnL from OKX
+      const livePnl = parseFloat(okxPos.upl || "0");
+      if (Math.abs(livePnl - dbPos.unrealisedPnl) > 0.01) {
+        await db.update(botPositions)
+          .set({
+            unrealisedPnl: livePnl,
+            lastUpdated: new Date().toISOString()
+          })
+          .where(eq(botPositions.id, dbPos.id));
+        
+        console.log(`   💰 PnL updated: ${dbPos.unrealisedPnl.toFixed(2)} → ${livePnl.toFixed(2)} USDT`);
+      }
+      
+      console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}, PnL: ${livePnl.toFixed(2)} USDT`);
 
       // ============================================
       // 🎯 CHECK TP LEVELS AND PARTIAL CLOSE

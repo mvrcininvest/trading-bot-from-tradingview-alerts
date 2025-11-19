@@ -240,7 +240,8 @@ async function openOkxPosition(
   demo: boolean,
   alertId?: number,
   originalSl?: number,
-  originalTp?: number
+  originalTp?: number,
+  slMarginRiskPercent?: number
 ) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`🚀 OPENING OKX POSITION - START`);
@@ -252,6 +253,7 @@ async function openOkxPosition(
   console.log(`   Entry Price: ${entryPrice}`);
   console.log(`   Leverage: ${leverage}x`);
   console.log(`   SL: ${slPrice}, TP: ${tpPrice}`);
+  console.log(`   SL Margin Risk %: ${slMarginRiskPercent || 'N/A'}`);
   console.log(`   Demo: ${demo}`);
   
   const okxSymbol = convertSymbolToOkx(symbol);
@@ -379,6 +381,56 @@ async function openOkxPosition(
   // ✅ CRITICAL: Use toFixed string directly to avoid JS floating point issues
   const quantity = finalContracts.toFixed(lotDecimals);
   console.log(`   ✅ Final quantity string: "${quantity}"`);
+
+  // ============================================
+  // ✅ CRITICAL FIX #1: RECALCULATE SL/TP WITH ACTUAL QUANTITY
+  // ============================================
+  if (slMarginRiskPercent && slMarginRiskPercent > 0) {
+    console.log(`\n🔧 RECALCULATING SL with actual quantity...`);
+    
+    const initialMargin = positionSizeUsd / leverage;
+    const maxLossUsd = initialMargin * (slMarginRiskPercent / 100);
+    
+    // ✅ CRITICAL: Calculate SL with ACTUAL finalContracts, not theoretical coinAmount
+    const actualCoinAmount = finalContracts * ctVal;
+    const slPriceDistance = maxLossUsd / actualCoinAmount;
+    
+    console.log(`   Initial margin: $${initialMargin.toFixed(2)}`);
+    console.log(`   Max loss (${slMarginRiskPercent}%): $${maxLossUsd.toFixed(2)}`);
+    console.log(`   Actual coin amount: ${actualCoinAmount.toFixed(6)} (${finalContracts} contracts × ${ctVal})`);
+    console.log(`   SL price distance: ${slPriceDistance.toFixed(6)}`);
+    
+    if (side === "BUY") {
+      slPrice = entryPrice - slPriceDistance;
+    } else {
+      slPrice = entryPrice + slPriceDistance;
+    }
+    
+    console.log(`   ✅ Recalculated SL: ${slPrice?.toFixed(4)}`);
+    
+    // Recalculate TP based on new SL distance (if using R:R mode)
+    if (tpPrice) {
+      const newSlDistance = Math.abs(entryPrice - (slPrice || entryPrice));
+      const tpRR = 1.0; // Default TP1 R:R
+      
+      if (side === "BUY") {
+        tpPrice = entryPrice + (newSlDistance * tpRR);
+      } else {
+        tpPrice = entryPrice - (newSlDistance * tpRR);
+      }
+      
+      console.log(`   ✅ Recalculated TP1: ${tpPrice?.toFixed(4)} (1:1 R:R)`);
+    }
+    
+    await logToBot('info', 'sl_recalculated', `SL recalculated with actual quantity: ${slPrice?.toFixed(4)}`, {
+      initialMargin,
+      maxLossUsd,
+      actualCoinAmount,
+      slPriceDistance,
+      slPrice,
+      tpPrice
+    }, alertId);
+  }
   
   // ============================================
   // 📏 STEP 5: SET LEVERAGE
@@ -1277,7 +1329,8 @@ export async function POST(request: Request) {
           environment === "demo",
           alert.id,
           parseFloat(data.sl || "0"),
-          parseFloat(data.tp1 || "0")
+          parseFloat(data.tp1 || "0"),
+          botConfig.slAsMarginPercent ? botConfig.slMarginRiskPercent : undefined
         );
         
         orderId = result.orderId;
@@ -1360,6 +1413,61 @@ export async function POST(request: Request) {
           lastUpdated: new Date().toISOString(),
         }).returning();
 
+        // ✅ CRITICAL FIX #3: Verify actual quantity from exchange after order execution
+        console.log(`\n🔍 Verifying actual position quantity from OKX...`);
+        try {
+          const { data: posData } = await makeOkxRequest(
+            'GET',
+            `/api/v5/account/positions?instType=SWAP&instId=${okxSymbol}`,
+            apiKey,
+            apiSecret,
+            passphrase,
+            environment === "demo",
+            undefined,
+            alert.id
+          );
+          
+          if (posData.code === '0' && posData.data && posData.data.length > 0) {
+            // Find matching position
+            const okxPosition = posData.data.find((p: any) => 
+              p.instId === okxSymbol && parseFloat(p.pos) !== 0
+            );
+            
+            if (okxPosition) {
+              const actualQuantity = Math.abs(parseFloat(okxPosition.pos));
+              const actualPnl = parseFloat(okxPosition.upl || "0");
+              
+              console.log(`   OKX actual quantity: ${actualQuantity} (DB: ${finalQuantity})`);
+              console.log(`   OKX unrealised PnL: ${actualPnl}`);
+              
+              // Update DB with actual values from exchange
+              await db.update(botPositions)
+                .set({
+                  quantity: actualQuantity,
+                  unrealisedPnl: actualPnl,
+                  lastUpdated: new Date().toISOString()
+                })
+                .where(eq(botPositions.id, botPosition.id));
+              
+              console.log(`   ✅ DB updated with actual quantity and PnL`);
+              
+              await logToBot('info', 'quantity_verified', `Quantity verified from OKX: ${actualQuantity}`, {
+                expectedQuantity: finalQuantity,
+                actualQuantity,
+                difference: Math.abs(actualQuantity - finalQuantity),
+                unrealisedPnl: actualPnl
+              }, alert.id, botPosition.id);
+            } else {
+              console.warn(`   ⚠️ Position not found on OKX immediately after opening`);
+            }
+          }
+        } catch (verifyError: any) {
+          console.error(`   ⚠️ Failed to verify quantity from OKX:`, verifyError.message);
+          await logToBot('warning', 'quantity_verify_failed', `Could not verify quantity: ${verifyError.message}`, {
+            error: verifyError.message
+          }, alert.id, botPosition.id);
+        }
+
         if (trackingId) {
           await markPositionOpened(trackingId, botPosition.id);
           console.log(`✅ Tracking ${trackingId} marked as active with position ${botPosition.id}`);
@@ -1402,6 +1510,95 @@ export async function POST(request: Request) {
           tp3: tp3Price,
           environment
         }, alert.id, botPosition.id);
+
+        // ✅ CRITICAL FIX #6: Set TP2 and TP3 as separate algo orders if configured
+        if (botConfig.tpCount >= 2 && tp2Price) {
+          console.log(`\n🎯 Setting TP2 @ ${tp2Price.toFixed(4)}...`);
+          try {
+            // Get instrument info for tick size
+            const { data: instData } = await makeOkxRequest(
+              'GET',
+              `/api/v5/public/instruments?instType=SWAP&instId=${okxSymbol}`,
+              apiKey,
+              apiSecret,
+              passphrase,
+              environment === "demo",
+              undefined,
+              alert.id
+            );
+            
+            if (instData.code === '0' && instData.data?.[0]) {
+              const tickSz = parseFloat(instData.data[0].tickSz);
+              
+              const tp2OrderId = await addAdditionalTakeProfit(
+                okxSymbol,
+                side,
+                tp2Price,
+                finalQuantity,
+                tickSz,
+                apiKey,
+                apiSecret,
+                passphrase,
+                environment === "demo",
+                alert.id
+              );
+              
+              if (tp2OrderId) {
+                await db.update(botPositions)
+                  .set({ tp2OrderId })
+                  .where(eq(botPositions.id, botPosition.id));
+                console.log(`   ✅ TP2 order set: ${tp2OrderId}`);
+              }
+            }
+          } catch (error: any) {
+            console.error(`   ⚠️ Failed to set TP2:`, error.message);
+            await logToBot('warning', 'tp2_failed', `Failed to set TP2: ${error.message}`, { error: error.message }, alert.id, botPosition.id);
+          }
+        }
+        
+        if (botConfig.tpCount >= 3 && tp3Price) {
+          console.log(`\n🎯 Setting TP3 @ ${tp3Price.toFixed(4)}...`);
+          try {
+            // Get instrument info for tick size
+            const { data: instData } = await makeOkxRequest(
+              'GET',
+              `/api/v5/public/instruments?instType=SWAP&instId=${okxSymbol}`,
+              apiKey,
+              apiSecret,
+              passphrase,
+              environment === "demo",
+              undefined,
+              alert.id
+            );
+            
+            if (instData.code === '0' && instData.data?.[0]) {
+              const tickSz = parseFloat(instData.data[0].tickSz);
+              
+              const tp3OrderId = await addAdditionalTakeProfit(
+                okxSymbol,
+                side,
+                tp3Price,
+                finalQuantity,
+                tickSz,
+                apiKey,
+                apiSecret,
+                passphrase,
+                environment === "demo",
+                alert.id
+              );
+              
+              if (tp3OrderId) {
+                await db.update(botPositions)
+                  .set({ tp3OrderId })
+                  .where(eq(botPositions.id, botPosition.id));
+                console.log(`   ✅ TP3 order set: ${tp3OrderId}`);
+              }
+            }
+          } catch (error: any) {
+            console.error(`   ⚠️ Failed to set TP3:`, error.message);
+            await logToBot('warning', 'tp3_failed', `Failed to set TP3: ${error.message}`, { error: error.message }, alert.id, botPosition.id);
+          }
+        }
 
         console.log("\n🔍 Running position monitor immediately after position opening...");
         try {
