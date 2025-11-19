@@ -436,12 +436,13 @@ async function openOkxPosition(
       // ========================================
       console.log(`   📈 LONG position validation...`);
       
+      // ✅ CRITICAL FIX: Reduce safety margin from 0.8% to 0.2%
       // TP must be ABOVE current price with safety margin
-      const minTpPrice = currentMarketPrice * 1.008; // +0.8% minimum safety margin
+      const minTpPrice = currentMarketPrice * 1.002; // +0.2% minimum safety margin (reduced from 0.8%)
       if (tpPrice <= currentMarketPrice || tpPrice < minTpPrice) {
         const adjustedTp = formatPrice(minTpPrice);
         console.warn(`   ⚠️ TP ${tpPrice} too close/below current ${currentMarketPrice} for LONG`);
-        console.warn(`   → Adjusting to ${adjustedTp} (+0.8% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedTp} (+0.2% safety margin)`);
         await logToBot('warning', 'tp_adjusted_long', `LONG: TP adjusted from ${tpPrice} to ${adjustedTp}`, { 
           original: originalTp, 
           adjusted: adjustedTp, 
@@ -452,11 +453,11 @@ async function openOkxPosition(
       }
       
       // SL must be BELOW current price with safety margin
-      const maxSlPrice = currentMarketPrice * 0.992; // -0.8% maximum safety margin
+      const maxSlPrice = currentMarketPrice * 0.998; // -0.2% maximum safety margin (reduced from 0.8%)
       if (slPrice >= currentMarketPrice || slPrice > maxSlPrice) {
         const adjustedSl = formatPrice(maxSlPrice);
         console.warn(`   ⚠️ SL ${slPrice} too close/above current ${currentMarketPrice} for LONG`);
-        console.warn(`   → Adjusting to ${adjustedSl} (-0.8% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedSl} (-0.2% safety margin)`);
         await logToBot('warning', 'sl_adjusted_long', `LONG: SL adjusted from ${slPrice} to ${adjustedSl}`, { 
           original: originalSl, 
           adjusted: adjustedSl, 
@@ -474,12 +475,13 @@ async function openOkxPosition(
       // ========================================
       console.log(`   📉 SHORT position validation...`);
       
+      // ✅ CRITICAL FIX: Reduce safety margin from 0.8% to 0.2%
       // TP must be BELOW current price with safety margin
-      const maxTpPrice = currentMarketPrice * 0.992; // -0.8% (TP below market for SHORT)
+      const maxTpPrice = currentMarketPrice * 0.998; // -0.2% (TP below market for SHORT, reduced from 0.8%)
       if (tpPrice >= currentMarketPrice || tpPrice > maxTpPrice) {
         const adjustedTp = formatPrice(maxTpPrice);
         console.warn(`   ⚠️ TP ${tpPrice} too high/equal for SHORT (must be below ${maxTpPrice})`);
-        console.warn(`   → Adjusting to ${adjustedTp} (-0.8% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedTp} (-0.2% safety margin)`);
         await logToBot('warning', 'tp_adjusted_short', `SHORT: TP adjusted from ${tpPrice} to ${adjustedTp}`, { 
           original: originalTp, 
           adjusted: adjustedTp, 
@@ -490,11 +492,11 @@ async function openOkxPosition(
       }
       
       // SL must be ABOVE current price with safety margin
-      const minSlPrice = currentMarketPrice * 1.008; // +0.8% (SL above market for SHORT)
+      const minSlPrice = currentMarketPrice * 1.002; // +0.2% (SL above market for SHORT, reduced from 0.8%)
       if (slPrice <= currentMarketPrice || slPrice < minSlPrice) {
         const adjustedSl = formatPrice(minSlPrice);
         console.warn(`   ⚠️ SL ${slPrice} too low/equal for SHORT (must be above ${minSlPrice})`);
-        console.warn(`   → Adjusting to ${adjustedSl} (+0.8% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedSl} (+0.2% safety margin)`);
         await logToBot('warning', 'sl_adjusted_short', `SHORT: SL adjusted from ${slPrice} to ${adjustedSl}`, { 
           original: originalSl, 
           adjusted: adjustedSl, 
@@ -1140,24 +1142,37 @@ export async function POST(request: Request) {
         console.log(`   Initial margin: $${initialMargin.toFixed(2)}`);
         console.log(`   Max loss (${botConfig.slMarginRiskPercent}% margin): $${maxLossUsd.toFixed(2)}`);
         
-        // Calculate SL price based on max loss
-        // maxLoss = (entryPrice - slPrice) * contracts
-        // For simplification, assume 1 contract = ctVal * entryPrice value
-        const slDistancePercent = (maxLossUsd / positionSizeUsd) * 100;
-        
-        if (data.side === "BUY") {
-          slPrice = entryPrice * (1 - (slDistancePercent / 100));
-        } else {
-          slPrice = entryPrice * (1 + (slDistancePercent / 100));
+        // ✅ CRITICAL FIX: Calculate SL based on actual quantity, not position size percentage
+        // Get current market price to calculate quantity
+        let marketPriceForCalc: number;
+        try {
+          marketPriceForCalc = await getCurrentMarketPrice(data.symbol, apiKey, apiSecret, passphrase, environment === "demo");
+        } catch (error) {
+          marketPriceForCalc = entryPrice; // Fallback to entry price
         }
         
-        console.log(`   SL distance: ${slDistancePercent.toFixed(2)}%`);
+        // Calculate quantity (contracts) based on position size
+        const coinAmount = positionSizeUsd / marketPriceForCalc;
+        
+        // For SL calculation: maxLoss = |entryPrice - slPrice| * quantity
+        // Therefore: slPrice = entryPrice ± (maxLoss / quantity)
+        const slPriceDistance = maxLossUsd / coinAmount;
+        
+        if (data.side === "BUY") {
+          slPrice = entryPrice - slPriceDistance;
+        } else {
+          slPrice = entryPrice + slPriceDistance;
+        }
+        
+        console.log(`   Coin amount (contracts): ${coinAmount.toFixed(6)}`);
+        console.log(`   SL price distance: ${slPriceDistance.toFixed(4)}`);
         console.log(`   SL price: ${slPrice?.toFixed(4)}`);
         
         await logToBot('info', 'sl_margin_calc', `SL calculated as ${botConfig.slMarginRiskPercent}% of margin`, {
           initialMargin,
           maxLossUsd,
-          slDistancePercent,
+          coinAmount,
+          slPriceDistance,
           slPrice
         }, alert.id);
       } else {
@@ -1169,17 +1184,20 @@ export async function POST(request: Request) {
         }
       }
 
-      // Calculate TPs (always as % of entry)
-      if (data.side === "BUY") {
-        tp1Price = entryPrice * (1 + (tp1RR / 100));
-        if (tpCount >= 2) tp2Price = entryPrice * (1 + (tp2RR / 100));
-        if (tpCount >= 3) tp3Price = entryPrice * (1 + (tp3RR / 100));
-      } else {
-        tp1Price = entryPrice * (1 - (tp1RR / 100));
-        if (tpCount >= 2) tp2Price = entryPrice * (1 - (tp2RR / 100));
-        if (tpCount >= 3) tp3Price = entryPrice * (1 - (tp3RR / 100));
-      }
+      // ✅ CRITICAL FIX: Calculate TPs as Risk:Reward ratio, not % of entry
+      // R:R means: TP distance from entry = RR × SL distance from entry
+      const slDistance = Math.abs(entryPrice - (slPrice || entryPrice));
       
+      if (data.side === "BUY") {
+        tp1Price = entryPrice + (slDistance * tp1RR);
+        if (tpCount >= 2) tp2Price = entryPrice + (slDistance * tp2RR);
+        if (tpCount >= 3) tp3Price = entryPrice + (slDistance * tp3RR);
+      } else {
+        tp1Price = entryPrice - (slDistance * tp1RR);
+        if (tpCount >= 2) tp2Price = entryPrice - (slDistance * tp2RR);
+        if (tpCount >= 3) tp3Price = entryPrice - (slDistance * tp3RR);
+      }
+
       console.log(`\n🛡️ Enhanced TP strategy: ${tpCount} TPs, Side: ${data.side}`);
       console.log(`   Entry: ${entryPrice}`);
       console.log(`   SL: ${slPrice?.toFixed(4)} (${useAdaptive ? 'Adaptive' : 'Standard'}${botConfig.slAsMarginPercent ? ' as % margin' : ''})`);

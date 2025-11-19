@@ -355,6 +355,38 @@ async function setAlgoOrderWithRetry(
     try {
       console.log(`🔧 [RETRY ${attempt}/${maxRetries}] Setting ${orderType.toUpperCase()} @ ${triggerPrice.toFixed(4)}...`);
 
+      // ✅ CRITICAL FIX: Cancel ALL existing orders of this type BEFORE setting new one
+      // This prevents duplicate TP/SL orders from accumulating
+      if (attempt === 1) {
+        console.log(`🧹 [CLEANUP] Cancelling all existing ${orderType.toUpperCase()} orders for ${symbol}...`);
+        const existingOrders = await getAlgoOrders(apiKey, apiSecret, passphrase, demo);
+        const ordersToCancel = existingOrders.filter((order: any) => {
+          const matchesSymbol = order.instId === symbol;
+          const matchesType = orderType === 'sl' ? !!order.slTriggerPx : !!order.tpTriggerPx;
+          return matchesSymbol && matchesType;
+        });
+        
+        console.log(`   Found ${ordersToCancel.length} existing ${orderType.toUpperCase()} orders to cancel`);
+        
+        for (const order of ordersToCancel) {
+          const cancelled = await cancelAlgoOrderWithRetry(
+            order.algoId,
+            symbol,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo,
+            2 // Quick retry
+          );
+          
+          if (cancelled) {
+            console.log(`   ✅ Cancelled old ${orderType.toUpperCase()} order: ${order.algoId}`);
+          } else {
+            console.warn(`   ⚠️ Failed to cancel ${order.algoId}, continuing anyway...`);
+          }
+        }
+      }
+
       const algoId = await setAlgoOrder(
         symbol,
         side,
