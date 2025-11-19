@@ -29,15 +29,15 @@ interface HistoricalPosition {
   side: string;
   tier: string;
   entryPrice: number;
-  exitPrice: number;
+  closePrice: number;
   quantity: number;
   leverage: number;
   pnl: number;
   pnlPercent: number;
   openedAt: string;
   closedAt: string;
-  exitReason: string;
-  holdingTime: number;
+  closeReason: string;
+  durationMinutes: number;
 }
 
 interface Alert {
@@ -121,13 +121,13 @@ export default function StatystykiPage() {
       // Fetch historical positions
       const historyRes = await fetch("/api/bot/history");
       const historyData = await historyRes.json();
-      const closedPositions = historyData.success ? historyData.positions.filter((p: any) => p.status === 'closed') : [];
+      const closedPositions = historyData.success ? historyData.history : [];
       setHistoricalPositions(closedPositions);
 
       // Fetch current positions
       const positionsRes = await fetch("/api/bot/positions");
       const positionsData = await positionsRes.json();
-      const openPositions = positionsData.success ? positionsData.positions.filter((p: any) => p.status === 'open') : [];
+      const openPositions = positionsData.success ? positionsData.positions : [];
       setCurrentPositions(openPositions);
 
       // Fetch alerts
@@ -166,6 +166,9 @@ export default function StatystykiPage() {
         maxDrawdown: 0,
         currentDrawdown: 0
       });
+      setTierStats([]);
+      setSymbolStats([]);
+      setTimeStats([]);
       return;
     }
 
@@ -184,7 +187,7 @@ export default function StatystykiPage() {
     const avgWin = wins.length > 0 ? wins.reduce((sum, p) => sum + p.pnl, 0) / wins.length : 0;
     const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, p) => sum + p.pnl, 0) / losses.length) : 0;
     
-    const avgHoldingTime = closed.reduce((sum, p) => sum + p.holdingTime, 0) / totalTrades;
+    const avgHoldingTime = closed.reduce((sum, p) => sum + (p.durationMinutes || 0), 0) / totalTrades;
     
     const pnls = closed.map(p => p.pnl);
     const bestTrade = Math.max(...pnls);
