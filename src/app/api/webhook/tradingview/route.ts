@@ -768,13 +768,36 @@ export async function POST(request: Request) {
     const data = snakeToCamel(rawData);
     console.log("🔄 Normalized alert data:", JSON.stringify(data, null, 2));
 
-    const originalSymbol = data.symbol;
-    const normalizedSymbol = data.symbol?.replace(/\.P$/, '') || '';
-    data.symbol = normalizedSymbol;
-    console.log(`🔧 Symbol: ${originalSymbol} → ${normalizedSymbol}`);
+    // ✅ CRITICAL FIX: Validate symbol exists BEFORE normalization
+    if (!data.symbol || (typeof data.symbol === 'string' && data.symbol.trim() === '')) {
+      await logToBot('error', 'validation_failed', 'Symbol is missing or empty', { receivedData: data });
+      return NextResponse.json({ 
+        error: 'Symbol is required and cannot be empty. Check your TradingView alert JSON - make sure "symbol": "{{ticker}}" is included.',
+        receivedData: data
+      }, { status: 400 });
+    }
 
-    // ✅ ENHANCED: Validate required fields are present AND not empty
-    const requiredFields = ["symbol", "side", "tier", "entryPrice"];
+    // ✅ IMPROVED: Safe symbol normalization
+    const originalSymbol = data.symbol.trim();
+    const normalizedSymbol = originalSymbol.replace(/\.P$/, '');
+    
+    // ✅ CRITICAL: If normalization resulted in empty string, use original
+    data.symbol = normalizedSymbol || originalSymbol;
+    
+    console.log(`🔧 Symbol: ${originalSymbol} → ${data.symbol}`);
+
+    // ✅ Validate symbol format
+    if (!/^[A-Z0-9]+(-[A-Z]+)?$/i.test(data.symbol)) {
+      await logToBot('error', 'validation_failed', `Invalid symbol format: ${data.symbol}`, { symbol: data.symbol, originalSymbol });
+      return NextResponse.json({ 
+        error: `Invalid symbol format: "${data.symbol}". Expected format: BTCUSDT or BTC-USDT`,
+        symbol: data.symbol,
+        originalSymbol
+      }, { status: 400 });
+    }
+
+    // ✅ Validate other required fields (symbol already validated above)
+    const requiredFields = ["side", "tier", "entryPrice"];
     for (const field of requiredFields) {
       if (!(field in data) || !data[field] || (typeof data[field] === 'string' && data[field].trim() === '')) {
         await logToBot('error', 'validation_failed', `Missing or empty field: ${field}`, { field, data });
@@ -784,15 +807,6 @@ export async function POST(request: Request) {
           receivedData: data
         }, { status: 400 });
       }
-    }
-
-    // ✅ Additional validation: Symbol must be valid format
-    if (!/^[A-Z0-9]+(-[A-Z]+)?$/.test(data.symbol)) {
-      await logToBot('error', 'validation_failed', `Invalid symbol format: ${data.symbol}`, { symbol: data.symbol });
-      return NextResponse.json({ 
-        error: `Invalid symbol format: "${data.symbol}". Expected format: BTCUSDT or BTC-USDT`,
-        symbol: data.symbol
-      }, { status: 400 });
     }
 
     const receivedAt = Date.now();
