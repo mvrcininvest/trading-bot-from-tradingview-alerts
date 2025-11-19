@@ -851,34 +851,6 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* CRITICAL WARNING for Demo Environment */}
-        {credentials.environment === "demo" && (
-          <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            <AlertDescription className="text-sm text-red-200">
-              <strong className="text-red-100 text-base">⚠️ OSTRZEŻENIE: Używasz środowiska DEMO</strong>
-              <div className="mt-2 space-y-2">
-                <p className="font-medium text-gray-100">
-                  API Demo ({credentials.exchange.toUpperCase()}) może być <strong>wolniejsze</strong> niż produkcja. 
-                  Webhook i bot działają, ale weryfikacja pozycji może wymagać więcej czasu.
-                </p>
-                <p className="text-amber-200 font-semibold">
-                  ⚠️ System automatycznie czeka dłużej (15s) na SL/TP w środowisku Demo
-                </p>
-                <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3 text-gray-100">
-                  💡 <strong>OPCJONALNIE:</strong> Dla najlepszej wydajności przejdź do <Button 
-                    variant="link" 
-                    className="text-green-200 underline p-0 h-auto font-bold"
-                    onClick={() => router.push("/exchange-test")}
-                  >
-                    Konfiguracja API
-                  </Button> i zmień środowisko na <strong className="text-green-200">TESTNET</strong> lub <strong className="text-green-200">PRODUKCJA</strong>
-                </p>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* ✅ NEW: Symbol Locks Alert */}
         {symbolLocks.length > 0 && (
           <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm animate-pulse">
@@ -937,53 +909,6 @@ export default function DashboardPage() {
             </AlertDescription>
           </Alert>
         )}
-
-        {/* NEW: Credentials Sync Alert */}
-        <Alert className="border-2 border-blue-600/50 bg-gradient-to-r from-blue-600/20 to-purple-600/20 backdrop-blur-sm">
-          <AlertTriangle className="h-5 w-5 text-blue-400" />
-          <AlertDescription className="text-sm text-blue-200">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <strong className="text-blue-100 text-base">🔄 Synchronizacja Credentials</strong>
-                <p className="mt-2 text-gray-100">
-                  Dashboard czyta z <strong>localStorage</strong>, ale webhook czyta z <strong>bazy danych</strong>.
-                  Jeśli webhook używa niewłaściwej giełdy, kliknij przycisk aby zsynchronizować:
-                </p>
-                <p className="mt-2 text-xs text-blue-200">
-                  💡 Jeśli po kliknięciu dostaniesz błąd "UUID" - musisz przejść do Konfiguracji API i wprowadzić PRAWDZIWE klucze!
-                </p>
-              </div>
-              <div className="ml-4 flex flex-col gap-2">
-                <Button
-                  onClick={() => syncCredentialsToDatabase()}
-                  disabled={syncingCredentials}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  {syncingCredentials ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Syncing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Sync do Bazy
-                    </>
-                  )}
-                </Button>
-                <Button
-                  onClick={clearLocalStorageAndReconfigure}
-                  variant="outline"
-                  className="border-red-600 text-red-400 hover:bg-red-600/20"
-                  size="sm"
-                >
-                  <AlertCircle className="mr-2 h-3 w-3" />
-                  Wyczyść i Skonfiguruj
-                </Button>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
 
         {/* Header with Quick Stats */}
         <div className="space-y-6">
