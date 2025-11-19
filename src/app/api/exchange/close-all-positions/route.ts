@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/db";
 import { botPositions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -183,9 +183,13 @@ export async function POST(req: NextRequest) {
                   closeReason: "manual_close_all",
                   closedAt: new Date().toISOString()
                 })
-                .where(eq(botPositions.symbol, symbol))
-                .where(eq(botPositions.side, side))
-                .where(eq(botPositions.status, "open"));
+                .where(
+                  and(
+                    eq(botPositions.symbol, symbol),
+                    eq(botPositions.side, side),
+                    eq(botPositions.status, "open")
+                  )
+                );
             } catch (dbError) {
               console.error(`   ⚠️ Failed to update DB for ${symbol}:`, dbError);
             }
