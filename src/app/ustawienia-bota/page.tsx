@@ -261,7 +261,7 @@ export default function BotSettingsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-8">
         <div className="max-w-4xl mx-auto">
-          <p className="text-gray-300">Ładowanie...</p>
+          <p className="text-gray-200">Ładowanie...</p>
         </div>
       </div>
     )
@@ -281,10 +281,10 @@ export default function BotSettingsPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Ustawienia Bota
               </h1>
-              <p className="text-gray-300">Konfiguracja automatycznego tradingu</p>
+              <p className="text-gray-200">Konfiguracja automatycznego tradingu</p>
             </div>
           </div>
-          <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
             {saving ? "Zapisywanie..." : "Zapisz Ustawienia"}
           </Button>
         </div>
@@ -293,7 +293,7 @@ export default function BotSettingsPage() {
         {validationWarnings.length > 0 && (
           <Alert className="border-yellow-700 bg-yellow-900/20">
             <AlertTriangle className="h-4 w-4 text-yellow-500" />
-            <AlertDescription className="text-sm text-yellow-400">
+            <AlertDescription className="text-sm text-yellow-300">
               <div className="space-y-1">
                 {validationWarnings.map((warning, idx) => (
                   <p key={idx}>{warning}</p>
@@ -321,7 +321,7 @@ export default function BotSettingsPage() {
                 <h3 className="text-2xl font-bold text-white mb-1">
                   Status Bota: {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
                 </h3>
-                <p className={`text-sm font-medium ${botEnabled ? "text-green-400" : "text-red-400"}`}>
+                <p className={`text-sm font-medium ${botEnabled ? "text-green-300" : "text-red-300"}`}>
                   {botEnabled 
                     ? "Bot aktywnie monitoruje i otwiera pozycje na podstawie alertów" 
                     : "Bot nie będzie otwierał nowych pozycji"}
@@ -334,7 +334,7 @@ export default function BotSettingsPage() {
                 onCheckedChange={handleToggleBot}
                 className="scale-150"
               />
-              <span className="text-xs text-gray-400">Kliknij aby {botEnabled ? "wyłączyć" : "włączyć"}</span>
+              <span className="text-xs text-gray-300">Kliknij aby {botEnabled ? "wyłączyć" : "włączyć"}</span>
             </div>
           </div>
         </Card>
@@ -349,14 +349,14 @@ export default function BotSettingsPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-white">Podgląd Obecnych Ustawień</h3>
-                  <p className="text-sm text-gray-300">Aktywna konfiguracja bota</p>
+                  <p className="text-sm text-gray-200">Aktywna konfiguracja bota</p>
                 </div>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowPreview(!showPreview)}
-                className="text-gray-300 hover:text-white"
+                className="text-gray-200 hover:text-white"
               >
                 {showPreview ? "Zwiń" : "Rozwiń"}
               </Button>
@@ -372,13 +372,13 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 pl-7">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Tryb</p>
+                      <p className="text-xs text-gray-300 mb-1">Tryb</p>
                       <p className="text-white font-semibold">
                         {positionSizeMode === "percent" ? "Procent Kapitału" : "Stała Kwota USDT"}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Wartość</p>
+                      <p className="text-xs text-gray-300 mb-1">Wartość</p>
                       <p className="text-white font-semibold">
                         {positionSizeMode === "percent" 
                           ? `${positionSizePercent}% kapitału` 
@@ -398,14 +398,14 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 pl-7">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Tryb</p>
+                      <p className="text-xs text-gray-300 mb-1">Tryb</p>
                       <p className="text-white font-semibold">
                         {leverageMode === "from_alert" ? "Z Alertu (Dynamiczna)" : "Stała Wartość"}
                       </p>
                     </div>
                     {leverageMode === "fixed" && (
                       <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                        <p className="text-xs text-gray-400 mb-1">Wartość</p>
+                        <p className="text-xs text-gray-300 mb-1">Wartość</p>
                         <p className="text-white font-semibold">{leverageFixed}x</p>
                       </div>
                     )}
@@ -422,14 +422,14 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="pl-7 space-y-3">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Tryb</p>
+                      <p className="text-xs text-gray-300 mb-1">Tryb</p>
                       <p className="text-white font-semibold">
                         {tierFilteringMode === "all" ? "Wszystkie Tiery" : "Wybrane Tiery"}
                       </p>
                     </div>
                     {tierFilteringMode === "custom" && disabledTiers.length > 0 && (
                       <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                        <p className="text-xs text-gray-400 mb-2">Wyłączone tiery</p>
+                        <p className="text-xs text-gray-300 mb-2">Wyłączone tiery</p>
                         <div className="flex flex-wrap gap-2">
                           {disabledTiers.map((tier) => (
                             <Badge key={tier} variant="destructive" className="text-xs">
@@ -452,29 +452,29 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="pl-7 space-y-3">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Liczba poziomów TP</p>
+                      <p className="text-xs text-gray-300 mb-1">Liczba poziomów TP</p>
                       <p className="text-white font-semibold">{tpCount} TP</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                        <p className="text-xs text-gray-400 mb-1">TP1</p>
+                        <p className="text-xs text-gray-300 mb-1">TP1</p>
                         <p className="text-green-400 font-semibold">{tp1RR}% RR → Zamknij {tp1Percent}%</p>
                       </div>
                       {tpCount >= 2 && (
                         <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                          <p className="text-xs text-gray-400 mb-1">TP2</p>
+                          <p className="text-xs text-gray-300 mb-1">TP2</p>
                           <p className="text-green-400 font-semibold">{tp2RR}% RR → Zamknij {tp2Percent}%</p>
                         </div>
                       )}
                       {tpCount >= 3 && (
                         <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50 col-span-2">
-                          <p className="text-xs text-gray-400 mb-1">TP3</p>
+                          <p className="text-xs text-gray-300 mb-1">TP3</p>
                           <p className="text-green-400 font-semibold">{tp3RR}% RR → Zamknij {tp3Percent}%</p>
                         </div>
                       )}
                     </div>
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Zarządzanie SL po TP1</p>
+                      <p className="text-xs text-gray-300 mb-1">Zarządzanie SL po TP1</p>
                       <p className="text-white font-semibold text-xs">
                         {slManagementAfterTp1 === "breakeven" && "🎯 Break-even (przesuń SL na entry)"}
                         {slManagementAfterTp1 === "trailing" && `📈 Trailing Stop (${slTrailingDistance}% dystans)`}
@@ -494,16 +494,16 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="pl-7 space-y-3">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Status</p>
+                      <p className="text-xs text-gray-300 mb-1">Status</p>
                       <p className="text-white font-semibold">
                         {useDefaultSlTp ? "Włączone ✅" : "Wyłączone ❌"}
                       </p>
                     </div>
                     {useDefaultSlTp && (
                       <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                        <p className="text-xs text-gray-400 mb-1">Domyślny SL</p>
+                        <p className="text-xs text-gray-300 mb-1">Domyślny SL</p>
                         <p className="text-red-400 font-semibold">{defaultSlRR}% RR</p>
-                        <p className="text-xs text-gray-400 mt-2">TP używa wartości z sekcji zaawansowanej powyżej</p>
+                        <p className="text-xs text-gray-300 mt-2">TP używa wartości z sekcji zaawansowanej powyżej</p>
                       </div>
                     )}
                   </div>
@@ -519,11 +519,11 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 pl-7">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Max pozycji jednocześnie</p>
+                      <p className="text-xs text-gray-300 mb-1">Max pozycji jednocześnie</p>
                       <p className="text-white font-semibold">{maxConcurrentPositions}</p>
                     </div>
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Ten sam symbol</p>
+                      <p className="text-xs text-gray-300 mb-1">Ten sam symbol</p>
                       <p className="text-white font-semibold text-xs">
                         {sameSymbolBehavior === "ignore" && "Ignoruj nowy alert"}
                         {sameSymbolBehavior === "track_confirmations" && "Śledź potwierdzenia"}
@@ -532,7 +532,7 @@ export default function BotSettingsPage() {
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50 col-span-2">
-                      <p className="text-xs text-gray-400 mb-1">Przeciwny kierunek</p>
+                      <p className="text-xs text-gray-300 mb-1">Przeciwny kierunek</p>
                       <p className="text-white font-semibold text-xs">
                         {oppositeDirectionStrategy === "market_reversal" && "Market reversal (zamknij + otwórz nową)"}
                         {oppositeDirectionStrategy === "immediate_reverse" && "Natychmiastowe odwrócenie"}
@@ -554,7 +554,7 @@ export default function BotSettingsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 pl-7">
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Tryb nadpisania</p>
+                      <p className="text-xs text-gray-300 mb-1">Tryb nadpisania</p>
                       <p className="text-white font-semibold text-xs">
                         {emergencyOverrideMode === "never" && "Nigdy"}
                         {emergencyOverrideMode === "always" && "Zawsze"}
@@ -563,7 +563,7 @@ export default function BotSettingsPage() {
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700/50">
-                      <p className="text-xs text-gray-400 mb-1">Odwrócenie Emergency</p>
+                      <p className="text-xs text-gray-300 mb-1">Odwrócenie Emergency</p>
                       <p className="text-white font-semibold">
                         {emergencyCanReverse ? "Dozwolone ✅" : "Zablokowane ❌"}
                       </p>
@@ -580,9 +580,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Wielkość Pozycji</h3>
           
           <div className="space-y-2">
-            <Label className="text-white">Tryb</Label>
+            <Label className="text-gray-200">Tryb</Label>
             <Select value={positionSizeMode} onValueChange={setPositionSizeMode}>
-              <SelectTrigger className="text-white">
+              <SelectTrigger className="text-gray-200 bg-gray-800 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -594,25 +594,25 @@ export default function BotSettingsPage() {
 
           {positionSizeMode === "percent" && (
             <div className="space-y-2">
-              <Label className="text-white">Procent kapitału (%)</Label>
+              <Label className="text-gray-200">Procent kapitału (%)</Label>
               <Input 
                 type="number" 
                 value={positionSizePercent} 
                 onChange={(e) => setPositionSizePercent(parseFloat(e.target.value))}
                 step="0.1"
-                className="text-white"
+                className="text-gray-200 bg-gray-800 border-gray-700"
               />
             </div>
           )}
 
           {positionSizeMode === "fixed_amount" && (
             <div className="space-y-2">
-              <Label className="text-white">Stała kwota (USDT)</Label>
+              <Label className="text-gray-200">Stała kwota (USDT)</Label>
               <Input 
                 type="number" 
                 value={positionSizeFixed} 
                 onChange={(e) => setPositionSizeFixed(parseFloat(e.target.value))}
-                className="text-white"
+                className="text-gray-200 bg-gray-800 border-gray-700"
               />
             </div>
           )}
@@ -623,9 +623,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Dźwignia (Leverage)</h3>
           
           <div className="space-y-2">
-            <Label className="text-white">Tryb</Label>
+            <Label className="text-gray-200">Tryb</Label>
             <Select value={leverageMode} onValueChange={setLeverageMode}>
-              <SelectTrigger className="text-white">
+              <SelectTrigger className="text-gray-200 bg-gray-800 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -637,14 +637,14 @@ export default function BotSettingsPage() {
 
           {leverageMode === "fixed" && (
             <div className="space-y-2">
-              <Label className="text-white">Stała dźwignia (x)</Label>
+              <Label className="text-gray-200">Stała dźwignia (x)</Label>
               <Input 
                 type="number" 
                 value={leverageFixed} 
                 onChange={(e) => setLeverageFixed(parseInt(e.target.value))}
                 min="1"
                 max="125"
-                className="text-white"
+                className="text-gray-200 bg-gray-800 border-gray-700"
               />
             </div>
           )}
@@ -655,9 +655,9 @@ export default function BotSettingsPage() {
           <h3 className="text-lg font-semibold text-white">Filtrowanie Tier</h3>
           
           <div className="space-y-2">
-            <Label className="text-white">Tryb</Label>
+            <Label className="text-gray-200">Tryb</Label>
             <Select value={tierFilteringMode} onValueChange={setTierFilteringMode}>
-              <SelectTrigger className="text-white">
+              <SelectTrigger className="text-gray-200 bg-gray-800 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -669,7 +669,7 @@ export default function BotSettingsPage() {
 
           {tierFilteringMode === "custom" && (
             <div className="space-y-2">
-              <Label className="text-white">Wyłączone tiery (kliknij aby zaznaczyć)</Label>
+              <Label className="text-gray-200">Wyłączone tiery (kliknij aby zaznaczyć)</Label>
               <div className="flex flex-wrap gap-2">
                 {["Platinum", "Premium", "Standard", "Quick", "Emergency"].map((tier) => (
                   <Button
@@ -677,7 +677,7 @@ export default function BotSettingsPage() {
                     variant={disabledTiers.includes(tier) ? "destructive" : "outline"}
                     size="sm"
                     onClick={() => toggleTier(tier)}
-                    className={disabledTiers.includes(tier) ? "" : "text-white"}
+                    className={disabledTiers.includes(tier) ? "" : "text-gray-200 border-gray-700"}
                   >
                     {tier}
                   </Button>
@@ -692,7 +692,7 @@ export default function BotSettingsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h3>
-              <p className="text-sm text-gray-300">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
+              <p className="text-sm text-gray-200">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
             </div>
             <Switch checked={useDefaultSlTp} onCheckedChange={setUseDefaultSlTp} />
           </div>
@@ -701,20 +701,20 @@ export default function BotSettingsPage() {
             <>
               <Separator className="bg-gray-700" />
               <div className="space-y-2">
-                <Label className="text-white">Domyślny SL (% RR)</Label>
+                <Label className="text-gray-200">Domyślny SL (% RR)</Label>
                 <Input 
                   type="number" 
                   value={defaultSlRR} 
                   onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
                   step="0.1"
                   min="0.1"
-                  className="text-white"
+                  className="text-gray-200 bg-gray-800 border-gray-700"
                 />
-                <p className="text-xs text-gray-400">Procent od ceny entry dla Stop Loss</p>
+                <p className="text-xs text-gray-300">Procent od ceny entry dla Stop Loss</p>
               </div>
 
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <p className="text-sm text-blue-300">
+                <p className="text-sm text-blue-200">
                   <strong>Uwaga:</strong> Wartości Take Profit są konfigurowane w sekcji "Strategia Take Profit (Zaawansowana)" poniżej.
                 </p>
               </div>
@@ -731,7 +731,7 @@ export default function BotSettingsPage() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">Adaptive Risk/Reward</h3>
-                <p className="text-sm text-gray-300">Dynamiczne dostosowanie TP/SL na podstawie siły sygnału</p>
+                <p className="text-sm text-gray-200">Dynamiczne dostosowanie TP/SL na podstawie siły sygnału</p>
               </div>
             </div>
             <Switch checked={adaptiveRR} onCheckedChange={setAdaptiveRR} />
@@ -743,7 +743,7 @@ export default function BotSettingsPage() {
               
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Zap className="h-4 w-4 text-yellow-400" />
                     Mnożnik Adaptacyjny (0.5 - 2.0)
                   </Label>
@@ -754,15 +754,15 @@ export default function BotSettingsPage() {
                     step="0.1"
                     min="0.5"
                     max="2.0"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-300">
                     Jak mocno dostosować R:R. Wyższe wartości = bardziej agresywne TP dla silnych sygnałów
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Target className="h-4 w-4 text-yellow-400" />
                     Minimalna Siła Sygnału (0.0 - 1.0)
                   </Label>
@@ -773,27 +773,27 @@ export default function BotSettingsPage() {
                     step="0.01"
                     min="0"
                     max="1"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-300">
                     Minimalna siła alertu wymagana do aktywacji Adaptive R:R (np. 0.5 = tylko sygnały ≥ 50% siły)
                   </p>
                 </div>
 
                 <div className="bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-500/30 rounded-lg p-4">
                   <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład działania Adaptive R:R:</h5>
-                  <div className="space-y-2 text-xs text-gray-300">
+                  <div className="space-y-2 text-xs text-gray-200">
                     <div className="p-2 bg-gray-900/60 rounded">
-                      <strong className="text-yellow-400">Słaby sygnał (strength = 0.3):</strong> Poniżej progu {adaptiveStrengthThreshold} → Używa standardowego R:R
+                      <strong className="text-yellow-300">Słaby sygnał (strength = 0.3):</strong> Poniżej progu {adaptiveStrengthThreshold} → Używa standardowego R:R
                     </div>
                     <div className="p-2 bg-gray-900/60 rounded">
-                      <strong className="text-yellow-400">Średni sygnał (strength = 0.6):</strong><br/>
+                      <strong className="text-yellow-300">Średni sygnał (strength = 0.6):</strong><br/>
                       Factor = {adaptiveMultiplier} × 0.6 = {(adaptiveMultiplier * 0.6).toFixed(2)}<br/>
                       TP1: {tp1RR}% → {(tp1RR * adaptiveMultiplier * 0.6).toFixed(2)}%<br/>
                       SL: {defaultSlRR}% → {(defaultSlRR / (adaptiveMultiplier * 0.6)).toFixed(2)}% (węziej)
                     </div>
                     <div className="p-2 bg-gray-900/60 rounded">
-                      <strong className="text-yellow-400">Silny sygnał (strength = 0.9):</strong><br/>
+                      <strong className="text-yellow-300">Silny sygnał (strength = 0.9):</strong><br/>
                       Factor = {adaptiveMultiplier} × 0.9 = {(adaptiveMultiplier * 0.9).toFixed(2)}<br/>
                       TP1: {tp1RR}% → {(tp1RR * adaptiveMultiplier * 0.9).toFixed(2)}%<br/>
                       SL: {defaultSlRR}% → {(defaultSlRR / (adaptiveMultiplier * 0.9)).toFixed(2)}% (znacznie węziej)
@@ -814,7 +814,7 @@ export default function BotSettingsPage() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">Stop Loss jako % Margin</h3>
-                <p className="text-sm text-gray-300">Oblicz SL na podstawie maksymalnej straty margin zamiast % od entry</p>
+                <p className="text-sm text-gray-200">Oblicz SL na podstawie maksymalnej straty margin zamiast % od entry</p>
               </div>
             </div>
             <Switch checked={slAsMarginPercent} onCheckedChange={setSlAsMarginPercent} />
@@ -826,7 +826,7 @@ export default function BotSettingsPage() {
               
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Percent className="h-4 w-4 text-red-400" />
                     Maksymalne ryzyko (% od initial margin)
                   </Label>
@@ -837,39 +837,39 @@ export default function BotSettingsPage() {
                     step="0.1"
                     min="0.1"
                     max="10"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-300">
                     Ile % margin jesteś w stanie poświęcić na SL (np. 2.0 = maksymalnie 2% straty od margin)
                   </p>
                 </div>
 
                 <div className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-lg p-4">
                   <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład kalkulacji SL jako % margin:</h5>
-                  <div className="space-y-3 text-xs text-gray-300">
+                  <div className="space-y-3 text-xs text-gray-200">
                     <div className="p-3 bg-gray-900/60 rounded">
                       <div className="grid grid-cols-2 gap-2 mb-2">
-                        <span className="text-gray-400">Position size:</span>
+                        <span className="text-gray-300">Position size:</span>
                         <span className="text-white font-semibold">${positionSizeFixed}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-2">
-                        <span className="text-gray-400">Leverage:</span>
+                        <span className="text-gray-300">Leverage:</span>
                         <span className="text-white font-semibold">{leverageMode === "fixed" ? `${leverageFixed}x` : "10x (przykład)"}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-2 pb-2 border-b border-gray-700">
-                        <span className="text-gray-400">Initial margin:</span>
+                        <span className="text-gray-300">Initial margin:</span>
                         <span className="text-white font-semibold">
                           ${(positionSizeFixed / (leverageMode === "fixed" ? leverageFixed : 10)).toFixed(2)}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 pt-2">
-                        <span className="text-red-400 font-semibold">Max loss ({slMarginRiskPercent}%):</span>
-                        <span className="text-red-400 font-semibold">
+                        <span className="text-red-300 font-semibold">Max loss ({slMarginRiskPercent}%):</span>
+                        <span className="text-red-300 font-semibold">
                           ${((positionSizeFixed / (leverageMode === "fixed" ? leverageFixed : 10)) * (slMarginRiskPercent / 100)).toFixed(2)}
                         </span>
                       </div>
                     </div>
-                    <div className="text-xs text-blue-300 bg-blue-900/20 p-2 rounded border border-blue-500/20">
+                    <div className="text-xs text-blue-200 bg-blue-900/20 p-2 rounded border border-blue-500/20">
                       💡 <strong>Różnica:</strong> Standardowy SL to % od entry price. SL jako % margin to % od zainwestowanego kapitału (margin).
                     </div>
                   </div>
@@ -887,15 +887,15 @@ export default function BotSettingsPage() {
             </div>
             <div>
               <h3 className="text-xl font-bold text-white">Strategia Take Profit (Zaawansowana)</h3>
-              <p className="text-sm text-gray-300">Elastyczne zarządzanie wielopoziomowymi TP i Stop Loss</p>
+              <p className="text-sm text-gray-200">Elastyczne zarządzanie wielopoziomowymi TP i Stop Loss</p>
             </div>
           </div>
 
           {/* ✅ NEW: TP Mode Selection */}
           <div className="space-y-3 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
-            <Label className="text-white text-base font-semibold">Tryb obliczania Take Profit</Label>
+            <Label className="text-gray-200 text-base font-semibold">Tryb obliczania Take Profit</Label>
             <Select value={tpMode} onValueChange={(v: "percent" | "rr") => setTpMode(v)}>
-              <SelectTrigger className="text-white bg-gray-800/60 border-gray-700">
+              <SelectTrigger className="text-gray-200 bg-gray-800/60 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -903,7 +903,7 @@ export default function BotSettingsPage() {
                 <SelectItem value="rr">R:R od Entry (np. 2:1 reward/risk ratio)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-300">
               {tpMode === "percent" 
                 ? "TP będzie obliczany jako % powyżej/poniżej ceny entry" 
                 : "TP będzie obliczany na podstawie R:R (reward:risk ratio) względem SL"}
@@ -911,9 +911,9 @@ export default function BotSettingsPage() {
           </div>
 
           <div className="space-y-3">
-            <Label className="text-white text-base font-semibold">Liczba poziomów Take Profit</Label>
+            <Label className="text-gray-200 text-base font-semibold">Liczba poziomów Take Profit</Label>
             <Select value={tpCount.toString()} onValueChange={(v) => setTpCount(parseInt(v))}>
-              <SelectTrigger className="text-white bg-gray-800/60 border-gray-700">
+              <SelectTrigger className="text-gray-200 bg-gray-800/60 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -934,7 +934,7 @@ export default function BotSettingsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-white flex items-center gap-2">
+                <Label className="text-gray-200 flex items-center gap-2">
                   <Target className="h-4 w-4 text-green-400" />
                   {tpMode === "percent" ? "% od Entry" : "R:R ratio"}
                 </Label>
@@ -944,14 +944,14 @@ export default function BotSettingsPage() {
                   onChange={(e) => setTp1RR(parseFloat(e.target.value))}
                   step="0.1"
                   min="0.1"
-                  className="text-white bg-gray-900/60"
+                  className="text-gray-200 bg-gray-900/60 border-gray-700"
                 />
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-gray-300">
                   {tpMode === "percent" ? "np. 1.5 = 1.5% powyżej entry" : "np. 2.0 = 2:1 reward/risk"}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label className="text-white flex items-center gap-2">
+                <Label className="text-gray-200 flex items-center gap-2">
                   <Percent className="h-4 w-4 text-blue-400" />
                   % Pozycji do zamknięcia
                 </Label>
@@ -962,7 +962,7 @@ export default function BotSettingsPage() {
                   step="1"
                   min="1"
                   max="100"
-                  className="text-white bg-gray-900/60"
+                  className="text-gray-200 bg-gray-900/60 border-gray-700"
                 />
               </div>
             </div>
@@ -977,7 +977,7 @@ export default function BotSettingsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Target className="h-4 w-4 text-amber-400" />
                     {tpMode === "percent" ? "% od Entry" : "R:R ratio"}
                   </Label>
@@ -987,11 +987,11 @@ export default function BotSettingsPage() {
                     onChange={(e) => setTp2RR(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Percent className="h-4 w-4 text-blue-400" />
                     % Pozycji do zamknięcia
                   </Label>
@@ -1002,7 +1002,7 @@ export default function BotSettingsPage() {
                     step="1"
                     min="1"
                     max="100"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
                 </div>
               </div>
@@ -1018,7 +1018,7 @@ export default function BotSettingsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Target className="h-4 w-4 text-purple-400" />
                     {tpMode === "percent" ? "% od Entry" : "R:R ratio"}
                   </Label>
@@ -1028,11 +1028,11 @@ export default function BotSettingsPage() {
                     onChange={(e) => setTp3RR(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-white flex items-center gap-2">
+                  <Label className="text-gray-200 flex items-center gap-2">
                     <Percent className="h-4 w-4 text-blue-400" />
                     % Pozycji do zamknięcia
                   </Label>
@@ -1043,7 +1043,7 @@ export default function BotSettingsPage() {
                     step="1"
                     min="1"
                     max="100"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
                 </div>
               </div>
@@ -1059,9 +1059,9 @@ export default function BotSettingsPage() {
             </div>
             <div className="space-y-3">
               <div className="space-y-2">
-                <Label className="text-white">Strategia SL</Label>
+                <Label className="text-gray-200">Strategia SL</Label>
                 <Select value={slManagementAfterTp1} onValueChange={setSlManagementAfterTp1}>
-                  <SelectTrigger className="text-white bg-gray-800/60 border-gray-700">
+                  <SelectTrigger className="text-gray-200 bg-gray-800/60 border-gray-700">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1074,14 +1074,14 @@ export default function BotSettingsPage() {
 
               {slManagementAfterTp1 === "trailing" && (
                 <div className="space-y-2 ml-4 p-3 bg-gray-800/40 rounded-lg border border-gray-700/50">
-                  <Label className="text-white">Odległość Trailing Stop (%)</Label>
+                  <Label className="text-gray-200">Odległość Trailing Stop (%)</Label>
                   <Input 
                     type="number" 
                     value={slTrailingDistance} 
                     onChange={(e) => setSlTrailingDistance(parseFloat(e.target.value))}
                     step="0.1"
                     min="0.1"
-                    className="text-white bg-gray-900/60"
+                    className="text-gray-200 bg-gray-900/60 border-gray-700"
                   />
                 </div>
               )}
@@ -1092,25 +1092,25 @@ export default function BotSettingsPage() {
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Maksymalna Liczba Pozycji</h3>
           <div className="space-y-2">
-            <Label className="text-white">Max otwartych pozycji jednocześnie</Label>
+            <Label className="text-gray-200">Max otwartych pozycji jednocześnie</Label>
             <Input 
               type="number" 
               value={maxConcurrentPositions} 
               onChange={(e) => setMaxConcurrentPositions(parseInt(e.target.value))}
               min="1"
-              className="text-white"
+              className="text-gray-200 bg-gray-800 border-gray-700"
             />
           </div>
         </Card>
 
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Zachowanie dla Tego Samego Symbolu</h3>
-          <p className="text-sm text-gray-300">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
+          <p className="text-sm text-gray-200">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
           
           <div className="space-y-2">
-            <Label className="text-white">Strategia</Label>
+            <Label className="text-gray-200">Strategia</Label>
             <Select value={sameSymbolBehavior} onValueChange={setSameSymbolBehavior}>
-              <SelectTrigger className="text-white">
+              <SelectTrigger className="text-gray-200 bg-gray-800 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1125,12 +1125,12 @@ export default function BotSettingsPage() {
 
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Strategia dla Przeciwnego Kierunku</h3>
-          <p className="text-sm text-gray-300">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
+          <p className="text-sm text-gray-200">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
           
           <div className="space-y-2">
-            <Label className="text-white">Strategia</Label>
+            <Label className="text-gray-200">Strategia</Label>
             <Select value={oppositeDirectionStrategy} onValueChange={setOppositeDirectionStrategy}>
-              <SelectTrigger className="text-white">
+              <SelectTrigger className="text-gray-200 bg-gray-800 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1146,18 +1146,18 @@ export default function BotSettingsPage() {
           {["market_reversal", "tier_based"].includes(oppositeDirectionStrategy) && (
             <>
               <div className="space-y-2">
-                <Label className="text-white">Odczekaj barów przed odwróceniem</Label>
+                <Label className="text-gray-200">Odczekaj barów przed odwróceniem</Label>
                 <Input 
                   type="number" 
                   value={reversalWaitBars} 
                   onChange={(e) => setReversalWaitBars(parseInt(e.target.value))}
                   min="0"
-                  className="text-white"
+                  className="text-gray-200 bg-gray-800 border-gray-700"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-white">Minimalna siła dla odwrócenia (0.0-1.0)</Label>
+                <Label className="text-gray-200">Minimalna siła dla odwrócenia (0.0-1.0)</Label>
                 <Input 
                   type="number" 
                   value={reversalMinStrength} 
@@ -1165,7 +1165,7 @@ export default function BotSettingsPage() {
                   step="0.01"
                   min="0"
                   max="1"
-                  className="text-white"
+                  className="text-gray-200 bg-gray-800 border-gray-700"
                 />
               </div>
             </>
@@ -1173,18 +1173,18 @@ export default function BotSettingsPage() {
 
           <div className="flex items-center space-x-2">
             <Switch checked={emergencyCanReverse} onCheckedChange={setEmergencyCanReverse} />
-            <Label className="text-white">Pozwól Emergency na odwrócenie</Label>
+            <Label className="text-gray-200">Pozwól Emergency na odwrócenie</Label>
           </div>
         </Card>
 
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Emergency Override</h3>
-          <p className="text-sm text-gray-300">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
+          <p className="text-sm text-gray-200">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
           
           <div className="space-y-2">
-            <Label className="text-white">Tryb</Label>
+            <Label className="text-gray-200">Tryb</Label>
             <Select value={emergencyOverrideMode} onValueChange={setEmergencyOverrideMode}>
-              <SelectTrigger className="text-white">
+              <SelectTrigger className="text-gray-200 bg-gray-800 border-gray-700">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1198,20 +1198,20 @@ export default function BotSettingsPage() {
 
           {emergencyOverrideMode === "profit_above_x" && (
             <div className="space-y-2">
-              <Label className="text-white">Minimalny procent zysku (%)</Label>
+              <Label className="text-gray-200">Minimalny procent zysku (%)</Label>
               <Input 
                 type="number" 
                 value={emergencyMinProfitPercent} 
                 onChange={(e) => setEmergencyMinProfitPercent(parseFloat(e.target.value))}
                 step="0.1"
-                className="text-white"
+                className="text-gray-200 bg-gray-800 border-gray-700"
               />
             </div>
           )}
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving} size="lg" className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={handleSave} disabled={saving} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
             {saving ? "Zapisywanie..." : "Zapisz Wszystkie Ustawienia"}
           </Button>
         </div>

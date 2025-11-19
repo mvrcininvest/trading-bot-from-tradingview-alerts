@@ -132,12 +132,12 @@ export default function BotHistoryPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Historia Bota
               </h1>
-              <p className="text-gray-300">
+              <p className="text-gray-200">
                 Zamknięte pozycje i działania bota tradingowego
               </p>
             </div>
           </div>
-          <Button onClick={fetchHistory} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={fetchHistory} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
             <History className="mr-2 h-4 w-4" />
             Odśwież
           </Button>
@@ -147,14 +147,14 @@ export default function BotHistoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-400">Łącznie Transakcji</CardDescription>
+              <CardDescription className="text-gray-300">Łącznie Transakcji</CardDescription>
               <CardTitle className="text-3xl text-white">{stats.totalTrades}</CardTitle>
             </CardHeader>
           </Card>
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-400">Zyskowne</CardDescription>
+              <CardDescription className="text-gray-300">Zyskowne</CardDescription>
               <CardTitle className="text-3xl text-green-400 flex items-center gap-2">
                 <TrendingUp className="h-6 w-6" />
                 {stats.profitable}
@@ -164,7 +164,7 @@ export default function BotHistoryPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-400">Stratne</CardDescription>
+              <CardDescription className="text-gray-300">Stratne</CardDescription>
               <CardTitle className="text-3xl text-red-400 flex items-center gap-2">
                 <TrendingDown className="h-6 w-6" />
                 {stats.losses}
@@ -174,14 +174,14 @@ export default function BotHistoryPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-400">Win Rate</CardDescription>
+              <CardDescription className="text-gray-300">Win Rate</CardDescription>
               <CardTitle className="text-3xl text-white">{stats.winRate.toFixed(1)}%</CardTitle>
             </CardHeader>
           </Card>
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-400">Łączny PnL</CardDescription>
+              <CardDescription className="text-gray-300">Łączny PnL</CardDescription>
               <CardTitle
                 className={`text-3xl ${stats.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}
               >
@@ -207,7 +207,7 @@ export default function BotHistoryPage() {
                   setFilter("all");
                   setCloseReasonFilter("all");
                 }}
-                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300"
+                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
               >
                 Wyczyść Filtry
               </Button>
@@ -216,9 +216,9 @@ export default function BotHistoryPage() {
           <CardContent>
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-300">Typ Wyniku</label>
+                <label className="text-sm font-medium mb-2 block text-gray-200">Typ Wyniku</label>
                 <Select value={filter} onValueChange={(v) => setFilter(v as any)}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -230,9 +230,9 @@ export default function BotHistoryPage() {
               </div>
 
               <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-300">Powód Zamknięcia</label>
+                <label className="text-sm font-medium mb-2 block text-gray-200">Powód Zamknięcia</label>
                 <Select value={closeReasonFilter} onValueChange={setCloseReasonFilter}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -255,9 +255,9 @@ export default function BotHistoryPage() {
             <CardTitle className="flex items-center gap-2 text-white">
               <Activity className="h-5 w-5" />
               Zamknięte Pozycje
-              <Badge variant="secondary" className="bg-gray-700 text-gray-300">{filteredPositions.length}</Badge>
+              <Badge variant="secondary" className="bg-gray-700 text-gray-200">{filteredPositions.length}</Badge>
             </CardTitle>
-            <CardDescription className="text-gray-400">
+            <CardDescription className="text-gray-300">
               Historia wszystkich zamkniętych pozycji bota
             </CardDescription>
           </CardHeader>
@@ -265,14 +265,14 @@ export default function BotHistoryPage() {
             {loading && (
               <div className="text-center py-8">
                 <Activity className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                <p className="text-sm text-gray-400">Ładowanie historii...</p>
+                <p className="text-sm text-gray-300">Ładowanie historii...</p>
               </div>
             )}
 
             {!loading && filteredPositions.length === 0 && (
               <div className="text-center py-8">
                 <History className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-gray-300">
                   Brak zamkniętych pozycji spełniających kryteria filtrowania.
                 </p>
               </div>
@@ -286,11 +286,11 @@ export default function BotHistoryPage() {
 
                   // Tier colors
                   const tierColors: Record<string, string> = {
-                    Platinum: "bg-purple-500/10 text-purple-400 border-purple-500/50",
-                    Premium: "bg-blue-500/10 text-blue-400 border-blue-500/50",
-                    Standard: "bg-green-500/10 text-green-400 border-green-500/50",
-                    Quick: "bg-orange-500/10 text-orange-400 border-orange-500/50",
-                    Emergency: "bg-red-500/10 text-red-400 border-red-500/50",
+                    Platinum: "bg-purple-500/10 text-purple-300 border-purple-500/50",
+                    Premium: "bg-blue-500/10 text-blue-300 border-blue-500/50",
+                    Standard: "bg-green-500/10 text-green-300 border-green-500/50",
+                    Quick: "bg-orange-500/10 text-orange-300 border-orange-500/50",
+                    Emergency: "bg-red-500/10 text-red-300 border-red-500/50",
                   };
 
                   return (
@@ -320,7 +320,7 @@ export default function BotHistoryPage() {
                               {position.side === "BUY" ? "LONG" : "SHORT"} {position.leverage}x
                             </Badge>
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-gray-200">
                             {closeReasonLabels[position.closeReason] || position.closeReason}
                           </div>
                         </div>
@@ -375,19 +375,19 @@ export default function BotHistoryPage() {
                         <span className="text-gray-300">Take Profit:</span>
                         <Badge
                           variant={position.tp1Hit ? "default" : "outline"}
-                          className={position.tp1Hit ? "bg-green-500" : "border-gray-600 text-gray-400"}
+                          className={position.tp1Hit ? "bg-green-500" : "border-gray-600 text-gray-300"}
                         >
                           TP1 {position.tp1Hit ? "✓" : "✗"}
                         </Badge>
                         <Badge
                           variant={position.tp2Hit ? "default" : "outline"}
-                          className={position.tp2Hit ? "bg-green-500" : "border-gray-600 text-gray-400"}
+                          className={position.tp2Hit ? "bg-green-500" : "border-gray-600 text-gray-300"}
                         >
                           TP2 {position.tp2Hit ? "✓" : "✗"}
                         </Badge>
                         <Badge
                           variant={position.tp3Hit ? "default" : "outline"}
-                          className={position.tp3Hit ? "bg-green-500" : "border-gray-600 text-gray-400"}
+                          className={position.tp3Hit ? "bg-green-500" : "border-gray-600 text-gray-300"}
                         >
                           TP3 {position.tp3Hit ? "✓" : "✗"}
                         </Badge>

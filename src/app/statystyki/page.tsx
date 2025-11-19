@@ -335,7 +335,7 @@ export default function StatystykiPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-400" />
-          <p className="text-gray-300">Ładowanie statystyk...</p>
+          <p className="text-gray-200">Ładowanie statystyk...</p>
         </div>
       </div>
     );
@@ -354,7 +354,7 @@ export default function StatystykiPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Statystyki Bota
               </h1>
-              <p className="text-sm text-gray-300">Kompleksowa analiza wydajności tradingowej</p>
+              <p className="text-sm text-gray-200">Kompleksowa analiza wydajności tradingowej</p>
             </div>
           </div>
           <Button
@@ -376,12 +376,12 @@ export default function StatystykiPage() {
                   <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/30">
                     <BarChart3 className="h-5 w-5 text-blue-400" />
                   </div>
-                  <Badge variant="outline" className="text-xs text-gray-300">
+                  <Badge variant="outline" className="text-xs text-gray-200">
                     Wszystkie trady
                   </Badge>
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">{stats.totalTrades}</p>
-                <p className="text-sm text-gray-300">Łączna liczba pozycji</p>
+                <p className="text-sm text-gray-200">Łączna liczba pozycji</p>
                 <div className="mt-3 flex items-center gap-2 text-xs">
                   <span className="text-green-400">✓ {stats.winningTrades} Win</span>
                   <span className="text-red-400">✗ {stats.losingTrades} Loss</span>
@@ -395,12 +395,12 @@ export default function StatystykiPage() {
                   <div className="p-2 rounded-lg bg-green-500/20 border border-green-500/30">
                     <Target className="h-5 w-5 text-green-400" />
                   </div>
-                  <Badge variant="outline" className="text-xs text-gray-300">
+                  <Badge variant="outline" className="text-xs text-gray-200">
                     Skuteczność
                   </Badge>
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">{stats.winRate.toFixed(1)}%</p>
-                <p className="text-sm text-gray-300">Win Rate</p>
+                <p className="text-sm text-gray-200">Win Rate</p>
                 <Progress value={stats.winRate} className="mt-3 h-2" />
               </CardContent>
             </Card>
@@ -411,14 +411,14 @@ export default function StatystykiPage() {
                   <div className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/30">
                     <DollarSign className="h-5 w-5 text-purple-400" />
                   </div>
-                  <Badge variant="outline" className="text-xs text-gray-300">
+                  <Badge variant="outline" className="text-xs text-gray-200">
                     Zysk/Strata
                   </Badge>
                 </div>
                 <p className={`text-3xl font-bold mb-1 ${stats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {stats.totalPnL >= 0 ? '+' : ''}{stats.totalPnL.toFixed(2)}
                 </p>
-                <p className="text-sm text-gray-300">USDT Total PnL</p>
+                <p className="text-sm text-gray-200">USDT Total PnL</p>
                 <div className="mt-3 flex items-center gap-3 text-xs">
                   <span className="text-green-400">Avg Win: +{stats.avgWin.toFixed(2)}</span>
                   <span className="text-red-400">Avg Loss: -{stats.avgLoss.toFixed(2)}</span>
@@ -432,15 +432,15 @@ export default function StatystykiPage() {
                   <div className="p-2 rounded-lg bg-amber-500/20 border border-amber-500/30">
                     <Award className="h-5 w-5 text-amber-400" />
                   </div>
-                  <Badge variant="outline" className="text-xs text-gray-300">
+                  <Badge variant="outline" className="text-xs text-gray-200">
                     Profit Factor
                   </Badge>
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">
                   {stats.profitFactor === 999 ? '∞' : stats.profitFactor.toFixed(2)}
                 </p>
-                <p className="text-sm text-gray-300">Stosunek zysk/strata</p>
-                <p className="mt-3 text-xs text-gray-400">
+                <p className="text-sm text-gray-200">Stosunek zysk/strata</p>
+                <p className="mt-3 text-xs text-gray-300">
                   {stats.profitFactor >= 2 ? '🔥 Doskonały' : stats.profitFactor >= 1.5 ? '✅ Dobry' : stats.profitFactor >= 1 ? '⚠️ Średni' : '❌ Słaby'}
                 </p>
               </CardContent>
@@ -453,7 +453,7 @@ export default function StatystykiPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-gray-200 flex items-center gap-2">
                   <TrendingUp className="h-4 w-4" />
                   Najlepszy Trade
                 </CardTitle>
@@ -467,7 +467,7 @@ export default function StatystykiPage() {
 
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-gray-200 flex items-center gap-2">
                   <TrendingDown className="h-4 w-4" />
                   Najgorszy Trade
                 </CardTitle>
@@ -481,7 +481,7 @@ export default function StatystykiPage() {
 
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-gray-200 flex items-center gap-2">
                   <Clock className="h-4 w-4" />
                   Średni Czas Trwania
                 </CardTitle>
@@ -498,15 +498,15 @@ export default function StatystykiPage() {
         {/* Detailed Statistics Tabs */}
         <Tabs defaultValue="time" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
-            <TabsTrigger value="time">
+            <TabsTrigger value="time" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Calendar className="mr-2 h-4 w-4" />
               Czasowe
             </TabsTrigger>
-            <TabsTrigger value="tiers">
+            <TabsTrigger value="tiers" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Award className="mr-2 h-4 w-4" />
               Według Tierów
             </TabsTrigger>
-            <TabsTrigger value="symbols">
+            <TabsTrigger value="symbols" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Activity className="mr-2 h-4 w-4" />
               Według Symboli
             </TabsTrigger>
@@ -517,7 +517,7 @@ export default function StatystykiPage() {
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="text-white">Statystyki Czasowe</CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Wydajność bota w różnych okresach czasu
                 </CardDescription>
               </CardHeader>
@@ -528,7 +528,7 @@ export default function StatystykiPage() {
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <h3 className="font-semibold text-white">{period.period}</h3>
-                          <p className="text-sm text-gray-300">{period.totalTrades} trades</p>
+                          <p className="text-sm text-gray-200">{period.totalTrades} trades</p>
                         </div>
                         <Badge 
                           variant={period.totalPnL >= 0 ? "default" : "destructive"}
@@ -539,7 +539,7 @@ export default function StatystykiPage() {
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-300">Win Rate:</span>
+                          <span className="text-gray-200">Win Rate:</span>
                           <span className="font-semibold text-white">{period.winRate.toFixed(1)}%</span>
                         </div>
                         <Progress value={period.winRate} className="h-2" />
@@ -556,7 +556,7 @@ export default function StatystykiPage() {
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="text-white">Statystyki według Tierów</CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Wydajność poszczególnych poziomów sygnałów
                 </CardDescription>
               </CardHeader>
@@ -564,7 +564,7 @@ export default function StatystykiPage() {
                 {tierStats.length === 0 ? (
                   <div className="text-center py-8">
                     <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                    <p className="text-sm text-gray-400">Brak danych o tierach</p>
+                    <p className="text-sm text-gray-300">Brak danych o tierach</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -585,22 +585,22 @@ export default function StatystykiPage() {
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <h3 className="font-bold text-white text-lg">{tier.tier}</h3>
-                              <p className="text-sm text-gray-300">{tier.totalTrades} trades</p>
+                              <p className="text-sm text-gray-200">{tier.totalTrades} trades</p>
                             </div>
                             <div className="text-right">
                               <p className={`text-xl font-bold ${tier.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                 {tier.totalPnL >= 0 ? '+' : ''}{tier.totalPnL.toFixed(2)}
                               </p>
-                              <p className="text-xs text-gray-400">USDT</p>
+                              <p className="text-xs text-gray-300">USDT</p>
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
-                              <span className="text-gray-300">Win Rate:</span>
+                              <span className="text-gray-200">Win Rate:</span>
                               <span className="ml-2 font-semibold text-white">{tier.winRate.toFixed(1)}%</span>
                             </div>
                             <div>
-                              <span className="text-gray-300">Avg PnL:</span>
+                              <span className="text-gray-200">Avg PnL:</span>
                               <span className={`ml-2 font-semibold ${tier.avgPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                 {tier.avgPnL >= 0 ? '+' : ''}{tier.avgPnL.toFixed(2)}
                               </span>
@@ -620,7 +620,7 @@ export default function StatystykiPage() {
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="text-white">Top 10 Symboli</CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Najlepiej i najgorzej performujące instrumenty
                 </CardDescription>
               </CardHeader>
@@ -628,7 +628,7 @@ export default function StatystykiPage() {
                 {symbolStats.length === 0 ? (
                   <div className="text-center py-8">
                     <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                    <p className="text-sm text-gray-400">Brak danych o symbolach</p>
+                    <p className="text-sm text-gray-300">Brak danych o symbolach</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -646,14 +646,14 @@ export default function StatystykiPage() {
                             </div>
                             <div>
                               <h4 className="font-bold text-white">{symbol.symbol}</h4>
-                              <p className="text-xs text-gray-400">{symbol.totalTrades} trades · {symbol.winRate.toFixed(1)}% WR</p>
+                              <p className="text-xs text-gray-300">{symbol.totalTrades} trades · {symbol.winRate.toFixed(1)}% WR</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className={`text-lg font-bold ${symbol.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                               {symbol.totalPnL >= 0 ? '+' : ''}{symbol.totalPnL.toFixed(2)}
                             </p>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-xs text-gray-300">
                               Avg: {symbol.avgPnL >= 0 ? '+' : ''}{symbol.avgPnL.toFixed(2)}
                             </p>
                           </div>
@@ -672,7 +672,7 @@ export default function StatystykiPage() {
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-white">Metryki Ryzyka</CardTitle>
-              <CardDescription className="text-gray-300">
+              <CardDescription className="text-gray-200">
                 Analiza ryzyka i drawdown
               </CardDescription>
             </CardHeader>
@@ -683,10 +683,10 @@ export default function StatystykiPage() {
                     <div className="p-2 rounded-lg bg-blue-500/20">
                       <Percent className="h-4 w-4 text-blue-400" />
                     </div>
-                    <h3 className="font-semibold text-gray-200">Sharpe Ratio</h3>
+                    <h3 className="font-semibold text-gray-100">Sharpe Ratio</h3>
                   </div>
                   <p className="text-2xl font-bold text-white mb-1">{stats.sharpeRatio.toFixed(2)}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-300">
                     {stats.sharpeRatio >= 2 ? '🔥 Doskonały' : stats.sharpeRatio >= 1 ? '✅ Dobry' : stats.sharpeRatio >= 0 ? '⚠️ Średni' : '❌ Słaby'}
                   </p>
                 </div>
@@ -696,12 +696,12 @@ export default function StatystykiPage() {
                     <div className="p-2 rounded-lg bg-red-500/20">
                       <AlertCircle className="h-4 w-4 text-red-400" />
                     </div>
-                    <h3 className="font-semibold text-gray-200">Max Drawdown</h3>
+                    <h3 className="font-semibold text-gray-100">Max Drawdown</h3>
                   </div>
                   <p className="text-2xl font-bold text-red-400 mb-1">
                     -{stats.maxDrawdown.toFixed(2)} USDT
                   </p>
-                  <p className="text-xs text-gray-400">Największy spadek z peak</p>
+                  <p className="text-xs text-gray-300">Największy spadek z peak</p>
                 </div>
 
                 <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
@@ -709,12 +709,12 @@ export default function StatystykiPage() {
                     <div className="p-2 rounded-lg bg-orange-500/20">
                       <TrendingDown className="h-4 w-4 text-orange-400" />
                     </div>
-                    <h3 className="font-semibold text-gray-200">Current Drawdown</h3>
+                    <h3 className="font-semibold text-gray-100">Current Drawdown</h3>
                   </div>
                   <p className="text-2xl font-bold text-orange-400 mb-1">
                     -{stats.currentDrawdown.toFixed(2)} USDT
                   </p>
-                  <p className="text-xs text-gray-400">Aktualny spadek z peak</p>
+                  <p className="text-xs text-gray-300">Aktualny spadek z peak</p>
                 </div>
               </div>
             </CardContent>
@@ -725,31 +725,31 @@ export default function StatystykiPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-300">Otrzymane Alerty</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-200">Otrzymane Alerty</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-white">{alerts.length}</p>
-              <p className="text-xs text-gray-400 mt-1">Całkowita liczba alertów z TradingView</p>
+              <p className="text-xs text-gray-300 mt-1">Całkowita liczba alertów z TradingView</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-300">Aktywne Pozycje</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-200">Aktywne Pozycje</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-white">{currentPositions.length}</p>
-              <p className="text-xs text-gray-400 mt-1">Obecnie otwarte pozycje bota</p>
+              <p className="text-xs text-gray-300 mt-1">Obecnie otwarte pozycje bota</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-300">Zamknięte Pozycje</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-200">Zamknięte Pozycje</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-white">{historicalPositions.length}</p>
-              <p className="text-xs text-gray-400 mt-1">Historyczne, zamknięte pozycje</p>
+              <p className="text-xs text-gray-300 mt-1">Historyczne, zamknięte pozycje</p>
             </CardContent>
           </Card>
         </div>

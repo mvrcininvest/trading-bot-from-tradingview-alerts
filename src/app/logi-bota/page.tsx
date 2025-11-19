@@ -124,12 +124,12 @@ export default function LogiBotaPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Logi Bota
               </h1>
-              <p className="text-gray-300">
+              <p className="text-gray-200">
                 Śledzenie wszystkich akcji, błędów i ostrzeżeń.
               </p>
             </div>
           </div>
-          <Button onClick={fetchLogs} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={fetchLogs} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Odśwież
           </Button>
@@ -139,7 +139,7 @@ export default function LogiBotaPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
                 <AlertCircle className="h-4 w-4 text-red-400" />
                 Błędy
               </CardTitle>
@@ -151,7 +151,7 @@ export default function LogiBotaPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
                 <AlertTriangle className="h-4 w-4 text-yellow-400" />
                 Ostrzeżenia
               </CardTitle>
@@ -163,7 +163,7 @@ export default function LogiBotaPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
                 <CheckCircle2 className="h-4 w-4 text-green-400" />
                 Sukces
               </CardTitle>
@@ -175,7 +175,7 @@ export default function LogiBotaPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
                 <Info className="h-4 w-4 text-blue-400" />
                 Informacje
               </CardTitle>
@@ -190,14 +190,14 @@ export default function LogiBotaPage() {
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">Filtry</CardTitle>
-            <CardDescription className="text-gray-300">Ogranicz wyświetlane logi</CardDescription>
+            <CardDescription className="text-gray-200">Ogranicz wyświetlane logi</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-300">Poziom</label>
+                <label className="text-sm font-medium mb-2 block text-gray-200">Poziom</label>
                 <Select value={levelFilter} onValueChange={setLevelFilter}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -211,9 +211,9 @@ export default function LogiBotaPage() {
               </div>
 
               <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-300">Akcja</label>
+                <label className="text-sm font-medium mb-2 block text-gray-200">Akcja</label>
                 <Select value={actionFilter} onValueChange={setActionFilter}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -234,7 +234,7 @@ export default function LogiBotaPage() {
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">Historia Logów</CardTitle>
-            <CardDescription className="text-gray-300">
+            <CardDescription className="text-gray-200">
               Wyświetlanie {logs.length} z {total} logów
             </CardDescription>
           </CardHeader>
@@ -242,12 +242,12 @@ export default function LogiBotaPage() {
             {loading ? (
               <div className="text-center py-8">
                 <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-500" />
-                <p className="text-gray-400 mt-2">Ładowanie logów...</p>
+                <p className="text-gray-300 mt-2">Ładowanie logów...</p>
               </div>
             ) : logs.length === 0 ? (
               <div className="text-center py-8">
                 <Info className="h-8 w-8 mx-auto text-gray-600" />
-                <p className="text-gray-400 mt-2">Brak logów do wyświetlenia</p>
+                <p className="text-gray-300 mt-2">Brak logów do wyświetlenia</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -264,30 +264,30 @@ export default function LogiBotaPage() {
                             <Badge variant={getLevelBadgeVariant(log.level)}>
                               {log.level.toUpperCase()}
                             </Badge>
-                            <Badge variant="outline" className="border-gray-700 text-gray-400">
+                            <Badge variant="outline" className="border-gray-700 text-gray-300">
                               {actionLabels[log.action] || log.action}
                             </Badge>
                             {log.alertId && (
-                              <Badge variant="secondary" className="bg-blue-500/20 text-blue-400">Alert #{log.alertId}</Badge>
+                              <Badge variant="secondary" className="bg-blue-500/20 text-blue-300">Alert #{log.alertId}</Badge>
                             )}
                             {log.positionId && (
-                              <Badge variant="secondary" className="bg-purple-500/20 text-purple-400">Pozycja #{log.positionId}</Badge>
+                              <Badge variant="secondary" className="bg-purple-500/20 text-purple-300">Pozycja #{log.positionId}</Badge>
                             )}
                           </div>
-                          <p className="text-sm font-medium mb-1 text-gray-200">{log.message}</p>
+                          <p className="text-sm font-medium mb-1 text-gray-100">{log.message}</p>
                           {log.details && (
-                            <details className="text-xs text-gray-400 mt-2">
-                              <summary className="cursor-pointer hover:text-gray-300">
+                            <details className="text-xs text-gray-300 mt-2">
+                              <summary className="cursor-pointer hover:text-gray-200">
                                 Szczegóły
                               </summary>
-                              <pre className="mt-2 p-2 bg-gray-800 rounded text-xs overflow-x-auto text-gray-300">
+                              <pre className="mt-2 p-2 bg-gray-800 rounded text-xs overflow-x-auto text-gray-200">
                                 {JSON.stringify(JSON.parse(log.details), null, 2)}
                               </pre>
                             </details>
                           )}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-400 whitespace-nowrap">
+                      <div className="text-xs text-gray-300 whitespace-nowrap">
                         {formatTimestamp(log.timestamp)}
                       </div>
                     </div>

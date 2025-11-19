@@ -687,7 +687,7 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
         <Card className="max-w-2xl border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-400">
+            <CardTitle className="flex items-center gap-2 text-red-300">
               <AlertCircle className="h-6 w-6" />
               ⚠️ Błędne dane w localStorage!
             </CardTitle>
@@ -695,19 +695,19 @@ export default function DashboardPage() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="p-4 rounded-lg bg-red-900/40 border-2 border-red-700">
-                <p className="text-lg font-bold text-red-300 mb-2">
+                <p className="text-lg font-bold text-red-200 mb-2">
                   🔍 Wykryto UUID zamiast prawdziwego klucza API
                 </p>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-gray-200">
                   Twój klucz API w localStorage wygląda na UUID (placeholder) zamiast prawdziwego klucza OKX.
                 </p>
               </div>
 
               <div className="p-4 rounded-lg bg-blue-900/40 border-2 border-blue-700">
-                <p className="text-base font-bold text-blue-300 mb-3">
+                <p className="text-base font-bold text-blue-200 mb-3">
                   💡 CO ROBIĆ:
                 </p>
-                <ol className="space-y-2 text-sm text-gray-300 list-decimal list-inside">
+                <ol className="space-y-2 text-sm text-gray-200 list-decimal list-inside">
                   <li>Kliknij przycisk <strong className="text-white">"Konfiguracja API"</strong> poniżej</li>
                   <li>Wprowadź <strong className="text-white">PRAWDZIWE klucze OKX</strong> (nie UUID!)</li>
                   <li>Kliknij <strong className="text-white">"Test Connection"</strong> aby sprawdzić czy działają</li>
@@ -717,10 +717,10 @@ export default function DashboardPage() {
               </div>
 
               <div className="p-4 rounded-lg bg-yellow-900/40 border-2 border-yellow-700">
-                <p className="text-base font-bold text-yellow-300 mb-2">
+                <p className="text-base font-bold text-yellow-200 mb-2">
                   🔐 Gdzie znaleźć prawdziwe klucze OKX:
                 </p>
-                <ol className="space-y-1 text-sm text-gray-300 list-decimal list-inside">
+                <ol className="space-y-1 text-sm text-gray-200 list-decimal list-inside">
                   <li>Zaloguj się na <strong className="text-white">okx.com</strong></li>
                   <li>Idź do: Profile → API → Create API Key</li>
                   <li>Skopiuj: <strong className="text-white">API Key, Secret Key, Passphrase</strong></li>
@@ -761,22 +761,22 @@ export default function DashboardPage() {
           <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <AlertDescription className="text-sm text-red-200">
-              <strong className="text-red-300 text-base">⚠️ OSTRZEŻENIE: Używasz środowiska DEMO</strong>
+              <strong className="text-red-100 text-base">⚠️ OSTRZEŻENIE: Używasz środowiska DEMO</strong>
               <div className="mt-2 space-y-2">
-                <p className="font-medium text-gray-200">
+                <p className="font-medium text-gray-100">
                   Bybit API Demo jest często <strong>blokowane przez CloudFlare/WAF</strong> dla requestów server-side (webhook, bot).
                 </p>
-                <p className="text-red-300 font-semibold">
+                <p className="text-red-200 font-semibold">
                   ❌ Webhook i automatyczny bot <u>NIE BĘDĄ DZIAŁAĆ</u> z Demo environment!
                 </p>
-                <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3 text-gray-200">
+                <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3 text-gray-100">
                   ✅ <strong>ROZWIĄZANIE:</strong> Przejdź do <Button 
                     variant="link" 
-                    className="text-green-300 underline p-0 h-auto font-bold"
+                    className="text-green-200 underline p-0 h-auto font-bold"
                     onClick={() => router.push("/exchange-test")}
                   >
                     Konfiguracja API
-                  </Button> i zmień środowisko na <strong className="text-green-300">TESTNET</strong> lub <strong className="text-green-300">PRODUKCJA</strong>
+                  </Button> i zmień środowisko na <strong className="text-green-200">TESTNET</strong> lub <strong className="text-green-200">PRODUKCJA</strong>
                 </p>
               </div>
             </AlertDescription>
@@ -790,21 +790,21 @@ export default function DashboardPage() {
             <AlertDescription className="text-sm text-red-200">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <strong className="text-red-300 text-base">🚫 UWAGA: {symbolLocks.length} zablokowanych symboli!</strong>
+                  <strong className="text-red-100 text-base">🚫 UWAGA: {symbolLocks.length} zablokowanych symboli!</strong>
                   <div className="mt-2 space-y-2">
-                    <p className="font-medium text-gray-200">
+                    <p className="font-medium text-gray-100">
                       Bot nie będzie otwierał pozycji na następujących symbolach: {" "}
-                      <strong className="text-red-300">{symbolLocks.map(l => l.symbol).join(", ")}</strong>
+                      <strong className="text-red-100">{symbolLocks.map(l => l.symbol).join(", ")}</strong>
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
                       {symbolLocks.map(lock => (
                         <div key={lock.id} className="bg-red-900/30 border border-red-700/50 rounded-lg p-2">
                           <div className="flex items-center justify-between">
                             <div>
-                              <div className="font-bold text-red-200">{lock.symbol}</div>
-                              <div className="text-xs text-red-300">{lock.lockReason}</div>
+                              <div className="font-bold text-red-100">{lock.symbol}</div>
+                              <div className="text-xs text-red-200">{lock.lockReason}</div>
                             </div>
-                            <div className="text-xs text-red-400">
+                            <div className="text-xs text-red-300">
                               {new Date(lock.lockedAt).toLocaleString("pl-PL", { 
                                 month: 'short', 
                                 day: 'numeric', 
@@ -848,12 +848,12 @@ export default function DashboardPage() {
           <AlertDescription className="text-sm text-blue-200">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <strong className="text-blue-300 text-base">🔄 Synchronizacja Credentials</strong>
-                <p className="mt-2 text-gray-200">
+                <strong className="text-blue-100 text-base">🔄 Synchronizacja Credentials</strong>
+                <p className="mt-2 text-gray-100">
                   Dashboard czyta z <strong>localStorage</strong>, ale webhook czyta z <strong>bazy danych</strong>.
                   Jeśli webhook używa niewłaściwej giełdy, kliknij przycisk aby zsynchronizować:
                 </p>
-                <p className="mt-2 text-xs text-blue-300">
+                <p className="mt-2 text-xs text-blue-200">
                   💡 Jeśli po kliknięciu dostaniesz błąd "UUID" - musisz przejść do Konfiguracji API i wprowadzić PRAWDZIWE klucze!
                 </p>
               </div>
@@ -901,10 +901,10 @@ export default function DashboardPage() {
                   Dashboard Tradingowy
                 </h1>
                 <div className="flex items-center gap-3">
-                  <p className="text-sm text-gray-300 flex items-center gap-2">
+                  <p className="text-sm text-gray-200 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                     {credentials.exchange.toUpperCase()} · 
-                    <span className={credentials.environment === "demo" ? "text-red-400 font-bold" : "text-gray-300"}>
+                    <span className={credentials.environment === "demo" ? "text-red-300 font-bold" : "text-gray-200"}>
                       {credentials.environment}
                       {credentials.environment === "demo" && " ⚠️"}
                     </span>
@@ -916,8 +916,8 @@ export default function DashboardPage() {
                           variant={botEnabled ? "default" : "secondary"}
                           className={`flex items-center gap-1.5 cursor-help ${
                             botEnabled 
-                              ? "bg-green-600/20 text-green-400 border-green-500/30 hover:bg-green-600/30" 
-                              : "bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/30"
+                              ? "bg-green-600/20 text-green-300 border-green-500/30 hover:bg-green-600/30" 
+                              : "bg-red-600/20 text-red-300 border-red-500/30 hover:bg-red-600/30"
                           }`}
                         >
                           <Power className="h-3 w-3" />
@@ -925,7 +925,7 @@ export default function DashboardPage() {
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="max-w-xs">
+                        <p className="max-w-xs text-gray-200">
                           {botEnabled 
                             ? credentials.environment === "demo"
                               ? "⚠️ Bot włączony ale Demo environment może nie działać! Przełącz się na Testnet"
@@ -948,9 +948,9 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-400 mb-1">Saldo Konta</p>
+                        <p className="text-xs text-gray-300 mb-1">Saldo Konta</p>
                         <p className="text-2xl font-bold text-white">{totalBalance.toFixed(2)}</p>
-                        <p className="text-xs text-gray-400">USDT</p>
+                        <p className="text-xs text-gray-300">USDT</p>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
                         <Wallet className="h-6 w-6 text-blue-400" />
@@ -970,11 +970,11 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-400 mb-1">Całkowity PnL</p>
+                        <p className="text-xs text-gray-300 mb-1">Całkowity PnL</p>
                         <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
                         </p>
-                        <p className="text-xs text-gray-400">USDT</p>
+                        <p className="text-xs text-gray-300">USDT</p>
                       </div>
                       <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'}`}>
                         <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
@@ -994,7 +994,7 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-400 mb-1">Pozycje Bota</p>
+                        <p className="text-xs text-gray-300 mb-1">Pozycje Bota</p>
                         <p className="text-2xl font-bold text-white">{botPositions.length}</p>
                         <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
@@ -1018,9 +1018,9 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-400 mb-1">Wszystkie Pozycje</p>
+                        <p className="text-xs text-gray-300 mb-1">Wszystkie Pozycje</p>
                         <p className="text-2xl font-bold text-white">{totalPositionsCount}</p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-gray-300">
                           {winningPositions} wygrywa
                         </p>
                       </div>
@@ -1041,23 +1041,23 @@ export default function DashboardPage() {
         {/* Main Content with Tabs - Dark Theme */}
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <BarChart3 className="mr-2 h-4 w-4" />
               Przegląd
             </TabsTrigger>
-            <TabsTrigger value="bot-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
+            <TabsTrigger value="bot-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Bot className="mr-2 h-4 w-4" />
               Pozycje Bota
             </TabsTrigger>
-            <TabsTrigger value="all-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
+            <TabsTrigger value="all-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Activity className="mr-2 h-4 w-4" />
               Wszystkie Pozycje
             </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
+            <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Settings className="mr-2 h-4 w-4" />
               Ustawienia
             </TabsTrigger>
-            <TabsTrigger value="info" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
+            <TabsTrigger value="info" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Zap className="mr-2 h-4 w-4" />
               Quick Actions
             </TabsTrigger>
@@ -1074,7 +1074,7 @@ export default function DashboardPage() {
                       <Wallet className="h-5 w-5" />
                       Saldo Konta
                     </CardTitle>
-                    <CardDescription className="text-gray-400">
+                    <CardDescription className="text-gray-300">
                       {lastUpdate && <span className="text-xs">Zaktualizowano: {lastUpdate}</span>}
                     </CardDescription>
                   </div>
@@ -1091,7 +1091,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Odśwież saldo konta z giełdy - pobiera aktualne dane o wolnych i zablokowanych środkach</p>
+                      <p className="text-gray-200">Odśwież saldo konta z giełdy - pobiera aktualne dane o wolnych i zablokowanych środkach</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -1100,7 +1100,7 @@ export default function DashboardPage() {
                 {error && (
                   <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm text-yellow-400">
+                    <AlertDescription className="text-sm text-yellow-300">
                       <strong>Nie można pobrać salda:</strong> {error}
                     </AlertDescription>
                   </Alert>
@@ -1109,14 +1109,14 @@ export default function DashboardPage() {
                 {loading && (
                   <div className="text-center py-8">
                     <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-500">Pobieranie salda...</p>
+                    <p className="text-sm text-gray-300">Pobieranie salda...</p>
                   </div>
                 )}
 
                 {!loading && balances.length === 0 && !error && (
                   <div className="text-center py-8">
                     <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                    <p className="text-sm text-gray-500">Brak danych o saldzie</p>
+                    <p className="text-sm text-gray-300">Brak danych o saldzie</p>
                   </div>
                 )}
 
@@ -1135,14 +1135,14 @@ export default function DashboardPage() {
                           </div>
                           <div>
                             <div className="font-semibold text-lg text-white">{balance.asset}</div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs text-gray-300">
                               Wolne: {balance.free} · Zablokowane: {balance.locked}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-2xl text-white">{balance.total}</div>
-                          <div className="text-xs text-gray-400">Łącznie</div>
+                          <div className="text-xs text-gray-300">Łącznie</div>
                         </div>
                       </div>
                     ))}
@@ -1156,16 +1156,16 @@ export default function DashboardPage() {
               <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle className="text-lg text-white">Pozycje Bota</CardTitle>
-                  <CardDescription className="text-gray-400">Aktywne pozycje automatyczne</CardDescription>
+                  <CardDescription className="text-gray-300">Aktywne pozycje automatyczne</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Aktywne:</span>
+                      <span className="text-gray-300">Aktywne:</span>
                       <span className="font-bold text-white">{botPositions.length}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">PnL:</span>
+                      <span className="text-gray-300">PnL:</span>
                       <span className={`font-bold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
                       </span>
@@ -1181,7 +1181,7 @@ export default function DashboardPage() {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Przejdź do szczegółowego widoku pozycji otwartych przez bota z informacjami o TP/SL</p>
+                        <p className="text-gray-200">Przejdź do szczegółowego widoku pozycji otwartych przez bota z informacjami o TP/SL</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -1191,16 +1191,16 @@ export default function DashboardPage() {
               <Card className="border-gray-800 bg-gradient-to-br from-purple-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle className="text-lg text-white">Wszystkie Pozycje</CardTitle>
-                  <CardDescription className="text-gray-400">Łączne informacje</CardDescription>
+                  <CardDescription className="text-gray-300">Łączne informacje</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Otwarte:</span>
+                      <span className="text-gray-300">Otwarte:</span>
                       <span className="font-bold text-white">{totalPositionsCount}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Total PnL:</span>
+                      <span className="text-gray-300">Total PnL:</span>
                       <span className={`font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
                       </span>
@@ -1216,7 +1216,7 @@ export default function DashboardPage() {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Zobacz wszystkie otwarte pozycje na giełdzie (bot + manualne) z czasem rzeczywistym</p>
+                        <p className="text-gray-200">Zobacz wszystkie otwarte pozycje na giełdzie (bot + manualne) z czasem rzeczywistym</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -1240,7 +1240,7 @@ export default function DashboardPage() {
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription className="text-gray-400">
+                    <CardDescription className="text-gray-300">
                       Pozycje otwarte automatycznie przez bota
                     </CardDescription>
                   </div>
@@ -1252,14 +1252,14 @@ export default function DashboardPage() {
                           disabled={loadingSync}
                           size="sm"
                           variant="secondary"
-                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:scale-105 transition-transform"
+                          className="bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
                         >
                           <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? "animate-spin" : ""}`} />
                           Sync
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="max-w-xs">Synchronizuj pozycje bota z rzeczywistymi pozycjami na giełdzie - zamyka pozycje w bazie danych jeśli zostały zamknięte na giełdzie</p>
+                        <p className="max-w-xs text-gray-200">Synchronizuj pozycje bota z rzeczywistymi pozycjami na giełdzie - zamyka pozycje w bazie danych jeśli zostały zamknięte na giełdzie</p>
                       </TooltipContent>
                     </Tooltip>
                     <Tooltip>
@@ -1269,14 +1269,14 @@ export default function DashboardPage() {
                           disabled={loadingBotPositions}
                           size="sm"
                           variant="outline"
-                          className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
+                          className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200 hover:scale-105 transition-transform"
                         >
                           <RefreshCw className={`mr-2 h-4 w-4 ${loadingBotPositions ? "animate-spin" : ""}`} />
                           Odśwież
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Odśwież listę pozycji bota z bazy danych (automatyczne odświeżanie co 2s)</p>
+                        <p className="text-gray-200">Odśwież listę pozycji bota z bazy danych (automatyczne odświeżanie co 2s)</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -1286,7 +1286,7 @@ export default function DashboardPage() {
                 {botPositionsError && (
                   <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm text-yellow-400">
+                    <AlertDescription className="text-sm text-yellow-300">
                       <strong>Błąd:</strong> {botPositionsError}
                     </AlertDescription>
                   </Alert>
@@ -1295,14 +1295,14 @@ export default function DashboardPage() {
                 {loadingBotPositions && (
                   <div className="text-center py-8">
                     <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-500">Pobieranie pozycji bota...</p>
+                    <p className="text-sm text-gray-300">Pobieranie pozycji bota...</p>
                   </div>
                 )}
 
                 {!loadingBotPositions && botPositions.length === 0 && !botPositionsError && (
                   <div className="text-center py-12">
                     <Bot className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
-                    <p className="text-gray-500">Brak aktywnych pozycji bota</p>
+                    <p className="text-gray-300">Brak aktywnych pozycji bota</p>
                   </div>
                 )}
 
@@ -1314,11 +1314,11 @@ export default function DashboardPage() {
                       const isProfitable = pnl >= 0;
                       
                       const tierColors: Record<string, string> = {
-                        'Platinum': 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-                        'Premium': 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-                        'Standard': 'bg-green-500/20 text-green-300 border-green-500/40',
-                        'Quick': 'bg-orange-500/20 text-orange-300 border-orange-500/40',
-                        'Emergency': 'bg-red-500/20 text-red-300 border-red-500/40',
+                        'Platinum': 'bg-purple-500/20 text-purple-200 border-purple-500/40',
+                        'Premium': 'bg-blue-500/20 text-blue-200 border-blue-500/40',
+                        'Standard': 'bg-green-500/20 text-green-200 border-green-500/40',
+                        'Quick': 'bg-orange-500/20 text-orange-200 border-orange-500/40',
+                        'Emergency': 'bg-red-500/20 text-red-200 border-red-500/40',
                       };
                       
                       return (
@@ -1363,43 +1363,43 @@ export default function DashboardPage() {
                           
                           <div className="grid grid-cols-2 gap-3 text-sm mb-3 p-3 rounded-lg bg-gray-800/40">
                             <div>
-                              <div className="text-gray-400">Rozmiar</div>
-                              <div className="font-semibold text-gray-200">{position.quantity.toFixed(4)}</div>
+                              <div className="text-gray-300">Rozmiar</div>
+                              <div className="font-semibold text-gray-100">{position.quantity.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-400">Wartość</div>
-                              <div className="font-semibold text-gray-200">{position.positionValue.toFixed(2)} USDT</div>
+                              <div className="text-gray-300">Wartość</div>
+                              <div className="font-semibold text-gray-100">{position.positionValue.toFixed(2)} USDT</div>
                             </div>
                             <div>
-                              <div className="text-gray-400">Cena Wejścia</div>
-                              <div className="font-semibold text-gray-200">{position.entryPrice.toFixed(4)}</div>
+                              <div className="text-gray-300">Cena Wejścia</div>
+                              <div className="font-semibold text-gray-100">{position.entryPrice.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-400">Stop Loss</div>
+                              <div className="text-gray-300">Stop Loss</div>
                               <div className="font-semibold text-red-400">{position.currentSl.toFixed(4)}</div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 text-xs mb-2">
-                            <span className="text-gray-400">Take Profit:</span>
+                            <span className="text-gray-300">Take Profit:</span>
                             {position.tp1Price && (
-                              <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
+                              <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-300"}>
                                 TP1: {position.tp1Price.toFixed(4)} {position.tp1Hit ? "✓" : ""}
                               </Badge>
                             )}
                             {position.tp2Price && (
-                              <Badge variant={position.tp2Hit ? "default" : "outline"} className={position.tp2Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
+                              <Badge variant={position.tp2Hit ? "default" : "outline"} className={position.tp2Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-300"}>
                                 TP2: {position.tp2Price.toFixed(4)} {position.tp2Hit ? "✓" : ""}
                               </Badge>
                             )}
                             {position.tp3Price && (
-                              <Badge variant={position.tp3Hit ? "default" : "outline"} className={position.tp3Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
+                              <Badge variant={position.tp3Hit ? "default" : "outline"} className={position.tp3Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-300"}>
                                 TP3: {position.tp3Price.toFixed(4)} {position.tp3Hit ? "✓" : ""}
                               </Badge>
                             )}
                           </div>
 
-                          <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-800">
+                          <div className="flex items-center justify-between text-xs text-gray-300 pt-2 border-t border-gray-800">
                             <span>Confidence: {(position.confidenceScore * 100).toFixed(0)}%</span>
                             <span>{new Date(position.openedAt).toLocaleString("pl-PL")}</span>
                           </div>
@@ -1422,12 +1422,12 @@ export default function DashboardPage() {
                       <Activity className="h-5 w-5" />
                       Wszystkie Pozycje
                       {positions.length > 0 && (
-                        <Badge variant="secondary" className="ml-2 bg-gray-700 text-gray-300">
+                        <Badge variant="secondary" className="ml-2 bg-gray-700 text-gray-200">
                           {positions.length} Otwartych
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription className="text-gray-400">
+                    <CardDescription className="text-gray-300">
                       Wszystkie otwarte pozycje na giełdzie
                     </CardDescription>
                   </div>
@@ -1438,14 +1438,14 @@ export default function DashboardPage() {
                         disabled={loadingPositions}
                         size="sm"
                         variant="outline"
-                        className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:scale-105 transition-transform"
+                        className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200 hover:scale-105 transition-transform"
                       >
                         <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
                         Odśwież
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Odśwież pozycje bezpośrednio z giełdy (automatyczne odświeżanie co 0.5s)</p>
+                      <p className="text-gray-200">Odśwież pozycje bezpośrednio z giełdy (automatyczne odświeżanie co 0.5s)</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -1454,7 +1454,7 @@ export default function DashboardPage() {
                 {positionsError && (
                   <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm text-yellow-400">
+                    <AlertDescription className="text-sm text-yellow-300">
                       <strong>Błąd:</strong> {positionsError}
                     </AlertDescription>
                   </Alert>
@@ -1463,14 +1463,14 @@ export default function DashboardPage() {
                 {loadingPositions && (
                   <div className="text-center py-8">
                     <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-500">Pobieranie pozycji...</p>
+                    <p className="text-sm text-gray-300">Pobieranie pozycji...</p>
                   </div>
                 )}
 
                 {!loadingPositions && positions.length === 0 && !positionsError && (
                   <div className="text-center py-12">
                     <Activity className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
-                    <p className="text-gray-500">Brak otwartych pozycji</p>
+                    <p className="text-gray-300">Brak otwartych pozycji</p>
                   </div>
                 )}
 
@@ -1535,30 +1535,30 @@ export default function DashboardPage() {
                           
                           <div className="grid grid-cols-2 gap-3 text-sm p-3 rounded-lg bg-gray-800/40">
                             <div>
-                              <div className="text-gray-400">Rozmiar</div>
-                              <div className="font-semibold text-gray-200">{position.size}</div>
+                              <div className="text-gray-300">Rozmiar</div>
+                              <div className="font-semibold text-gray-100">{position.size}</div>
                             </div>
                             <div>
-                              <div className="text-gray-400">Wartość</div>
-                              <div className="font-semibold text-gray-200">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
+                              <div className="text-gray-300">Wartość</div>
+                              <div className="font-semibold text-gray-100">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
                             </div>
                             <div>
-                              <div className="text-gray-400">Cena Wejścia</div>
-                              <div className="font-semibold text-gray-200">{parseFloat(position.entryPrice).toFixed(4)}</div>
+                              <div className="text-gray-300">Cena Wejścia</div>
+                              <div className="font-semibold text-gray-100">{parseFloat(position.entryPrice).toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-400">Cena Bieżąca</div>
-                              <div className="font-semibold text-gray-200">{parseFloat(position.markPrice).toFixed(4)}</div>
+                              <div className="text-gray-300">Cena Bieżąca</div>
+                              <div className="font-semibold text-gray-100">{parseFloat(position.markPrice).toFixed(4)}</div>
                             </div>
                             {parseFloat(position.takeProfit) > 0 && (
                               <div>
-                                <div className="text-gray-400">Take Profit</div>
+                                <div className="text-gray-300">Take Profit</div>
                                 <div className="font-semibold text-green-400">{parseFloat(position.takeProfit).toFixed(4)}</div>
                               </div>
                             )}
                             {parseFloat(position.stopLoss) > 0 && (
                               <div>
-                                <div className="text-gray-400">Stop Loss</div>
+                                <div className="text-gray-300">Stop Loss</div>
                                 <div className="font-semibold text-red-400">{parseFloat(position.stopLoss).toFixed(4)}</div>
                               </div>
                             )}
@@ -1580,7 +1580,7 @@ export default function DashboardPage() {
                   <Settings className="h-5 w-5" />
                   Ustawienia i Konfiguracja
                 </CardTitle>
-                <CardDescription className="text-gray-400">Zarządzaj swoim botem i konfiguracją API</CardDescription>
+                <CardDescription className="text-gray-300">Zarządzaj swoim botem i konfiguracją API</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Bot Status Indicator */}
@@ -1604,7 +1604,7 @@ export default function DashboardPage() {
                             <h3 className="text-2xl font-bold text-white mb-1">
                               Status Bota: {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
                             </h3>
-                            <p className={`text-sm font-medium ${botEnabled ? "text-green-400" : "text-red-400"}`}>
+                            <p className={`text-sm font-medium ${botEnabled ? "text-green-300" : "text-red-300"}`}>
                               {botEnabled 
                                 ? "Bot aktywnie monitoruje i otwiera pozycje na podstawie alertów" 
                                 : "Bot nie będzie otwierał nowych pozycji"}
@@ -1616,13 +1616,13 @@ export default function DashboardPage() {
                             <Button
                               onClick={() => router.push("/ustawienia-bota")}
                               variant="outline"
-                              className="border-gray-700 hover:bg-gray-800 text-gray-300"
+                              className="border-gray-700 hover:bg-gray-800 text-gray-200"
                             >
                               Zmień Status
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Przejdź do ustawień bota aby włączyć/wyłączyć automatyczny trading</p>
+                            <p className="text-gray-200">Przejdź do ustawień bota aby włączyć/wyłączyć automatyczny trading</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -1643,7 +1643,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Konfiguruj parametry bota: wielkość pozycji, dźwignia, filtry tierów, zarządzanie ryzykiem</p>
+                      <p className="text-gray-200">Konfiguruj parametry bota: wielkość pozycji, dźwignia, filtry tierów, zarządzanie ryzykiem</p>
                     </TooltipContent>
                   </Tooltip>
                   
@@ -1659,7 +1659,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Zarządzaj kluczami API giełdy - testuj połączenie, zmieniaj środowisko (demo/testnet/produkcja)</p>
+                      <p className="text-gray-200">Zarządzaj kluczami API giełdy - testuj połączenie, zmieniaj środowisko (demo/testnet/produkcja)</p>
                     </TooltipContent>
                   </Tooltip>
                   
@@ -1675,7 +1675,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Przeglądaj szczegółowe logi działania bota - alerty, otwarte pozycje, błędy, synchronizacje</p>
+                      <p className="text-gray-200">Przeglądaj szczegółowe logi działania bota - alerty, otwarte pozycje, błędy, synchronizacje</p>
                     </TooltipContent>
                   </Tooltip>
                   
@@ -1691,7 +1691,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Kompletna historia zamkniętych pozycji z analizą wyników, statystykami win/loss ratio</p>
+                      <p className="text-gray-200">Kompletna historia zamkniętych pozycji z analizą wyników, statystykami win/loss ratio</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -1705,22 +1705,22 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm pt-4">
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-400 font-medium">Giełda:</span>
+                      <span className="text-gray-300 font-medium">Giełda:</span>
                       <span className="font-bold text-white">{credentials.exchange.toUpperCase()}</span>
                     </div>
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-400 font-medium">Środowisko:</span>
+                      <span className="text-gray-300 font-medium">Środowisko:</span>
                       <span className="font-bold capitalize text-white">{credentials.environment}</span>
                     </div>
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-400 font-medium">API Key:</span>
-                      <span className="font-mono text-xs text-gray-300 bg-gray-900/50 px-2 py-1 rounded">
+                      <span className="text-gray-300 font-medium">API Key:</span>
+                      <span className="font-mono text-xs text-gray-200 bg-gray-900/50 px-2 py-1 rounded">
                         {credentials.apiKey.substring(0, 8)}...{credentials.apiKey.slice(-4)}
                       </span>
                     </div>
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-400 font-medium">Zapisano:</span>
-                      <span className="text-xs text-gray-300">
+                      <span className="text-gray-300 font-medium">Zapisano:</span>
+                      <span className="text-xs text-gray-200">
                         {new Date(credentials.savedAt).toLocaleString("pl-PL")}
                       </span>
                     </div>
@@ -1738,7 +1738,7 @@ export default function DashboardPage() {
                   <Zap className="h-5 w-5 text-yellow-400" />
                   Szybkie Akcje
                 </CardTitle>
-                <CardDescription className="text-gray-400">Najczęściej używane funkcje</CardDescription>
+                <CardDescription className="text-gray-300">Najczęściej używane funkcje</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1755,7 +1755,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="max-w-xs">Zsynchronizuj bazę danych pozycji bota z rzeczywistymi pozycjami na giełdzie - zamyka automatycznie pozycje które już nie istnieją</p>
+                      <p className="max-w-xs text-gray-200">Zsynchronizuj bazę danych pozycji bota z rzeczywistymi pozycjami na giełdzie - zamyka automatycznie pozycje które już nie istnieją</p>
                     </TooltipContent>
                   </Tooltip>
 
@@ -1772,7 +1772,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="max-w-xs">Wykrywa pozycje bez SL/TP i automatycznie je ustawia lub zamyka pozycje gdzie cena już osiągnęła SL/TP</p>
+                      <p className="max-w-xs text-gray-200">Wykrywa pozycje bez SL/TP i automatycznie je ustawia lub zamyka pozycje gdzie cena już osiągnęła SL/TP</p>
                     </TooltipContent>
                   </Tooltip>
 
@@ -1792,7 +1792,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Odśwież jednocześnie saldo konta, pozycje giełdowe i pozycje bota</p>
+                      <p className="text-gray-200">Odśwież jednocześnie saldo konta, pozycje giełdowe i pozycje bota</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -1810,7 +1810,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Przeglądaj wszystkie alerty otrzymane z TradingView z filtrowaniem i szczegółami</p>
+                      <p className="text-gray-200">Przeglądaj wszystkie alerty otrzymane z TradingView z filtrowaniem i szczegółami</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -1819,7 +1819,7 @@ export default function DashboardPage() {
                   <CardHeader className="border-b border-blue-700/20">
                     <CardTitle className="text-base text-white">💡 Profesjonalne Porady</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-gray-300 pt-4">
+                  <CardContent className="space-y-3 text-sm text-gray-200 pt-4">
                     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
                       <div className="h-2 w-2 rounded-full bg-blue-400 mt-1.5 flex-shrink-0" />
                       <p>Pozycje odświeżają się automatycznie co 0.5s dla danych w czasie rzeczywistym</p>

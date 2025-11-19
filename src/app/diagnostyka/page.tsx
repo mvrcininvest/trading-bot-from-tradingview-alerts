@@ -207,7 +207,7 @@ export default function DiagnosticsPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Diagnostyka Bota
               </h1>
-              <p className="text-sm text-gray-300 flex items-center gap-2">
+              <p className="text-sm text-gray-200 flex items-center gap-2">
                 System monitoringu błędów i awarii
               </p>
             </div>
@@ -227,10 +227,10 @@ export default function DiagnosticsPage() {
           <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <AlertDescription className="text-sm text-red-200">
-              <strong className="text-red-300 text-base">🚫 UWAGA: {activeLocks.length} zablokowanych symboli</strong>
-              <p className="mt-2 text-gray-200">
+              <strong className="text-red-100 text-base">🚫 UWAGA: {activeLocks.length} zablokowanych symboli</strong>
+              <p className="mt-2 text-gray-100">
                 Następujące symbole są zablokowane i bot nie będzie na nich otwierał pozycji: {" "}
-                <strong className="text-red-300">{activeLocks.map(l => l.symbol).join(", ")}</strong>
+                <strong className="text-red-100">{activeLocks.map(l => l.symbol).join(", ")}</strong>
               </p>
             </AlertDescription>
           </Alert>
@@ -243,9 +243,9 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Zablokowane Symbole</p>
+                    <p className="text-xs text-gray-300 mb-1">Zablokowane Symbole</p>
                     <p className="text-2xl font-bold text-white">{summary.activeSymbolLocks}</p>
-                    <p className="text-xs text-gray-400">z {summary.totalSymbolLocks} całkowitych</p>
+                    <p className="text-xs text-gray-300">z {summary.totalSymbolLocks} całkowitych</p>
                   </div>
                   <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30">
                     <Lock className="h-6 w-6 text-red-400" />
@@ -258,9 +258,9 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Błędy Alertów</p>
+                    <p className="text-xs text-gray-300 mb-1">Błędy Alertów</p>
                     <p className="text-2xl font-bold text-white">{summary.totalErrorAlerts}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-300">
                       API: {summary.apiTemporaryErrors} | Trade: {summary.tradeFaultErrors}
                     </p>
                   </div>
@@ -275,9 +275,9 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Awaryjne Zamknięcia</p>
+                    <p className="text-xs text-gray-300 mb-1">Awaryjne Zamknięcia</p>
                     <p className="text-2xl font-bold text-white">{summary.emergencyCloses}</p>
-                    <p className="text-xs text-gray-400">z {summary.totalDiagnosticFailures} błędów</p>
+                    <p className="text-xs text-gray-300">z {summary.totalDiagnosticFailures} błędów</p>
                   </div>
                   <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
                     <AlertCircle className="h-6 w-6 text-purple-400" />
@@ -290,9 +290,9 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Próby Ponowne (24h)</p>
+                    <p className="text-xs text-gray-300 mb-1">Próby Ponowne (24h)</p>
                     <p className="text-2xl font-bold text-white">{summary.recentRetryAttempts}</p>
-                    <p className="text-xs text-gray-400">Błędy: {summary.retryFailureRate}</p>
+                    <p className="text-xs text-gray-300">Błędy: {summary.retryFailureRate}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
                     <Clock className="h-6 w-6 text-blue-400" />
@@ -306,19 +306,19 @@ export default function DiagnosticsPage() {
         {/* Main Content with Tabs */}
         <Tabs defaultValue="locks" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
-            <TabsTrigger value="locks" className="data-[state=active]:bg-red-600/30 data-[state=active]:text-red-300">
+            <TabsTrigger value="locks" className="data-[state=active]:bg-red-600/30 data-[state=active]:text-red-200 text-gray-300">
               <Lock className="mr-2 h-4 w-4" />
               Blokady ({activeLocks.length})
             </TabsTrigger>
-            <TabsTrigger value="errors" className="data-[state=active]:bg-orange-600/30 data-[state=active]:text-orange-300">
+            <TabsTrigger value="errors" className="data-[state=active]:bg-orange-600/30 data-[state=active]:text-orange-200 text-gray-300">
               <XCircle className="mr-2 h-4 w-4" />
               Błędy Alertów ({errorAlerts.length})
             </TabsTrigger>
-            <TabsTrigger value="failures" className="data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-300">
+            <TabsTrigger value="failures" className="data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-200 text-gray-300">
               <AlertCircle className="mr-2 h-4 w-4" />
               Awarie ({failures.length})
             </TabsTrigger>
-            <TabsTrigger value="retries" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-300">
+            <TabsTrigger value="retries" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Clock className="mr-2 h-4 w-4" />
               Retry Log ({retryAttempts.length})
             </TabsTrigger>
@@ -337,7 +337,7 @@ export default function DiagnosticsPage() {
                     </Badge>
                   )}
                 </CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Symbole zablokowane z powodu błędów krytycznych
                 </CardDescription>
               </CardHeader>
@@ -345,7 +345,7 @@ export default function DiagnosticsPage() {
                 {activeLocks.length === 0 ? (
                   <div className="text-center py-12">
                     <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-500 opacity-50" />
-                    <p className="text-gray-400">Brak zablokowanych symboli - wszystko działa poprawnie!</p>
+                    <p className="text-gray-300">Brak zablokowanych symboli - wszystko działa poprawnie!</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -385,25 +385,25 @@ export default function DiagnosticsPage() {
                         
                         <div className="grid grid-cols-3 gap-3 text-sm p-3 rounded-lg bg-gray-800/40">
                           <div>
-                            <div className="text-gray-400">Liczba błędów</div>
+                            <div className="text-gray-300">Liczba błędów</div>
                             <div className="font-semibold text-red-400">{lock.failureCount}</div>
                           </div>
                           <div>
-                            <div className="text-gray-400">Zablokowano</div>
-                            <div className="font-semibold text-gray-200">
+                            <div className="text-gray-300">Zablokowano</div>
+                            <div className="font-semibold text-gray-100">
                               {new Date(lock.lockedAt).toLocaleString("pl-PL")}
                             </div>
                           </div>
                           <div>
-                            <div className="text-gray-400">Status</div>
+                            <div className="text-gray-300">Status</div>
                             <div className="font-semibold text-red-400">🚫 ZABLOKOWANY</div>
                           </div>
                         </div>
 
                         {lock.lastError && (
                           <div className="mt-3 p-3 rounded-lg bg-red-900/20 border border-red-700/30">
-                            <div className="text-xs text-gray-400 mb-1">Ostatni błąd:</div>
-                            <div className="text-sm text-red-300 font-mono">{lock.lastError}</div>
+                            <div className="text-xs text-gray-300 mb-1">Ostatni błąd:</div>
+                            <div className="text-sm text-red-200 font-mono">{lock.lastError}</div>
                           </div>
                         )}
                       </div>
@@ -426,12 +426,12 @@ export default function DiagnosticsPage() {
                             <CheckCircle className="h-5 w-5 text-green-500" />
                             <div>
                               <div className="font-semibold text-white">{lock.symbol}</div>
-                              <div className="text-xs text-gray-400">
+                              <div className="text-xs text-gray-300">
                                 Odblokowano: {new Date(lock.unlockedAt!).toLocaleString("pl-PL")}
                               </div>
                             </div>
                           </div>
-                          <Badge variant="outline" className="text-xs border-gray-700 text-gray-400">
+                          <Badge variant="outline" className="text-xs border-gray-700 text-gray-300">
                             {lock.lockReason}
                           </Badge>
                         </div>
@@ -456,7 +456,7 @@ export default function DiagnosticsPage() {
                     </Badge>
                   )}
                 </CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Alerty odrzucone z powodu błędów technicznych
                 </CardDescription>
               </CardHeader>
@@ -464,17 +464,17 @@ export default function DiagnosticsPage() {
                 {errorAlerts.length === 0 ? (
                   <div className="text-center py-12">
                     <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-500 opacity-50" />
-                    <p className="text-gray-400">Brak błędów alertów - system działa sprawnie!</p>
+                    <p className="text-gray-300">Brak błędów alertów - system działa sprawnie!</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {errorAlerts.map((alert) => {
                       const errorTypeColors: Record<string, string> = {
-                        'api_temporary': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
-                        'trade_fault': 'bg-red-500/20 text-red-300 border-red-500/40',
-                        'configuration_missing': 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-                        'configuration_error': 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-                        'database_error': 'bg-pink-500/20 text-pink-300 border-pink-500/40',
+                        'api_temporary': 'bg-yellow-500/20 text-yellow-200 border-yellow-500/40',
+                        'trade_fault': 'bg-red-500/20 text-red-200 border-red-500/40',
+                        'configuration_missing': 'bg-blue-500/20 text-blue-200 border-blue-500/40',
+                        'configuration_error': 'bg-purple-500/20 text-purple-200 border-purple-500/40',
+                        'database_error': 'bg-pink-500/20 text-pink-200 border-pink-500/40',
                       };
 
                       return (
@@ -492,12 +492,12 @@ export default function DiagnosticsPage() {
                                   {alert.symbol} {alert.side}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-xs border-gray-700 text-gray-300">
+                                  <Badge variant="outline" className="text-xs border-gray-700 text-gray-200">
                                     {alert.tier}
                                   </Badge>
                                   <Badge 
                                     variant="outline" 
-                                    className={errorTypeColors[alert.errorType || 'unknown'] || 'bg-gray-500/20 text-gray-300'}
+                                    className={errorTypeColors[alert.errorType || 'unknown'] || 'bg-gray-500/20 text-gray-200'}
                                   >
                                     {alert.errorType || 'unknown'}
                                   </Badge>
@@ -505,17 +505,17 @@ export default function DiagnosticsPage() {
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="text-xs text-gray-400">Alert ID</div>
-                              <div className="font-mono text-sm text-gray-200">#{alert.id}</div>
+                              <div className="text-xs text-gray-300">Alert ID</div>
+                              <div className="font-mono text-sm text-gray-100">#{alert.id}</div>
                             </div>
                           </div>
                           
                           <div className="p-3 rounded-lg bg-gray-800/40 mb-3">
-                            <div className="text-xs text-gray-400 mb-1">Powód odrzucenia:</div>
-                            <div className="text-sm text-orange-300 font-semibold">{alert.rejectionReason}</div>
+                            <div className="text-xs text-gray-300 mb-1">Powód odrzucenia:</div>
+                            <div className="text-sm text-orange-200 font-semibold">{alert.rejectionReason}</div>
                           </div>
 
-                          <div className="flex items-center justify-between text-xs text-gray-400">
+                          <div className="flex items-center justify-between text-xs text-gray-300">
                             <span>Otrzymano: {new Date(alert.createdAt).toLocaleString("pl-PL")}</span>
                             <Badge variant="destructive" className="text-xs">
                               error_rejected
@@ -543,7 +543,7 @@ export default function DiagnosticsPage() {
                     </Badge>
                   )}
                 </CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Awaryjne zamknięcia i krytyczne błędy
                 </CardDescription>
               </CardHeader>
@@ -551,7 +551,7 @@ export default function DiagnosticsPage() {
                 {failures.length === 0 ? (
                   <div className="text-center py-12">
                     <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-500 opacity-50" />
-                    <p className="text-gray-400">Brak awarii - bot działa stabilnie!</p>
+                    <p className="text-gray-300">Brak awarii - bot działa stabilnie!</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -560,9 +560,9 @@ export default function DiagnosticsPage() {
                       const position = item.position;
 
                       const failureTypeColors: Record<string, string> = {
-                        'emergency_close': 'bg-red-500/20 text-red-300 border-red-500/40',
-                        'tpsl_set_failed': 'bg-orange-500/20 text-orange-300 border-orange-500/40',
-                        'order_cleanup_failed': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
+                        'emergency_close': 'bg-red-500/20 text-red-200 border-red-500/40',
+                        'tpsl_set_failed': 'bg-orange-500/20 text-orange-200 border-orange-500/40',
+                        'order_cleanup_failed': 'bg-yellow-500/20 text-yellow-200 border-yellow-500/40',
                       };
 
                       return (
@@ -583,36 +583,36 @@ export default function DiagnosticsPage() {
                                 )}
                                 <Badge 
                                   variant="outline" 
-                                  className={failureTypeColors[failure.failureType] || 'bg-gray-500/20 text-gray-300'}
+                                  className={failureTypeColors[failure.failureType] || 'bg-gray-500/20 text-gray-200'}
                                 >
                                   {failure.failureType}
                                 </Badge>
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="text-xs text-gray-400">Próby</div>
+                              <div className="text-xs text-gray-300">Próby</div>
                               <div className="font-bold text-xl text-red-400">{failure.attemptCount}</div>
                             </div>
                           </div>
                           
                           <div className="p-3 rounded-lg bg-gray-800/40 mb-3">
-                            <div className="text-xs text-gray-400 mb-1">Powód:</div>
-                            <div className="text-sm text-purple-300 font-semibold">{failure.reason}</div>
+                            <div className="text-xs text-gray-300 mb-1">Powód:</div>
+                            <div className="text-sm text-purple-200 font-semibold">{failure.reason}</div>
                           </div>
 
                           {failure.details && (
                             <div className="p-3 rounded-lg bg-purple-900/20 border border-purple-700/30 mb-3">
-                              <div className="text-xs text-gray-400 mb-1">Szczegóły:</div>
-                              <div className="text-xs text-gray-300 font-mono break-all">
+                              <div className="text-xs text-gray-300 mb-1">Szczegóły:</div>
+                              <div className="text-xs text-gray-200 font-mono break-all">
                                 {failure.details}
                               </div>
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between text-xs text-gray-400 mt-3">
+                          <div className="flex items-center justify-between text-xs text-gray-300 mt-3">
                             <span>{new Date(failure.createdAt).toLocaleString("pl-PL")}</span>
                             {position && (
-                              <Badge variant="outline" className="text-xs border-gray-700 text-gray-300">
+                              <Badge variant="outline" className="text-xs border-gray-700 text-gray-200">
                                 Position #{failure.positionId}
                               </Badge>
                             )}
@@ -639,7 +639,7 @@ export default function DiagnosticsPage() {
                     </Badge>
                   )}
                 </CardTitle>
-                <CardDescription className="text-gray-300">
+                <CardDescription className="text-gray-200">
                   Historia prób ustawienia Stop Loss i Take Profit
                 </CardDescription>
               </CardHeader>
@@ -647,7 +647,7 @@ export default function DiagnosticsPage() {
                 {retryAttempts.length === 0 ? (
                   <div className="text-center py-12">
                     <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-500 opacity-50" />
-                    <p className="text-gray-400">Brak prób ponownych - wszystkie TP/SL ustawione poprawnie!</p>
+                    <p className="text-gray-300">Brak prób ponownych - wszystkie TP/SL ustawione poprawnie!</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -657,10 +657,10 @@ export default function DiagnosticsPage() {
                       const isSuccess = !attempt.errorMessage;
 
                       const orderTypeColors: Record<string, string> = {
-                        'sl': 'bg-red-500/20 text-red-300 border-red-500/40',
-                        'tp1': 'bg-green-500/20 text-green-300 border-green-500/40',
-                        'tp2': 'bg-green-500/20 text-green-300 border-green-500/40',
-                        'tp3': 'bg-green-500/20 text-green-300 border-green-500/40',
+                        'sl': 'bg-red-500/20 text-red-200 border-red-500/40',
+                        'tp1': 'bg-green-500/20 text-green-200 border-green-500/40',
+                        'tp2': 'bg-green-500/20 text-green-200 border-green-500/40',
+                        'tp3': 'bg-green-500/20 text-green-200 border-green-500/40',
                       };
 
                       return (
@@ -694,37 +694,37 @@ export default function DiagnosticsPage() {
                                 <div className="flex items-center gap-2">
                                   <Badge 
                                     variant="outline" 
-                                    className={orderTypeColors[attempt.orderType] || 'bg-gray-500/20 text-gray-300'}
+                                    className={orderTypeColors[attempt.orderType] || 'bg-gray-500/20 text-gray-200'}
                                   >
                                     {attempt.orderType.toUpperCase()}
                                   </Badge>
-                                  <Badge variant="outline" className="text-xs border-gray-700 text-gray-300">
+                                  <Badge variant="outline" className="text-xs border-gray-700 text-gray-200">
                                     Próba #{attempt.attemptNumber}
                                   </Badge>
                                 </div>
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="text-xs text-gray-400">Cena Trigger</div>
-                              <div className="font-semibold text-gray-200">{attempt.triggerPrice.toFixed(4)}</div>
+                              <div className="text-xs text-gray-300">Cena Trigger</div>
+                              <div className="font-semibold text-gray-100">{attempt.triggerPrice.toFixed(4)}</div>
                             </div>
                           </div>
                           
                           {attempt.errorMessage ? (
                             <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/30">
-                              <div className="text-xs text-gray-400 mb-1">Błąd:</div>
-                              <div className="text-sm text-red-300 font-mono">{attempt.errorMessage}</div>
+                              <div className="text-xs text-gray-300 mb-1">Błąd:</div>
+                              <div className="text-sm text-red-200 font-mono">{attempt.errorMessage}</div>
                             </div>
                           ) : (
                             <div className="p-3 rounded-lg bg-green-900/20 border border-green-700/30">
-                              <div className="text-sm text-green-300 font-semibold flex items-center gap-2">
+                              <div className="text-sm text-green-200 font-semibold flex items-center gap-2">
                                 <CheckCircle className="h-4 w-4" />
                                 Sukces - {attempt.orderType.toUpperCase()} ustawiony poprawnie
                               </div>
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between text-xs text-gray-400 mt-3">
+                          <div className="flex items-center justify-between text-xs text-gray-300 mt-3">
                             <span>{new Date(attempt.createdAt).toLocaleString("pl-PL")}</span>
                           </div>
                         </div>
