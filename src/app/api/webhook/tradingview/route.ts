@@ -481,20 +481,20 @@ async function openOkxPosition(
       return parseFloat(price.toFixed(decimals));
     };
     
-    // ✅ CRITICAL FIX: Correct validation logic for LONG and SHORT
+    // ✅ CRITICAL FIX: Increased safety margin from 0.2% to 1.5% for OKX
+    // ✅ OKX requires larger distance between market price and SL/TP
     if (isBuy) {
       // ========================================
       // BUY/LONG: TP ABOVE entry, SL BELOW entry
       // ========================================
       console.log(`   📈 LONG position validation...`);
       
-      // ✅ CRITICAL FIX: Reduce safety margin from 0.8% to 0.2%
-      // TP must be ABOVE current price with safety margin
-      const minTpPrice = currentMarketPrice * 1.002; // +0.2% minimum safety margin (reduced from 0.8%)
+      // TP must be ABOVE current price with 1.5% safety margin
+      const minTpPrice = currentMarketPrice * 1.015; // +1.5% minimum safety margin
       if (tpPrice <= currentMarketPrice || tpPrice < minTpPrice) {
         const adjustedTp = formatPrice(minTpPrice);
         console.warn(`   ⚠️ TP ${tpPrice} too close/below current ${currentMarketPrice} for LONG`);
-        console.warn(`   → Adjusting to ${adjustedTp} (+0.2% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedTp} (+1.5% safety margin)`);
         await logToBot('warning', 'tp_adjusted_long', `LONG: TP adjusted from ${tpPrice} to ${adjustedTp}`, { 
           original: originalTp, 
           adjusted: adjustedTp, 
@@ -504,12 +504,12 @@ async function openOkxPosition(
         tpPrice = adjustedTp;
       }
       
-      // SL must be BELOW current price with safety margin
-      const maxSlPrice = currentMarketPrice * 0.998; // -0.2% maximum safety margin (reduced from 0.8%)
+      // SL must be BELOW current price with 1.5% safety margin
+      const maxSlPrice = currentMarketPrice * 0.985; // -1.5% maximum safety margin
       if (slPrice >= currentMarketPrice || slPrice > maxSlPrice) {
         const adjustedSl = formatPrice(maxSlPrice);
         console.warn(`   ⚠️ SL ${slPrice} too close/above current ${currentMarketPrice} for LONG`);
-        console.warn(`   → Adjusting to ${adjustedSl} (-0.2% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedSl} (-1.5% safety margin)`);
         await logToBot('warning', 'sl_adjusted_long', `LONG: SL adjusted from ${slPrice} to ${adjustedSl}`, { 
           original: originalSl, 
           adjusted: adjustedSl, 
@@ -527,13 +527,12 @@ async function openOkxPosition(
       // ========================================
       console.log(`   📉 SHORT position validation...`);
       
-      // ✅ CRITICAL FIX: Reduce safety margin from 0.8% to 0.2%
-      // TP must be BELOW current price with safety margin
-      const maxTpPrice = currentMarketPrice * 0.998; // -0.2% (TP below market for SHORT, reduced from 0.8%)
+      // TP must be BELOW current price with 1.5% safety margin
+      const maxTpPrice = currentMarketPrice * 0.985; // -1.5% (TP below market for SHORT)
       if (tpPrice >= currentMarketPrice || tpPrice > maxTpPrice) {
         const adjustedTp = formatPrice(maxTpPrice);
         console.warn(`   ⚠️ TP ${tpPrice} too high/equal for SHORT (must be below ${maxTpPrice})`);
-        console.warn(`   → Adjusting to ${adjustedTp} (-0.2% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedTp} (-1.5% safety margin)`);
         await logToBot('warning', 'tp_adjusted_short', `SHORT: TP adjusted from ${tpPrice} to ${adjustedTp}`, { 
           original: originalTp, 
           adjusted: adjustedTp, 
@@ -543,12 +542,12 @@ async function openOkxPosition(
         tpPrice = adjustedTp;
       }
       
-      // SL must be ABOVE current price with safety margin
-      const minSlPrice = currentMarketPrice * 1.002; // +0.2% (SL above market for SHORT, reduced from 0.8%)
+      // SL must be ABOVE current price with 1.5% safety margin
+      const minSlPrice = currentMarketPrice * 1.015; // +1.5% (SL above market for SHORT)
       if (slPrice <= currentMarketPrice || slPrice < minSlPrice) {
         const adjustedSl = formatPrice(minSlPrice);
         console.warn(`   ⚠️ SL ${slPrice} too low/equal for SHORT (must be above ${minSlPrice})`);
-        console.warn(`   → Adjusting to ${adjustedSl} (+0.2% safety margin)`);
+        console.warn(`   → Adjusting to ${adjustedSl} (+1.5% safety margin)`);
         await logToBot('warning', 'sl_adjusted_short', `SHORT: SL adjusted from ${slPrice} to ${adjustedSl}`, { 
           original: originalSl, 
           adjusted: adjustedSl, 
@@ -569,9 +568,9 @@ async function openOkxPosition(
   }
 
   // ============================================
-  // 📈 STEP 7: PLACE ORDER WITH SL/TP
+  // 📈 STEP 7: PLACE ORDER WITHOUT SL/TP (SET THEM AFTER)
   // ============================================
-  console.log(`\n📈 Placing market order...`);
+  console.log(`\n📈 Placing market order WITHOUT SL/TP (will set after execution)...`);
   
   const formatPrice = (price: number) => {
     const decimals = tickSz.toString().includes('.') 
@@ -588,27 +587,11 @@ async function openOkxPosition(
     sz: quantity, // Already properly formatted string
   };
 
-  if (slPrice || tpPrice) {
-    const algoOrd: any = {
-      attachAlgoClOrdId: `a${Date.now()}${Math.random().toString(36).substring(2, 8)}`,
-    };
+  // ✅ CRITICAL FIX: DO NOT attach SL/TP to initial order
+  // OKX rejects them because market order executes at different price
+  // We will set SL/TP as separate algo orders AFTER position opens
 
-    if (tpPrice) {
-      algoOrd.tpTriggerPx = formatPrice(tpPrice);
-      algoOrd.tpOrdPx = '-1';
-      console.log(`🎯 Take Profit: ${algoOrd.tpTriggerPx}`);
-    }
-
-    if (slPrice) {
-      algoOrd.slTriggerPx = formatPrice(slPrice);
-      algoOrd.slOrdPx = '-1';
-      console.log(`🛑 Stop Loss: ${algoOrd.slTriggerPx}`);
-    }
-
-    orderPayload.attachAlgoOrds = [algoOrd];
-  }
-
-  console.log(`\n📤 ORDER PAYLOAD:`);
+  console.log(`\n📤 ORDER PAYLOAD (NO SL/TP):`);
   console.log(JSON.stringify(orderPayload, null, 2));
 
   const { data: orderData } = await makeOkxRequest(
@@ -642,12 +625,203 @@ async function openOkxPosition(
 
   const orderId = orderData.data?.[0]?.ordId || 'unknown';
   
+  console.log(`\n✅ Position opened successfully (Order ID: ${orderId})`);
+  console.log(`⏳ Waiting for position to settle before setting SL/TP...`);
+  
+  // ✅ Wait 2 seconds for position to settle
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  // ============================================
+  // 🔍 GET ACTUAL EXECUTION PRICE FROM EXCHANGE
+  // ============================================
+  console.log(`\n🔍 Fetching actual execution price from OKX...`);
+  let actualEntryPrice: number = entryPrice; // fallback
+  let actualPositionQty: number = finalContracts; // fallback
+  
+  try {
+    const { data: posData } = await makeOkxRequest(
+      'GET',
+      `/api/v5/account/positions?instType=SWAP&instId=${okxSymbol}`,
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+      undefined,
+      alertId
+    );
+    
+    if (posData.code === '0' && posData.data && posData.data.length > 0) {
+      const position = posData.data.find((p: any) => 
+        p.instId === okxSymbol && parseFloat(p.pos) !== 0
+      );
+      
+      if (position) {
+        actualEntryPrice = parseFloat(position.avgPx);
+        actualPositionQty = Math.abs(parseFloat(position.pos));
+        console.log(`✅ Actual entry from OKX: ${actualEntryPrice}`);
+        console.log(`✅ Actual quantity from OKX: ${actualPositionQty}`);
+        
+        await logToBot('info', 'actual_entry_retrieved', `Actual entry price: ${actualEntryPrice} (planned: ${entryPrice})`, {
+          actualEntry: actualEntryPrice,
+          plannedEntry: entryPrice,
+          difference: Math.abs(actualEntryPrice - entryPrice),
+          differencePercent: ((Math.abs(actualEntryPrice - entryPrice) / entryPrice) * 100).toFixed(2)
+        }, alertId);
+      } else {
+        console.warn(`⚠️ Position not found immediately after opening, using planned values`);
+      }
+    }
+  } catch (error: any) {
+    console.error(`❌ Failed to get actual entry price:`, error.message);
+    await logToBot('warning', 'actual_entry_failed', `Could not get actual entry, using planned: ${error.message}`, {
+      error: error.message
+    }, alertId);
+  }
+  
+  // ============================================
+  // 🔧 RECALCULATE SL/TP BASED ON ACTUAL ENTRY
+  // ============================================
+  console.log(`\n🔧 Recalculating SL/TP based on actual entry price...`);
+  
+  if (slPrice && tpPrice) {
+    const isBuy = side.toUpperCase() === "BUY";
+    
+    // Calculate original SL and TP distances from planned entry
+    const originalSlDistance = Math.abs(entryPrice - slPrice);
+    const originalTpDistance = Math.abs(entryPrice - (tpPrice || entryPrice));
+    
+    console.log(`   Original distances: SL ${originalSlDistance.toFixed(4)}, TP ${originalTpDistance.toFixed(4)}`);
+    
+    // Apply same distances to actual entry
+    if (isBuy) {
+      slPrice = actualEntryPrice - originalSlDistance;
+      tpPrice = actualEntryPrice + originalTpDistance;
+    } else {
+      slPrice = actualEntryPrice + originalSlDistance;
+      tpPrice = actualEntryPrice - originalTpDistance;
+    }
+    
+    // Apply safety margin (1.5%) to ensure OKX accepts them
+    const slSafetyMargin = actualEntryPrice * 0.015; // 1.5%
+    const tpSafetyMargin = actualEntryPrice * 0.015;
+    
+    if (isBuy) {
+      // LONG: SL below, TP above
+      const minSlPrice = actualEntryPrice - slSafetyMargin;
+      if (slPrice > minSlPrice) {
+        console.warn(`   ⚠️ SL ${slPrice.toFixed(4)} too close, adjusting to ${minSlPrice.toFixed(4)}`);
+        slPrice = minSlPrice;
+      }
+      
+      const minTpPrice = actualEntryPrice + tpSafetyMargin;
+      if (tpPrice < minTpPrice) {
+        console.warn(`   ⚠️ TP ${tpPrice.toFixed(4)} too close, adjusting to ${minTpPrice.toFixed(4)}`);
+        tpPrice = minTpPrice;
+      }
+    } else {
+      // SHORT: SL above, TP below
+      const maxSlPrice = actualEntryPrice + slSafetyMargin;
+      if (slPrice < maxSlPrice) {
+        console.warn(`   ⚠️ SL ${slPrice.toFixed(4)} too close, adjusting to ${maxSlPrice.toFixed(4)}`);
+        slPrice = maxSlPrice;
+      }
+      
+      const maxTpPrice = actualEntryPrice - tpSafetyMargin;
+      if (tpPrice > maxTpPrice) {
+        console.warn(`   ⚠️ TP ${tpPrice.toFixed(4)} too close, adjusting to ${maxTpPrice.toFixed(4)}`);
+        tpPrice = maxTpPrice;
+      }
+    }
+    
+    console.log(`   ✅ Recalculated SL/TP:`);
+    console.log(`      Entry: ${actualEntryPrice.toFixed(4)}`);
+    console.log(`      SL: ${slPrice.toFixed(4)} (distance: ${Math.abs(actualEntryPrice - slPrice).toFixed(4)})`);
+    console.log(`      TP: ${tpPrice.toFixed(4)} (distance: ${Math.abs(actualEntryPrice - (tpPrice || actualEntryPrice)).toFixed(4)})`);
+    
+    await logToBot('info', 'sl_tp_recalculated', `SL/TP recalculated based on actual entry ${actualEntryPrice}`, {
+      actualEntry: actualEntryPrice,
+      slPrice,
+      tpPrice,
+      slDistance: Math.abs(actualEntryPrice - slPrice),
+      tpDistance: Math.abs(actualEntryPrice - (tpPrice || actualEntryPrice))
+    }, alertId);
+    
+    // ============================================
+    // 🎯 SET SL/TP AS SEPARATE ALGO ORDERS
+    // ============================================
+    console.log(`\n🎯 Setting SL/TP as separate algo orders...`);
+    
+    try {
+      const algoPayload: any = {
+        instId: okxSymbol,
+        tdMode: 'cross',
+        side: isBuy ? 'sell' : 'buy',
+        ordType: 'conditional',
+        sz: actualPositionQty.toString(),
+      };
+      
+      if (tpPrice) {
+        algoPayload.tpTriggerPx = formatPrice(tpPrice);
+        algoPayload.tpOrdPx = '-1';
+        console.log(`   🎯 TP: ${algoPayload.tpTriggerPx}`);
+      }
+      
+      if (slPrice) {
+        algoPayload.slTriggerPx = formatPrice(slPrice);
+        algoPayload.slOrdPx = '-1';
+        console.log(`   🛑 SL: ${algoPayload.slTriggerPx}`);
+      }
+      
+      console.log(`\n📤 Algo Order Payload:`);
+      console.log(JSON.stringify(algoPayload, null, 2));
+      
+      const { data: algoData } = await makeOkxRequest(
+        'POST',
+        '/api/v5/trade/order-algo',
+        apiKey,
+        apiSecret,
+        passphrase,
+        demo,
+        algoPayload,
+        alertId
+      );
+      
+      console.log(`\n📥 Algo Order Response:`);
+      console.log(JSON.stringify(algoData, null, 2));
+      
+      if (algoData.code === '0') {
+        const algoId = algoData.data?.[0]?.algoId || 'unknown';
+        console.log(`✅ SL/TP algo order set successfully: ${algoId}`);
+        await logToBot('success', 'sl_tp_set', `SL/TP set as algo order: ${algoId}`, {
+          algoId,
+          slPrice,
+          tpPrice
+        }, alertId);
+      } else {
+        console.error(`❌ Failed to set SL/TP algo order: ${algoData.msg}`);
+        await logToBot('error', 'sl_tp_failed', `Failed to set SL/TP: ${algoData.msg}`, {
+          code: algoData.code,
+          msg: algoData.msg,
+          algoPayload
+        }, alertId);
+      }
+    } catch (algoError: any) {
+      console.error(`❌ Error setting SL/TP algo order:`, algoError.message);
+      await logToBot('error', 'sl_tp_error', `Error setting SL/TP: ${algoError.message}`, {
+        error: algoError.message
+      }, alertId);
+    }
+  }
+  
   console.log(`\n${'='.repeat(60)}`);
   console.log(`✅ POSITION OPENED SUCCESSFULLY`);
   console.log(`   Order ID: ${orderId}`);
   console.log(`   Symbol: ${okxSymbol}`);
   console.log(`   Side: ${side}`);
   console.log(`   Quantity: ${quantity} contracts`);
+  console.log(`   Actual Entry: ${actualEntryPrice}`);
+  console.log(`   SL: ${slPrice?.toFixed(4) || 'N/A'}`);
+  console.log(`   TP: ${tpPrice?.toFixed(4) || 'N/A'}`);
   console.log(`${'='.repeat(60)}\n`);
 
   await logToBot('success', 'position_opened', `OKX position opened: ${okxSymbol} ${side} ${leverage}x`, { 
@@ -657,11 +831,12 @@ async function openOkxPosition(
     leverage, 
     quantity: finalContracts,
     positionSizeUsd,
+    actualEntry: actualEntryPrice,
     sl: slPrice, 
     tp: tpPrice
   }, alertId);
 
-  return { orderId, quantity: finalContracts, okxSymbol };
+  return { orderId, quantity: finalContracts, okxSymbol, actualEntryPrice };
 }
 
 // ============================================
