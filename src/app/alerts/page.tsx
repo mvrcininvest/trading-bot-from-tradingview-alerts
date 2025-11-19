@@ -323,7 +323,7 @@ export default function AlertsPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Alerty TradingView
               </h1>
-              <p className="text-gray-400">Odbieraj i zarządzaj sygnałami z wskaźnika ICT/SMC</p>
+              <p className="text-gray-300">Odbieraj i zarządzaj sygnałami z wskaźnika ICT/SMC</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -377,7 +377,7 @@ export default function AlertsPage() {
                 </Button>
               </div>
             </CardTitle>
-            <CardDescription className="text-gray-500">Wklej ten URL w alertach TradingView</CardDescription>
+            <CardDescription className="text-gray-400">Wklej ten URL w alertach TradingView</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2">
@@ -404,12 +404,12 @@ export default function AlertsPage() {
               </div>
             )}
 
-            <div className="text-xs text-gray-500 space-y-1 border-t border-gray-800 pt-3">
-              <p className="font-semibold text-gray-400">📋 Konfiguracja w TradingView:</p>
-              <ol className="list-decimal list-inside space-y-1 ml-2">
+            <div className="text-xs text-gray-400 space-y-1 border-t border-gray-800 pt-3">
+              <p className="font-semibold text-gray-300">📋 Konfiguracja w TradingView:</p>
+              <ol className="list-decimal list-inside space-y-1 ml-2 text-gray-300">
                 <li>Otwórz wykres z twoim wskaźnikiem ICT/SMC</li>
                 <li>Dodaj alert (Alt+A lub kliknij ikonę zegara)</li>
-                <li>W sekcji "Notifications" zaznacz <strong>"Webhook URL"</strong></li>
+                <li>W sekcji "Notifications" zaznacz <strong className="text-white">"Webhook URL"</strong></li>
                 <li>Wklej powyższy URL webhook</li>
                 <li>W polu "Message" wstaw JSON z twojego wskaźnika (wszystkie pola: symbol, side, tier, entryPrice, sl, tp1, tp2, tp3, itp.)</li>
                 <li>Zapisz alert - od teraz każdy sygnał będzie automatycznie przesyłany do bota</li>
@@ -423,7 +423,7 @@ export default function AlertsPage() {
         <div className="grid grid-cols-4 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Łącznie alertów</CardDescription>
+              <CardDescription className="text-gray-400">Łącznie alertów</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-white">{stats.total}</div>
@@ -431,7 +431,7 @@ export default function AlertsPage() {
           </Card>
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Sygnały BUY</CardDescription>
+              <CardDescription className="text-gray-400">Sygnały BUY</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-green-400">{stats.buy}</div>
@@ -439,7 +439,7 @@ export default function AlertsPage() {
           </Card>
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Sygnały SELL</CardDescription>
+              <CardDescription className="text-gray-400">Sygnały SELL</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-red-400">{stats.sell}</div>
@@ -447,7 +447,7 @@ export default function AlertsPage() {
           </Card>
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Śr. Latencja</CardDescription>
+              <CardDescription className="text-gray-400">Śr. Latencja</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-white">{stats.avgLatency}ms</div>
@@ -537,7 +537,7 @@ export default function AlertsPage() {
                 }}
                 variant="ghost"
                 size="sm"
-                className="mt-4 text-gray-400 hover:text-white"
+                className="mt-4 text-gray-300 hover:text-white"
               >
                 Wyczyść filtry
               </Button>
@@ -551,7 +551,7 @@ export default function AlertsPage() {
             <CardTitle className="text-white">
               Lista Alertów 
               {filteredAlerts.length !== stats.total && (
-                <span className="text-sm font-normal text-gray-500 ml-2">
+                <span className="text-sm font-normal text-gray-400 ml-2">
                   (pokazuje {filteredAlerts.length} z {stats.total})
                 </span>
               )}
@@ -560,13 +560,13 @@ export default function AlertsPage() {
           <CardContent>
             {loading ? (
               <div className="text-center py-12">
-                <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-gray-600" />
-                <p className="text-gray-500">Ładowanie alertów...</p>
+                <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-gray-500" />
+                <p className="text-gray-400">Ładowanie alertów...</p>
               </div>
             ) : filteredAlerts.length === 0 ? (
               <div className="text-center py-12">
                 <Bell className="h-12 w-12 mx-auto mb-4 text-gray-600" />
-                <p className="text-gray-500">
+                <p className="text-gray-400">
                   {alerts.length === 0 
                     ? "Brak alertów. Skonfiguruj webhook w TradingView aby zacząć odbierać sygnały."
                     : "Brak alertów pasujących do filtrów."}
@@ -577,16 +577,16 @@ export default function AlertsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      <th className="text-left p-3 font-semibold text-gray-400">Czas otrzymania</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Symbol</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Strona</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Tier</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Siła</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Ceny</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">SL/TP</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Status wykonania</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Latencja</th>
-                      <th className="text-left p-3 font-semibold text-gray-400">Akcje</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Czas otrzymania</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Symbol</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Strona</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Tier</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Siła</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Ceny</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">SL/TP</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Status wykonania</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Latencja</th>
+                      <th className="text-left p-3 font-semibold text-gray-300">Akcje</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -594,10 +594,10 @@ export default function AlertsPage() {
                       <tr key={alert.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
                         {/* Czas */}
                         <td className="p-3 text-sm">
-                          <div className="font-mono text-xs font-semibold text-gray-300">
+                          <div className="font-mono text-xs font-semibold text-gray-200">
                             {formatReceivedTime(alert.createdAt)}
                           </div>
-                          <div className="text-xs text-gray-600">
+                          <div className="text-xs text-gray-500">
                             TV: {formatTimestamp(alert.timestamp)}
                           </div>
                         </td>
@@ -605,7 +605,7 @@ export default function AlertsPage() {
                         {/* Symbol */}
                         <td className="p-3">
                           <div className="font-bold text-white">{alert.symbol}</div>
-                          <div className="text-xs text-gray-500">{alert.session}</div>
+                          <div className="text-xs text-gray-400">{alert.session}</div>
                         </td>
 
                         {/* Strona */}
@@ -628,7 +628,7 @@ export default function AlertsPage() {
                           <Badge className={getTierColor(alert.tier)}>
                             {alert.tier}
                           </Badge>
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-gray-400 mt-1">
                             Leverage: {alert.leverage}x
                           </div>
                         </td>
@@ -638,15 +638,15 @@ export default function AlertsPage() {
                           <div className="font-semibold text-white">
                             {(alert.strength * 100).toFixed(1)}%
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-400">
                             {alert.regime}
                           </div>
                         </td>
 
                         {/* Ceny */}
                         <td className="p-3 text-sm">
-                          <div className="text-gray-300">Entry: <span className="font-semibold text-white">{formatPrice(alert.entryPrice)}</span></div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-gray-200">Entry: <span className="font-semibold text-white">{formatPrice(alert.entryPrice)}</span></div>
+                          <div className="text-xs text-gray-400">
                             ATR: {alert.atr.toFixed(2)}
                           </div>
                         </td>
@@ -657,7 +657,7 @@ export default function AlertsPage() {
                           <div className="text-green-400">
                             TP1: {formatPrice(alert.tp1)}
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-400">
                             TP3: {formatPrice(alert.tp3)}
                           </div>
                         </td>

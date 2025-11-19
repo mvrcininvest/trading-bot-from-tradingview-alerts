@@ -261,7 +261,7 @@ export default function BotSettingsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-8">
         <div className="max-w-4xl mx-auto">
-          <p className="text-white">Ładowanie...</p>
+          <p className="text-gray-300">Ładowanie...</p>
         </div>
       </div>
     )
@@ -281,7 +281,7 @@ export default function BotSettingsPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Ustawienia Bota
               </h1>
-              <p className="text-gray-400">Konfiguracja automatycznego tradingu</p>
+              <p className="text-gray-300">Konfiguracja automatycznego tradingu</p>
             </div>
           </div>
           <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
@@ -334,7 +334,7 @@ export default function BotSettingsPage() {
                 onCheckedChange={handleToggleBot}
                 className="scale-150"
               />
-              <span className="text-xs text-gray-500">Kliknij aby {botEnabled ? "wyłączyć" : "włączyć"}</span>
+              <span className="text-xs text-gray-400">Kliknij aby {botEnabled ? "wyłączyć" : "włączyć"}</span>
             </div>
           </div>
         </Card>
@@ -349,14 +349,14 @@ export default function BotSettingsPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-white">Podgląd Obecnych Ustawień</h3>
-                  <p className="text-sm text-gray-400">Aktywna konfiguracja bota</p>
+                  <p className="text-sm text-gray-300">Aktywna konfiguracja bota</p>
                 </div>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowPreview(!showPreview)}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-300 hover:text-white"
               >
                 {showPreview ? "Zwiń" : "Rozwiń"}
               </Button>
@@ -692,7 +692,7 @@ export default function BotSettingsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h3>
-              <p className="text-sm text-gray-400">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
+              <p className="text-sm text-gray-300">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
             </div>
             <Switch checked={useDefaultSlTp} onCheckedChange={setUseDefaultSlTp} />
           </div>
@@ -731,7 +731,7 @@ export default function BotSettingsPage() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">Adaptive Risk/Reward</h3>
-                <p className="text-sm text-gray-400">Dynamiczne dostosowanie TP/SL na podstawie siły sygnału</p>
+                <p className="text-sm text-gray-300">Dynamiczne dostosowanie TP/SL na podstawie siły sygnału</p>
               </div>
             </div>
             <Switch checked={adaptiveRR} onCheckedChange={setAdaptiveRR} />
@@ -814,7 +814,7 @@ export default function BotSettingsPage() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">Stop Loss jako % Margin</h3>
-                <p className="text-sm text-gray-400">Oblicz SL na podstawie maksymalnej straty margin zamiast % od entry</p>
+                <p className="text-sm text-gray-300">Oblicz SL na podstawie maksymalnej straty margin zamiast % od entry</p>
               </div>
             </div>
             <Switch checked={slAsMarginPercent} onCheckedChange={setSlAsMarginPercent} />
@@ -887,7 +887,7 @@ export default function BotSettingsPage() {
             </div>
             <div>
               <h3 className="text-xl font-bold text-white">Strategia Take Profit (Zaawansowana)</h3>
-              <p className="text-sm text-gray-400">Elastyczne zarządzanie wielopoziomowymi TP i Stop Loss</p>
+              <p className="text-sm text-gray-300">Elastyczne zarządzanie wielopoziomowymi TP i Stop Loss</p>
             </div>
           </div>
 
@@ -1105,7 +1105,7 @@ export default function BotSettingsPage() {
 
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Zachowanie dla Tego Samego Symbolu</h3>
-          <p className="text-sm text-gray-400">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
+          <p className="text-sm text-gray-300">Co robić gdy przychodzi alert w tym samym kierunku na symbolu z istniejącą pozycją?</p>
           
           <div className="space-y-2">
             <Label className="text-white">Strategia</Label>
@@ -1125,7 +1125,7 @@ export default function BotSettingsPage() {
 
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Strategia dla Przeciwnego Kierunku</h3>
-          <p className="text-sm text-gray-400">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
+          <p className="text-sm text-gray-300">Co robić gdy przychodzi alert w przeciwnym kierunku?</p>
           
           <div className="space-y-2">
             <Label className="text-white">Strategia</Label>
@@ -1179,7 +1179,7 @@ export default function BotSettingsPage() {
 
         <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <h3 className="text-lg font-semibold text-white">Emergency Override</h3>
-          <p className="text-sm text-gray-400">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
+          <p className="text-sm text-gray-300">Kiedy Emergency może nadpisać istniejącą pozycję w tym samym kierunku?</p>
           
           <div className="space-y-2">
             <Label className="text-white">Tryb</Label>

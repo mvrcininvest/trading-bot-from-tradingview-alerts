@@ -132,7 +132,7 @@ export default function BotHistoryPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Historia Bota
               </h1>
-              <p className="text-gray-400">
+              <p className="text-gray-300">
                 Zamknięte pozycje i działania bota tradingowego
               </p>
             </div>
@@ -147,14 +147,14 @@ export default function BotHistoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Łącznie Transakcji</CardDescription>
+              <CardDescription className="text-gray-400">Łącznie Transakcji</CardDescription>
               <CardTitle className="text-3xl text-white">{stats.totalTrades}</CardTitle>
             </CardHeader>
           </Card>
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Zyskowne</CardDescription>
+              <CardDescription className="text-gray-400">Zyskowne</CardDescription>
               <CardTitle className="text-3xl text-green-400 flex items-center gap-2">
                 <TrendingUp className="h-6 w-6" />
                 {stats.profitable}
@@ -164,7 +164,7 @@ export default function BotHistoryPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Stratne</CardDescription>
+              <CardDescription className="text-gray-400">Stratne</CardDescription>
               <CardTitle className="text-3xl text-red-400 flex items-center gap-2">
                 <TrendingDown className="h-6 w-6" />
                 {stats.losses}
@@ -174,14 +174,14 @@ export default function BotHistoryPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Win Rate</CardDescription>
+              <CardDescription className="text-gray-400">Win Rate</CardDescription>
               <CardTitle className="text-3xl text-white">{stats.winRate.toFixed(1)}%</CardTitle>
             </CardHeader>
           </Card>
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-500">Łączny PnL</CardDescription>
+              <CardDescription className="text-gray-400">Łączny PnL</CardDescription>
               <CardTitle
                 className={`text-3xl ${stats.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}
               >
@@ -257,22 +257,22 @@ export default function BotHistoryPage() {
               Zamknięte Pozycje
               <Badge variant="secondary" className="bg-gray-700 text-gray-300">{filteredPositions.length}</Badge>
             </CardTitle>
-            <CardDescription className="text-gray-500">
+            <CardDescription className="text-gray-400">
               Historia wszystkich zamkniętych pozycji bota
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading && (
               <div className="text-center py-8">
-                <Activity className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-600" />
-                <p className="text-sm text-gray-500">Ładowanie historii...</p>
+                <Activity className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
+                <p className="text-sm text-gray-400">Ładowanie historii...</p>
               </div>
             )}
 
             {!loading && filteredPositions.length === 0 && (
               <div className="text-center py-8">
                 <History className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-400">
                   Brak zamkniętych pozycji spełniających kryteria filtrowania.
                 </p>
               </div>
@@ -305,7 +305,7 @@ export default function BotHistoryPage() {
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-lg">{position.symbol}</span>
+                            <span className="font-bold text-lg text-white">{position.symbol}</span>
                             <Badge variant="outline" className={tierColors[position.tier] || ""}>
                               {position.tier}
                             </Badge>
@@ -320,7 +320,7 @@ export default function BotHistoryPage() {
                               {position.side === "BUY" ? "LONG" : "SHORT"} {position.leverage}x
                             </Badge>
                           </div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-gray-300">
                             {closeReasonLabels[position.closeReason] || position.closeReason}
                           </div>
                         </div>
@@ -347,19 +347,19 @@ export default function BotHistoryPage() {
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
                         <div>
-                          <div className="text-gray-400">Wejście</div>
+                          <div className="text-gray-300">Wejście</div>
                           <div className="font-semibold text-white">{position.entryPrice.toFixed(4)}</div>
                         </div>
                         <div>
-                          <div className="text-gray-400">Wyjście</div>
+                          <div className="text-gray-300">Wyjście</div>
                           <div className="font-semibold text-white">{position.closePrice.toFixed(4)}</div>
                         </div>
                         <div>
-                          <div className="text-gray-400">Rozmiar</div>
+                          <div className="text-gray-300">Rozmiar</div>
                           <div className="font-semibold text-white">{position.quantity.toFixed(4)}</div>
                         </div>
                         <div>
-                          <div className="text-gray-400">Czas Trwania</div>
+                          <div className="text-gray-300">Czas Trwania</div>
                           <div className="font-semibold text-white">
                             {position.durationMinutes < 60
                               ? `${position.durationMinutes}m`
@@ -372,28 +372,28 @@ export default function BotHistoryPage() {
 
                       {/* TP Status */}
                       <div className="flex items-center gap-2 text-xs mb-2">
-                        <span className="text-gray-400">Take Profit:</span>
+                        <span className="text-gray-300">Take Profit:</span>
                         <Badge
                           variant={position.tp1Hit ? "default" : "outline"}
-                          className={position.tp1Hit ? "bg-green-500" : ""}
+                          className={position.tp1Hit ? "bg-green-500" : "border-gray-600 text-gray-400"}
                         >
                           TP1 {position.tp1Hit ? "✓" : "✗"}
                         </Badge>
                         <Badge
                           variant={position.tp2Hit ? "default" : "outline"}
-                          className={position.tp2Hit ? "bg-green-500" : ""}
+                          className={position.tp2Hit ? "bg-green-500" : "border-gray-600 text-gray-400"}
                         >
                           TP2 {position.tp2Hit ? "✓" : "✗"}
                         </Badge>
                         <Badge
                           variant={position.tp3Hit ? "default" : "outline"}
-                          className={position.tp3Hit ? "bg-green-500" : ""}
+                          className={position.tp3Hit ? "bg-green-500" : "border-gray-600 text-gray-400"}
                         >
                           TP3 {position.tp3Hit ? "✓" : "✗"}
                         </Badge>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-gray-400">
+                      <div className="flex items-center justify-between text-xs text-gray-300">
                         <span>Confirmations: {position.confirmationCount}</span>
                         <span>
                           {new Date(position.openedAt).toLocaleString("pl-PL")} →{" "}

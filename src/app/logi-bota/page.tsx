@@ -124,7 +124,7 @@ export default function LogiBotaPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Logi Bota
               </h1>
-              <p className="text-gray-400">
+              <p className="text-gray-300">
                 Śledzenie wszystkich akcji, błędów i ostrzeżeń.
               </p>
             </div>
@@ -190,7 +190,7 @@ export default function LogiBotaPage() {
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">Filtry</CardTitle>
-            <CardDescription className="text-gray-500">Ogranicz wyświetlane logi</CardDescription>
+            <CardDescription className="text-gray-300">Ogranicz wyświetlane logi</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex gap-4">
@@ -234,20 +234,20 @@ export default function LogiBotaPage() {
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">Historia Logów</CardTitle>
-            <CardDescription className="text-gray-500">
+            <CardDescription className="text-gray-300">
               Wyświetlanie {logs.length} z {total} logów
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="text-center py-8">
-                <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-600" />
-                <p className="text-gray-500 mt-2">Ładowanie logów...</p>
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-500" />
+                <p className="text-gray-400 mt-2">Ładowanie logów...</p>
               </div>
             ) : logs.length === 0 ? (
               <div className="text-center py-8">
                 <Info className="h-8 w-8 mx-auto text-gray-600" />
-                <p className="text-gray-500 mt-2">Brak logów do wyświetlenia</p>
+                <p className="text-gray-400 mt-2">Brak logów do wyświetlenia</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -274,20 +274,20 @@ export default function LogiBotaPage() {
                               <Badge variant="secondary" className="bg-purple-500/20 text-purple-400">Pozycja #{log.positionId}</Badge>
                             )}
                           </div>
-                          <p className="text-sm font-medium mb-1 text-gray-300">{log.message}</p>
+                          <p className="text-sm font-medium mb-1 text-gray-200">{log.message}</p>
                           {log.details && (
-                            <details className="text-xs text-gray-500 mt-2">
-                              <summary className="cursor-pointer hover:text-gray-400">
+                            <details className="text-xs text-gray-400 mt-2">
+                              <summary className="cursor-pointer hover:text-gray-300">
                                 Szczegóły
                               </summary>
-                              <pre className="mt-2 p-2 bg-gray-800 rounded text-xs overflow-x-auto text-gray-400">
+                              <pre className="mt-2 p-2 bg-gray-800 rounded text-xs overflow-x-auto text-gray-300">
                                 {JSON.stringify(JSON.parse(log.details), null, 2)}
                               </pre>
                             </details>
                           )}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500 whitespace-nowrap">
+                      <div className="text-xs text-gray-400 whitespace-nowrap">
                         {formatTimestamp(log.timestamp)}
                       </div>
                     </div>

@@ -255,7 +255,7 @@ export default function ExchangeTestPage() {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
               Test Połączenia z Giełdą
             </h1>
-            <p className="text-gray-400">Sprawdź połączenie z API giełdy przed rozpoczęciem tradingu</p>
+            <p className="text-gray-300">Sprawdź połączenie z API giełdy przed rozpoczęciem tradingu</p>
           </div>
         </div>
 
@@ -263,13 +263,13 @@ export default function ExchangeTestPage() {
           <Alert className="border-yellow-500 bg-yellow-500/10">
             <AlertTriangle className="h-5 w-5 text-yellow-500" />
             <AlertTitle className="text-yellow-500">Uwaga: Bybit Demo i CloudFlare</AlertTitle>
-            <AlertDescription className="text-sm text-muted-foreground">
+            <AlertDescription className="text-sm text-gray-300">
               API Bybit Demo jest chronione przez CloudFlare/WAF, co często powoduje błędy 403 podczas testowania.
-              <strong> To NIE oznacza że Twoje klucze są nieprawidłowe</strong> - CloudFlare blokuje requesty testowe z serwerów.
+              <strong className="text-yellow-400"> To NIE oznacza że Twoje klucze są nieprawidłowe</strong> - CloudFlare blokuje requesty testowe z serwerów.
               <br /><br />
-              <strong>Rozwiązania:</strong>
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Użyj przycisku <strong>"Zapisz bez testowania"</strong> poniżej - jeśli jesteś pewien że klucze są poprawne</li>
+              <strong className="text-yellow-400">Rozwiązania:</strong>
+              <ul className="list-disc list-inside mt-2 space-y-1 text-gray-300">
+                <li>Użyj przycisku <strong className="text-white">"Zapisz bez testowania"</strong> poniżej - jeśli jesteś pewien że klucze są poprawne</li>
                 <li>Spróbuj ponownie za 5-10 minut (tymczasowa blokada)</li>
                 <li>Dodaj IP serwera do whitelisty w panelu API Bybit (jeśli dostępne)</li>
                 <li>W prawdziwym tradingu (nie testowaniu) CloudFlare może pozwolić na requesty</li>
@@ -281,7 +281,7 @@ export default function ExchangeTestPage() {
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white">Konfiguracja API</CardTitle>
-            <CardDescription className="text-gray-400">Wprowadź klucze API z wybranej giełdy</CardDescription>
+            <CardDescription className="text-gray-300">Wprowadź klucze API z wybranej giełdy</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <Tabs value={exchange} onValueChange={(v) => setExchange(v as "binance" | "bybit" | "okx")}>
@@ -294,41 +294,41 @@ export default function ExchangeTestPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="apiKey" className="text-gray-300">API Key</Label>
+                <Label htmlFor="apiKey" className="text-gray-200">API Key</Label>
                 <Input
                   id="apiKey"
                   type="text"
                   placeholder="Wprowadź swój API Key"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  className="bg-gray-800 border-gray-700 text-gray-300"
+                  className="bg-gray-800 border-gray-700 text-white"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="apiSecret" className="text-gray-300">API Secret</Label>
+                <Label htmlFor="apiSecret" className="text-gray-200">API Secret</Label>
                 <Input
                   id="apiSecret"
                   type="password"
                   placeholder="Wprowadź swój API Secret"
                   value={apiSecret}
                   onChange={(e) => setApiSecret(e.target.value)}
-                  className="bg-gray-800 border-gray-700 text-gray-300"
+                  className="bg-gray-800 border-gray-700 text-white"
                 />
               </div>
 
               {exchange === "okx" && (
                 <div className="space-y-2">
-                  <Label htmlFor="passphrase" className="text-gray-300">Passphrase</Label>
+                  <Label htmlFor="passphrase" className="text-gray-200">Passphrase</Label>
                   <Input
                     id="passphrase"
                     type="password"
                     placeholder="Wprowadź swoje Passphrase"
                     value={passphrase}
                     onChange={(e) => setPassphrase(e.target.value)}
-                    className="bg-gray-800 border-gray-700 text-gray-300"
+                    className="bg-gray-800 border-gray-700 text-white"
                   />
-                  <p className="text-xs text-gray-500">Passphrase utworzone podczas tworzenia klucza API</p>
+                  <p className="text-xs text-gray-400">Passphrase utworzone podczas tworzenia klucza API</p>
                 </div>
               )}
 
@@ -341,48 +341,48 @@ export default function ExchangeTestPage() {
                     onChange={(e) => setTestnet(e.target.checked)}
                     className="h-4 w-4 bg-gray-800 border-gray-700 text-purple-500 rounded focus:ring-purple-500"
                   />
-                  <Label htmlFor="testnet" className="text-gray-300 cursor-pointer">
+                  <Label htmlFor="testnet" className="text-gray-200 cursor-pointer">
                     Użyj Testnet (zalecane do testów)
                   </Label>
                 </div>
               ) : exchange === "bybit" ? (
                 <div className="space-y-3">
-                  <Label className="text-gray-300">Środowisko Bybit</Label>
+                  <Label className="text-gray-200">Środowisko Bybit</Label>
                   <RadioGroup value={bybitEnv} onValueChange={(v) => setBybitEnv(v as BybitEnvironment)}>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mainnet" id="mainnet" className="bg-gray-800 border-gray-700 text-gray-300" />
-                      <Label htmlFor="mainnet" className="text-gray-300 cursor-pointer font-normal">
-                        <span className="font-semibold text-gray-200">Mainnet</span> - Prawdziwe konto produkcyjne (prawdziwa płynność)
+                      <RadioGroupItem value="mainnet" id="mainnet" className="bg-gray-800 border-gray-700" />
+                      <Label htmlFor="mainnet" className="text-gray-200 cursor-pointer font-normal">
+                        <span className="font-semibold text-white">Mainnet</span> - Prawdziwe konto produkcyjne (prawdziwa płynność)
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="demo" id="demo" className="bg-gray-800 border-gray-700 text-gray-300" />
-                      <Label htmlFor="demo" className="text-gray-300 cursor-pointer font-normal">
-                        <span className="font-semibold text-gray-200">Demo</span> - Konto demo (prawdziwa płynność, może być blokowane przez CloudFlare)
+                      <RadioGroupItem value="demo" id="demo" className="bg-gray-800 border-gray-700" />
+                      <Label htmlFor="demo" className="text-gray-200 cursor-pointer font-normal">
+                        <span className="font-semibold text-white">Demo</span> - Konto demo (prawdziwa płynność, może być blokowane przez CloudFlare)
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="testnet" id="testnet-radio" className="bg-gray-800 border-gray-700 text-gray-300" />
-                      <Label htmlFor="testnet-radio" className="text-gray-300 cursor-pointer font-normal">
-                        <span className="font-semibold text-gray-200">Testnet</span> - Środowisko testowe (mniejsza płynność)
+                      <RadioGroupItem value="testnet" id="testnet-radio" className="bg-gray-800 border-gray-700" />
+                      <Label htmlFor="testnet-radio" className="text-gray-200 cursor-pointer font-normal">
+                        <span className="font-semibold text-white">Testnet</span> - Środowisko testowe (mniejsza płynność)
                       </Label>
                     </div>
                   </RadioGroup>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <Label className="text-gray-300">Środowisko OKX</Label>
+                  <Label className="text-gray-200">Środowisko OKX</Label>
                   <RadioGroup value={okxEnv} onValueChange={(v) => setOkxEnv(v as OkxEnvironment)}>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mainnet" id="okx-mainnet" className="bg-gray-800 border-gray-700 text-gray-300" />
-                      <Label htmlFor="okx-mainnet" className="text-gray-300 cursor-pointer font-normal">
-                        <span className="font-semibold text-gray-200">Mainnet</span> - Prawdziwe konto produkcyjne
+                      <RadioGroupItem value="mainnet" id="okx-mainnet" className="bg-gray-800 border-gray-700" />
+                      <Label htmlFor="okx-mainnet" className="text-gray-200 cursor-pointer font-normal">
+                        <span className="font-semibold text-white">Mainnet</span> - Prawdziwe konto produkcyjne
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="demo" id="okx-demo" className="bg-gray-800 border-gray-700 text-gray-300" />
-                      <Label htmlFor="okx-demo" className="text-gray-300 cursor-pointer font-normal">
-                        <span className="font-semibold text-gray-200">Demo</span> - Demo Trading (prawdziwa płynność, środowisko testowe)
+                      <RadioGroupItem value="demo" id="okx-demo" className="bg-gray-800 border-gray-700" />
+                      <Label htmlFor="okx-demo" className="text-gray-200 cursor-pointer font-normal">
+                        <span className="font-semibold text-white">Demo</span> - Demo Trading (prawdziwa płynność, środowisko testowe)
                       </Label>
                     </div>
                   </RadioGroup>
@@ -418,8 +418,8 @@ export default function ExchangeTestPage() {
               {exchange === "bybit" && bybitEnv === "mainnet" && (
                 <Alert className="border-red-500 bg-red-500/10">
                   <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <AlertDescription className="text-sm text-gray-300">
-                    <strong className="text-red-500">UWAGA:</strong> Używasz prawdziwego konta Bybit Mainnet. 
+                  <AlertDescription className="text-sm text-gray-200">
+                    <strong className="text-red-400">UWAGA:</strong> Używasz prawdziwego konta Bybit Mainnet. 
                     Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
                   </AlertDescription>
                 </Alert>
@@ -428,8 +428,8 @@ export default function ExchangeTestPage() {
               {exchange === "okx" && okxEnv === "mainnet" && (
                 <Alert className="border-red-500 bg-red-500/10">
                   <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <AlertDescription className="text-sm text-gray-300">
-                    <strong className="text-red-500">UWAGA:</strong> Używasz prawdziwego konta OKX Mainnet. 
+                  <AlertDescription className="text-sm text-gray-200">
+                    <strong className="text-red-400">UWAGA:</strong> Używasz prawdziwego konta OKX Mainnet. 
                     Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
                   </AlertDescription>
                 </Alert>
@@ -441,7 +441,7 @@ export default function ExchangeTestPage() {
         {result && (
           <Card className={`border-${result.success ? "green-500" : "red-500"} bg-gray-900/80 backdrop-blur-sm`}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-white">
                 {result.success ? (
                   <>
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -456,15 +456,15 @@ export default function ExchangeTestPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-300 mb-4 whitespace-pre-line">{result.message}</p>
+              <p className="text-sm text-gray-200 mb-4 whitespace-pre-line">{result.message}</p>
 
               {!result.success && exchange === "bybit" && bybitEnv === "demo" && (
                 <div className="mt-4 p-4 bg-gray-800/50 rounded-lg space-y-2">
                   <div className="flex items-start gap-2">
                     <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-gray-300">
-                      <strong className="text-blue-500">Sugestia:</strong> Jeśli jesteś pewien że klucze są poprawne 
-                      (stworzone w Demo Trading z wszystkimi uprawnieniami), możesz <strong>zapisać je bez testowania</strong> 
+                    <div className="text-sm text-gray-200">
+                      <strong className="text-blue-400">Sugestia:</strong> Jeśli jesteś pewien że klucze są poprawne 
+                      (stworzone w Demo Trading z wszystkimi uprawnieniami), możesz <strong className="text-white">zapisać je bez testowania</strong> 
                       klikając przycisk "Zapisz bez testowania" powyżej. Klucze będą działać w prawdziwym tradingu mimo błędu testowego.
                     </div>
                   </div>
@@ -485,7 +485,7 @@ export default function ExchangeTestPage() {
                       <span className="font-semibold text-gray-200">Salda (top 5):</span>
                       <div className="mt-2 space-y-1">
                         {result.accountInfo.balances.slice(0, 5).map((balance, idx) => (
-                          <div key={idx} className="text-sm flex justify-between p-2 bg-gray-800/50 rounded">
+                          <div key={idx} className="text-sm flex justify-between p-2 bg-gray-800/50 rounded text-gray-200">
                             <span>{balance.asset}</span>
                             <span>Wolne: {balance.free} | Zablokowane: {balance.locked}</span>
                           </div>
@@ -503,28 +503,28 @@ export default function ExchangeTestPage() {
           <CardHeader>
             <CardTitle className="text-lg text-white">Jak uzyskać klucze API?</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-gray-300">
-            <p><strong>Binance:</strong></p>
+          <CardContent className="space-y-2 text-sm text-gray-200">
+            <p><strong className="text-white">Binance:</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
               <li>Zaloguj się na Binance</li>
               <li>Przejdź do API Management w ustawieniach</li>
               <li>Utwórz nowy klucz API</li>
               <li>Włącz uprawnienia: "Enable Spot & Margin Trading"</li>
-              <li>Dla testów użyj: <a href="https://testnet.binance.vision/" target="_blank" className="text-primary underline">Binance Testnet</a></li>
+              <li>Dla testów użyj: <a href="https://testnet.binance.vision/" target="_blank" className="text-blue-400 underline">Binance Testnet</a></li>
             </ol>
-            <p className="mt-4"><strong>Bybit:</strong></p>
+            <p className="mt-4"><strong className="text-white">Bybit:</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li><strong>Mainnet (zalecane dla prawdziwej płynności):</strong> Użyj prawdziwego konta Bybit → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
-              <li><strong>Demo Account:</strong> Zaloguj się na Bybit → Przełącz na "Demo Trading" → API Management → Utwórz klucz (może być blokowane przez CloudFlare)</li>
-              <li><strong>Testnet (mniejsza płynność):</strong> Zarejestruj się na <a href="https://testnet.bybit.com/" target="_blank" className="text-primary underline">testnet.bybit.com</a> → API Management</li>
+              <li><strong className="text-white">Mainnet (zalecane dla prawdziwej płynności):</strong> Użyj prawdziwego konta Bybit → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
+              <li><strong className="text-white">Demo Account:</strong> Zaloguj się na Bybit → Przełącz na "Demo Trading" → API Management → Utwórz klucz (może być blokowane przez CloudFlare)</li>
+              <li><strong className="text-white">Testnet (mniejsza płynność):</strong> Zarejestruj się na <a href="https://testnet.bybit.com/" target="_blank" className="text-blue-400 underline">testnet.bybit.com</a> → API Management</li>
               <li>Włącz uprawnienia tradingu przy tworzeniu klucza</li>
             </ol>
-            <p className="mt-4"><strong>OKX:</strong></p>
+            <p className="mt-4"><strong className="text-white">OKX:</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li><strong>Demo Trading (zalecane do testów):</strong> Zaloguj się na OKX → Trading → Demo Trading → Personal Center → Create Demo APIKey</li>
-              <li><strong>Mainnet:</strong> Użyj prawdziwego konta OKX → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
+              <li><strong className="text-white">Demo Trading (zalecane do testów):</strong> Zaloguj się na OKX → Trading → Demo Trading → Personal Center → Create Demo APIKey</li>
+              <li><strong className="text-white">Mainnet:</strong> Użyj prawdziwego konta OKX → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
               <li>Włącz uprawnienia: "Trade" przy tworzeniu klucza</li>
-              <li><strong>WAŻNE:</strong> Zapisz Passphrase - nie możesz go później odzyskać!</li>
+              <li><strong className="text-white">WAŻNE:</strong> Zapisz Passphrase - nie możesz go później odzyskać!</li>
             </ol>
           </CardContent>
         </Card>

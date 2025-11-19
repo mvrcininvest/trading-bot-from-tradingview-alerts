@@ -763,13 +763,13 @@ export default function DashboardPage() {
             <AlertDescription className="text-sm text-red-200">
               <strong className="text-red-300 text-base">⚠️ OSTRZEŻENIE: Używasz środowiska DEMO</strong>
               <div className="mt-2 space-y-2">
-                <p className="font-medium">
+                <p className="font-medium text-gray-200">
                   Bybit API Demo jest często <strong>blokowane przez CloudFlare/WAF</strong> dla requestów server-side (webhook, bot).
                 </p>
                 <p className="text-red-300 font-semibold">
                   ❌ Webhook i automatyczny bot <u>NIE BĘDĄ DZIAŁAĆ</u> z Demo environment!
                 </p>
-                <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3">
+                <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3 text-gray-200">
                   ✅ <strong>ROZWIĄZANIE:</strong> Przejdź do <Button 
                     variant="link" 
                     className="text-green-300 underline p-0 h-auto font-bold"
@@ -792,7 +792,7 @@ export default function DashboardPage() {
                 <div className="flex-1">
                   <strong className="text-red-300 text-base">🚫 UWAGA: {symbolLocks.length} zablokowanych symboli!</strong>
                   <div className="mt-2 space-y-2">
-                    <p className="font-medium">
+                    <p className="font-medium text-gray-200">
                       Bot nie będzie otwierał pozycji na następujących symbolach: {" "}
                       <strong className="text-red-300">{symbolLocks.map(l => l.symbol).join(", ")}</strong>
                     </p>
@@ -802,9 +802,9 @@ export default function DashboardPage() {
                           <div className="flex items-center justify-between">
                             <div>
                               <div className="font-bold text-red-200">{lock.symbol}</div>
-                              <div className="text-xs text-red-400">{lock.lockReason}</div>
+                              <div className="text-xs text-red-300">{lock.lockReason}</div>
                             </div>
-                            <div className="text-xs text-red-500">
+                            <div className="text-xs text-red-400">
                               {new Date(lock.lockedAt).toLocaleString("pl-PL", { 
                                 month: 'short', 
                                 day: 'numeric', 
@@ -849,7 +849,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <strong className="text-blue-300 text-base">🔄 Synchronizacja Credentials</strong>
-                <p className="mt-2">
+                <p className="mt-2 text-gray-200">
                   Dashboard czyta z <strong>localStorage</strong>, ale webhook czyta z <strong>bazy danych</strong>.
                   Jeśli webhook używa niewłaściwej giełdy, kliknij przycisk aby zsynchronizować:
                 </p>
@@ -901,10 +901,10 @@ export default function DashboardPage() {
                   Dashboard Tradingowy
                 </h1>
                 <div className="flex items-center gap-3">
-                  <p className="text-sm text-gray-400 flex items-center gap-2">
+                  <p className="text-sm text-gray-300 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                     {credentials.exchange.toUpperCase()} · 
-                    <span className={credentials.environment === "demo" ? "text-red-400 font-bold" : ""}>
+                    <span className={credentials.environment === "demo" ? "text-red-400 font-bold" : "text-gray-300"}>
                       {credentials.environment}
                       {credentials.environment === "demo" && " ⚠️"}
                     </span>
@@ -948,9 +948,9 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Saldo Konta</p>
+                        <p className="text-xs text-gray-400 mb-1">Saldo Konta</p>
                         <p className="text-2xl font-bold text-white">{totalBalance.toFixed(2)}</p>
-                        <p className="text-xs text-gray-500">USDT</p>
+                        <p className="text-xs text-gray-400">USDT</p>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
                         <Wallet className="h-6 w-6 text-blue-400" />
@@ -960,7 +960,7 @@ export default function DashboardPage() {
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Całkowite saldo dostępne na koncie giełdowym (wolne + zablokowane w pozycjach)</p>
+                <p className="text-gray-200">Całkowite saldo dostępne na koncie giełdowym (wolne + zablokowane w pozycjach)</p>
               </TooltipContent>
             </Tooltip>
 
@@ -970,11 +970,11 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Całkowity PnL</p>
+                        <p className="text-xs text-gray-400 mb-1">Całkowity PnL</p>
                         <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
                         </p>
-                        <p className="text-xs text-gray-500">USDT</p>
+                        <p className="text-xs text-gray-400">USDT</p>
                       </div>
                       <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'}`}>
                         <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
@@ -984,7 +984,7 @@ export default function DashboardPage() {
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Łączny nierealizowany zysk/strata ze wszystkich otwartych pozycji (bot + manualne)</p>
+                <p className="text-gray-200">Łączny nierealizowany zysk/strata ze wszystkich otwartych pozycji (bot + manualne)</p>
               </TooltipContent>
             </Tooltip>
 
@@ -994,7 +994,7 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Pozycje Bota</p>
+                        <p className="text-xs text-gray-400 mb-1">Pozycje Bota</p>
                         <p className="text-2xl font-bold text-white">{botPositions.length}</p>
                         <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
@@ -1008,7 +1008,7 @@ export default function DashboardPage() {
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Liczba aktywnych pozycji otwartych automatycznie przez bota i ich całkowity PnL</p>
+                <p className="text-gray-200">Liczba aktywnych pozycji otwartych automatycznie przez bota i ich całkowity PnL</p>
               </TooltipContent>
             </Tooltip>
 
@@ -1018,9 +1018,9 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Wszystkie Pozycje</p>
+                        <p className="text-xs text-gray-400 mb-1">Wszystkie Pozycje</p>
                         <p className="text-2xl font-bold text-white">{totalPositionsCount}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-400">
                           {winningPositions} wygrywa
                         </p>
                       </div>
@@ -1032,7 +1032,7 @@ export default function DashboardPage() {
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Wszystkie otwarte pozycje na giełdzie (bot + manualne) z liczbą zyskownych tradów</p>
+                <p className="text-gray-200">Wszystkie otwarte pozycje na giełdzie (bot + manualne) z liczbą zyskownych tradów</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -1074,7 +1074,7 @@ export default function DashboardPage() {
                       <Wallet className="h-5 w-5" />
                       Saldo Konta
                     </CardTitle>
-                    <CardDescription className="text-gray-500">
+                    <CardDescription className="text-gray-400">
                       {lastUpdate && <span className="text-xs">Zaktualizowano: {lastUpdate}</span>}
                     </CardDescription>
                   </div>
@@ -1135,14 +1135,14 @@ export default function DashboardPage() {
                           </div>
                           <div>
                             <div className="font-semibold text-lg text-white">{balance.asset}</div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-gray-400">
                               Wolne: {balance.free} · Zablokowane: {balance.locked}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-2xl text-white">{balance.total}</div>
-                          <div className="text-xs text-gray-500">Łącznie</div>
+                          <div className="text-xs text-gray-400">Łącznie</div>
                         </div>
                       </div>
                     ))}
@@ -1156,7 +1156,7 @@ export default function DashboardPage() {
               <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle className="text-lg text-white">Pozycje Bota</CardTitle>
-                  <CardDescription className="text-gray-500">Aktywne pozycje automatyczne</CardDescription>
+                  <CardDescription className="text-gray-400">Aktywne pozycje automatyczne</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -1191,7 +1191,7 @@ export default function DashboardPage() {
               <Card className="border-gray-800 bg-gradient-to-br from-purple-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle className="text-lg text-white">Wszystkie Pozycje</CardTitle>
-                  <CardDescription className="text-gray-500">Łączne informacje</CardDescription>
+                  <CardDescription className="text-gray-400">Łączne informacje</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -1240,7 +1240,7 @@ export default function DashboardPage() {
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription className="text-gray-500">
+                    <CardDescription className="text-gray-400">
                       Pozycje otwarte automatycznie przez bota
                     </CardDescription>
                   </div>
@@ -1363,25 +1363,25 @@ export default function DashboardPage() {
                           
                           <div className="grid grid-cols-2 gap-3 text-sm mb-3 p-3 rounded-lg bg-gray-800/40">
                             <div>
-                              <div className="text-gray-500">Rozmiar</div>
+                              <div className="text-gray-400">Rozmiar</div>
                               <div className="font-semibold text-gray-200">{position.quantity.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Wartość</div>
+                              <div className="text-gray-400">Wartość</div>
                               <div className="font-semibold text-gray-200">{position.positionValue.toFixed(2)} USDT</div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Cena Wejścia</div>
+                              <div className="text-gray-400">Cena Wejścia</div>
                               <div className="font-semibold text-gray-200">{position.entryPrice.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Stop Loss</div>
+                              <div className="text-gray-400">Stop Loss</div>
                               <div className="font-semibold text-red-400">{position.currentSl.toFixed(4)}</div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 text-xs mb-2">
-                            <span className="text-gray-500">Take Profit:</span>
+                            <span className="text-gray-400">Take Profit:</span>
                             {position.tp1Price && (
                               <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-400"}>
                                 TP1: {position.tp1Price.toFixed(4)} {position.tp1Hit ? "✓" : ""}
@@ -1399,7 +1399,7 @@ export default function DashboardPage() {
                             )}
                           </div>
 
-                          <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-800">
+                          <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-800">
                             <span>Confidence: {(position.confidenceScore * 100).toFixed(0)}%</span>
                             <span>{new Date(position.openedAt).toLocaleString("pl-PL")}</span>
                           </div>
@@ -1427,7 +1427,7 @@ export default function DashboardPage() {
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription className="text-gray-500">
+                    <CardDescription className="text-gray-400">
                       Wszystkie otwarte pozycje na giełdzie
                     </CardDescription>
                   </div>
@@ -1535,30 +1535,30 @@ export default function DashboardPage() {
                           
                           <div className="grid grid-cols-2 gap-3 text-sm p-3 rounded-lg bg-gray-800/40">
                             <div>
-                              <div className="text-gray-500">Rozmiar</div>
+                              <div className="text-gray-400">Rozmiar</div>
                               <div className="font-semibold text-gray-200">{position.size}</div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Wartość</div>
+                              <div className="text-gray-400">Wartość</div>
                               <div className="font-semibold text-gray-200">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Cena Wejścia</div>
+                              <div className="text-gray-400">Cena Wejścia</div>
                               <div className="font-semibold text-gray-200">{parseFloat(position.entryPrice).toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Cena Bieżąca</div>
+                              <div className="text-gray-400">Cena Bieżąca</div>
                               <div className="font-semibold text-gray-200">{parseFloat(position.markPrice).toFixed(4)}</div>
                             </div>
                             {parseFloat(position.takeProfit) > 0 && (
                               <div>
-                                <div className="text-gray-500">Take Profit</div>
+                                <div className="text-gray-400">Take Profit</div>
                                 <div className="font-semibold text-green-400">{parseFloat(position.takeProfit).toFixed(4)}</div>
                               </div>
                             )}
                             {parseFloat(position.stopLoss) > 0 && (
                               <div>
-                                <div className="text-gray-500">Stop Loss</div>
+                                <div className="text-gray-400">Stop Loss</div>
                                 <div className="font-semibold text-red-400">{parseFloat(position.stopLoss).toFixed(4)}</div>
                               </div>
                             )}
@@ -1580,7 +1580,7 @@ export default function DashboardPage() {
                   <Settings className="h-5 w-5" />
                   Ustawienia i Konfiguracja
                 </CardTitle>
-                <CardDescription className="text-gray-500">Zarządzaj swoim botem i konfiguracją API</CardDescription>
+                <CardDescription className="text-gray-400">Zarządzaj swoim botem i konfiguracją API</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Bot Status Indicator */}
@@ -1738,7 +1738,7 @@ export default function DashboardPage() {
                   <Zap className="h-5 w-5 text-yellow-400" />
                   Szybkie Akcje
                 </CardTitle>
-                <CardDescription className="text-gray-500">Najczęściej używane funkcje</CardDescription>
+                <CardDescription className="text-gray-400">Najczęściej używane funkcje</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
