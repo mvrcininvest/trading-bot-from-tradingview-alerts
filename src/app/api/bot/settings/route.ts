@@ -11,6 +11,7 @@ const VALID_SAME_SYMBOL_BEHAVIORS = ['ignore', 'track_confirmations', 'upgrade_t
 const VALID_OPPOSITE_DIRECTION_STRATEGIES = ['market_reversal', 'immediate_reverse', 'defensive_close', 'ignore_opposite', 'tier_based'];
 const VALID_EMERGENCY_OVERRIDE_MODES = ['always', 'only_profit', 'profit_above_x', 'never'];
 const VALID_SL_MANAGEMENT_MODES = ['breakeven', 'trailing', 'no_change'];
+const VALID_TP_MODES = ['percent', 'rr'];
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +57,24 @@ async function updateSettings(request: NextRequest) {
         error: `Invalid positionSizeMode. Must be one of: ${VALID_POSITION_SIZE_MODES.join(', ')}`,
         code: 'INVALID_POSITION_SIZE_MODE',
         field: 'positionSizeMode'
+      }, { status: 400 });
+    }
+
+    // ✅ NEW: Validate tpMode
+    if (body.tpMode !== undefined && !VALID_TP_MODES.includes(body.tpMode)) {
+      return NextResponse.json({
+        error: `Invalid tpMode. Must be one of: ${VALID_TP_MODES.join(', ')}`,
+        code: 'INVALID_TP_MODE',
+        field: 'tpMode'
+      }, { status: 400 });
+    }
+
+    // ✅ NEW: Conflict validation - Adaptive R:R only works with "rr" mode
+    if (body.adaptiveRR === true && body.tpMode === "percent") {
+      return NextResponse.json({
+        error: 'Adaptive R:R can only be enabled when tpMode is "rr". Please change TP mode to "R:R od entry".',
+        code: 'INVALID_ADAPTIVE_RR_CONFIG',
+        field: 'adaptiveRR'
       }, { status: 400 });
     }
 
@@ -318,6 +337,12 @@ async function updateSettings(request: NextRequest) {
     if (body.useDefaultSlTp !== undefined) {
       updates.useDefaultSlTp = body.useDefaultSlTp;
     }
+    if (body.adaptiveRR !== undefined) {
+      updates.adaptiveRR = body.adaptiveRR;
+    }
+    if (body.slAsMarginPercent !== undefined) {
+      updates.slAsMarginPercent = body.slAsMarginPercent;
+    }
 
     // Map other fields
     if (body.positionSizeMode !== undefined) updates.positionSizeMode = body.positionSizeMode;
@@ -340,7 +365,8 @@ async function updateSettings(request: NextRequest) {
     if (body.defaultTp2RR !== undefined) updates.defaultTp2RR = parseFloat(body.defaultTp2RR);
     if (body.defaultTp3RR !== undefined) updates.defaultTp3RR = parseFloat(body.defaultTp3RR);
 
-    // NEW: Enhanced TP Strategy fields
+    // ✅ NEW: Enhanced TP Strategy fields
+    if (body.tpMode !== undefined) updates.tpMode = body.tpMode;
     if (body.tpCount !== undefined) updates.tpCount = parseInt(body.tpCount);
     if (body.tp1RR !== undefined) updates.tp1RR = parseFloat(body.tp1RR);
     if (body.tp1Percent !== undefined) updates.tp1Percent = parseFloat(body.tp1Percent);
@@ -350,6 +376,13 @@ async function updateSettings(request: NextRequest) {
     if (body.tp3Percent !== undefined) updates.tp3Percent = parseFloat(body.tp3Percent);
     if (body.slManagementAfterTp1 !== undefined) updates.slManagementAfterTp1 = body.slManagementAfterTp1;
     if (body.slTrailingDistance !== undefined) updates.slTrailingDistance = parseFloat(body.slTrailingDistance);
+
+    // ✅ NEW: Adaptive R:R fields
+    if (body.adaptiveMultiplier !== undefined) updates.adaptiveMultiplier = parseFloat(body.adaptiveMultiplier);
+    if (body.adaptiveStrengthThreshold !== undefined) updates.adaptiveStrengthThreshold = parseFloat(body.adaptiveStrengthThreshold);
+
+    // ✅ NEW: SL as margin fields
+    if (body.slMarginRiskPercent !== undefined) updates.slMarginRiskPercent = parseFloat(body.slMarginRiskPercent);
 
     const settingsId = existingSettings[0].id;
     const updated = await db.update(botSettings)

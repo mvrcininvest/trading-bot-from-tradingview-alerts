@@ -11,6 +11,8 @@ import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
 import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent, Zap, DollarSign } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertTriangle } from "lucide-react"
 
 export default function BotSettingsPage() {
   const [loading, setLoading] = useState(true)
@@ -38,6 +40,9 @@ export default function BotSettingsPage() {
   const [useDefaultSlTp, setUseDefaultSlTp] = useState(false)
   const [defaultSlRR, setDefaultSlRR] = useState(1.0)
 
+  // ✅ NEW: TP Mode selection
+  const [tpMode, setTpMode] = useState<"percent" | "rr">("percent")
+
   // Enhanced TP Strategy state
   const [tpCount, setTpCount] = useState(3)
   const [tp1RR, setTp1RR] = useState(1.0)
@@ -49,12 +54,12 @@ export default function BotSettingsPage() {
   const [slManagementAfterTp1, setSlManagementAfterTp1] = useState("breakeven")
   const [slTrailingDistance, setSlTrailingDistance] = useState(0.5)
 
-  // ✅ NEW: Adaptive R:R state
+  // Adaptive R:R state
   const [adaptiveRR, setAdaptiveRR] = useState(false)
   const [adaptiveMultiplier, setAdaptiveMultiplier] = useState(1.5)
   const [adaptiveStrengthThreshold, setAdaptiveStrengthThreshold] = useState(0.5)
 
-  // ✅ NEW: SL as % margin state
+  // SL as % margin state
   const [slAsMarginPercent, setSlAsMarginPercent] = useState(false)
   const [slMarginRiskPercent, setSlMarginRiskPercent] = useState(2.0)
 
@@ -99,14 +104,17 @@ export default function BotSettingsPage() {
         setSlManagementAfterTp1(s.slManagementAfterTp1 || "breakeven")
         setSlTrailingDistance(s.slTrailingDistance || 0.5)
 
-        // ✅ NEW: Load Adaptive R:R settings
+        // Load Adaptive R:R settings
         setAdaptiveRR(s.adaptiveRR || false)
         setAdaptiveMultiplier(s.adaptiveMultiplier || 1.5)
         setAdaptiveStrengthThreshold(s.adaptiveStrengthThreshold || 0.5)
 
-        // ✅ NEW: Load SL as margin settings
+        // Load SL as margin settings
         setSlAsMarginPercent(s.slAsMarginPercent || false)
         setSlMarginRiskPercent(s.slMarginRiskPercent || 2.0)
+
+        // ✅ NEW: Load TP mode
+        setTpMode(s.tpMode || "percent")
       }
     } catch (error) {
       toast.error("Błąd ładowania ustawień")
@@ -116,7 +124,39 @@ export default function BotSettingsPage() {
     }
   }
 
+  // ✅ NEW: Validation warnings
+  const getValidationWarnings = () => {
+    const warnings: string[] = []
+    
+    // Check conflicting TP settings
+    if (tpMode === "percent" && adaptiveRR) {
+      warnings.push("⚠️ Adaptive R:R działa tylko w trybie 'R:R od entry'. Zmień tryb TP na 'R:R od entry' aby użyć Adaptive R:R.")
+    }
+    
+    // Check if using 2 TP with percent mode
+    if (tpCount === 2 && tpMode === "percent") {
+      const totalPercent = tp1Percent + tp2Percent
+      if (Math.abs(totalPercent - 100) > 0.01) {
+        warnings.push(`⚠️ Suma TP1 (${tp1Percent}%) i TP2 (${tp2Percent}%) powinna wynosić 100%. Obecna suma: ${totalPercent.toFixed(1)}%`)
+      }
+    }
+    
+    if (tpCount === 3 && tpMode === "percent") {
+      const totalPercent = tp1Percent + tp2Percent + tp3Percent
+      if (Math.abs(totalPercent - 100) > 0.01) {
+        warnings.push(`⚠️ Suma TP1 (${tp1Percent}%) + TP2 (${tp2Percent}%) + TP3 (${tp3Percent}%) powinna wynosić 100%. Obecna suma: ${totalPercent.toFixed(1)}%`)
+      }
+    }
+
+    return warnings
+  }
+
   const handleSave = async () => {
+    const warnings = getValidationWarnings()
+    if (warnings.length > 0 && !confirm(`Znaleziono ostrzeżenia:\n\n${warnings.join('\n\n')}\n\nCzy na pewno chcesz zapisać?`)) {
+      return
+    }
+
     setSaving(true)
     try {
       const response = await fetch("/api/bot/settings", {
@@ -142,6 +182,7 @@ export default function BotSettingsPage() {
           useDefaultSlTp,
           defaultSlRR,
           // Enhanced TP Strategy
+          tpMode,
           tpCount,
           tp1RR,
           tp1Percent,
@@ -151,11 +192,11 @@ export default function BotSettingsPage() {
           tp3Percent,
           slManagementAfterTp1,
           slTrailingDistance,
-          // ✅ NEW: Adaptive R:R
+          // Adaptive R:R
           adaptiveRR,
           adaptiveMultiplier,
           adaptiveStrengthThreshold,
-          // ✅ NEW: SL as % margin
+          // SL as % margin
           slAsMarginPercent,
           slMarginRiskPercent,
         })
@@ -226,6 +267,8 @@ export default function BotSettingsPage() {
     )
   }
 
+  const validationWarnings = getValidationWarnings()
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-8">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -245,6 +288,20 @@ export default function BotSettingsPage() {
             {saving ? "Zapisywanie..." : "Zapisz Ustawienia"}
           </Button>
         </div>
+
+        {/* ✅ NEW: Validation Warnings */}
+        {validationWarnings.length > 0 && (
+          <Alert className="border-yellow-700 bg-yellow-900/20">
+            <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            <AlertDescription className="text-sm text-yellow-400">
+              <div className="space-y-1">
+                {validationWarnings.map((warning, idx) => (
+                  <p key={idx}>{warning}</p>
+                ))}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Card className={`p-6 border-2 transition-all ${
           botEnabled 
@@ -530,7 +587,7 @@ export default function BotSettingsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="percent">Procent kapitału</SelectItem>
-                <SelectItem value="fixed">Stała kwota USDT</SelectItem>
+                <SelectItem value="fixed_amount">Stała kwota USDT</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -548,7 +605,7 @@ export default function BotSettingsPage() {
             </div>
           )}
 
-          {positionSizeMode === "fixed" && (
+          {positionSizeMode === "fixed_amount" && (
             <div className="space-y-2">
               <Label className="text-white">Stała kwota (USDT)</Label>
               <Input 
@@ -834,6 +891,25 @@ export default function BotSettingsPage() {
             </div>
           </div>
 
+          {/* ✅ NEW: TP Mode Selection */}
+          <div className="space-y-3 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
+            <Label className="text-white text-base font-semibold">Tryb obliczania Take Profit</Label>
+            <Select value={tpMode} onValueChange={(v: "percent" | "rr") => setTpMode(v)}>
+              <SelectTrigger className="text-white bg-gray-800/60 border-gray-700">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percent">% od Entry (np. 1% powyżej ceny wejścia)</SelectItem>
+                <SelectItem value="rr">R:R od Entry (np. 2:1 reward/risk ratio)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-400">
+              {tpMode === "percent" 
+                ? "TP będzie obliczany jako % powyżej/poniżej ceny entry" 
+                : "TP będzie obliczany na podstawie R:R (reward:risk ratio) względem SL"}
+            </p>
+          </div>
+
           <div className="space-y-3">
             <Label className="text-white text-base font-semibold">Liczba poziomów Take Profit</Label>
             <Select value={tpCount.toString()} onValueChange={(v) => setTpCount(parseInt(v))}>
@@ -850,6 +926,7 @@ export default function BotSettingsPage() {
 
           <Separator className="bg-gray-700/50" />
 
+          {/* TP1 Configuration */}
           <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
             <div className="flex items-center gap-2 mb-2">
               <Badge className="bg-green-600">TP1</Badge>
@@ -859,7 +936,7 @@ export default function BotSettingsPage() {
               <div className="space-y-2">
                 <Label className="text-white flex items-center gap-2">
                   <Target className="h-4 w-4 text-green-400" />
-                  % od Entry
+                  {tpMode === "percent" ? "% od Entry" : "R:R ratio"}
                 </Label>
                 <Input 
                   type="number" 
@@ -869,6 +946,9 @@ export default function BotSettingsPage() {
                   min="0.1"
                   className="text-white bg-gray-900/60"
                 />
+                <p className="text-xs text-gray-400">
+                  {tpMode === "percent" ? "np. 1.5 = 1.5% powyżej entry" : "np. 2.0 = 2:1 reward/risk"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label className="text-white flex items-center gap-2">
@@ -888,6 +968,7 @@ export default function BotSettingsPage() {
             </div>
           </div>
 
+          {/* TP2 Configuration */}
           {tpCount >= 2 && (
             <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
               <div className="flex items-center gap-2 mb-2">
@@ -898,7 +979,7 @@ export default function BotSettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-white flex items-center gap-2">
                     <Target className="h-4 w-4 text-amber-400" />
-                    % od Entry
+                    {tpMode === "percent" ? "% od Entry" : "R:R ratio"}
                   </Label>
                   <Input 
                     type="number" 
@@ -928,6 +1009,7 @@ export default function BotSettingsPage() {
             </div>
           )}
 
+          {/* TP3 Configuration */}
           {tpCount >= 3 && (
             <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
               <div className="flex items-center gap-2 mb-2">
@@ -938,7 +1020,7 @@ export default function BotSettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-white flex items-center gap-2">
                     <Target className="h-4 w-4 text-purple-400" />
-                    % od Entry
+                    {tpMode === "percent" ? "% od Entry" : "R:R ratio"}
                   </Label>
                   <Input 
                     type="number" 

@@ -47,6 +47,7 @@ export const botSettings = sqliteTable('bot_settings', {
   tierFilteringMode: text('tier_filtering_mode').notNull().default('all'),
   disabledTiers: text('disabled_tiers').notNull().default('[]'),
   tpStrategy: text('tp_strategy').notNull().default('multiple'),
+  tpMode: text('tp_mode').notNull().default('percent'),
   maxConcurrentPositions: integer('max_concurrent_positions').notNull().default(10),
   sameSymbolBehavior: text('same_symbol_behavior').notNull().default('track_confirmations'),
   oppositeDirectionStrategy: text('opposite_direction_strategy').notNull().default('market_reversal'),

@@ -889,6 +889,33 @@ export default function DashboardPage() {
           </AlertDescription>
         </Alert>
 
+        {/* ✅ ADDED: Quick Access to Diagnostics */}
+        <Card className="border-orange-700/40 bg-gradient-to-br from-orange-600/10 to-gray-900/80 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-orange-500/20 border border-orange-500/30">
+                  <Wrench className="h-6 w-6 text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">🔧 Diagnostyka i Statystyki</h3>
+                  <p className="text-sm text-gray-400">
+                    Przeglądaj błędy bota, awaryjne zamknięcia, zablokowane symbole i historię retry
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => router.push("/diagnostyka")}
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+                size="lg"
+              >
+                <Wrench className="mr-2 h-5 w-5" />
+                Otwórz Diagnostykę
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Header with Quick Stats */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
