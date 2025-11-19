@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Bell, History, FileText, Settings, Bot, BarChart3 } from "lucide-react";
+import { TrendingUp, Bell, History, FileText, Settings, Bot, BarChart3, Wrench, PieChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Navbar() {
@@ -16,6 +16,8 @@ export default function Navbar() {
     { href: "/logi-bota", label: "Logi", icon: FileText },
     { href: "/ustawienia-bota", label: "Ustawienia Bota", icon: Bot },
     { href: "/exchange-test", label: "API Exchange", icon: Settings },
+    { href: "/diagnostyka", label: "Diagnostyka", icon: Wrench },
+    { href: "/statystyki", label: "Statystyki", icon: PieChart },
   ];
 
   return (
