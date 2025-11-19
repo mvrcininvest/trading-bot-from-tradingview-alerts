@@ -10,23 +10,26 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const positionId = searchParams.get('positionId');
 
-    // ✅ Build query with proper order: select -> from -> join -> where -> orderBy -> limit
-    let query = db.select({
+    // ✅ Build base query
+    const baseQuery = db.select({
       attempt: tpslRetryAttempts,
       position: botPositions
     })
       .from(tpslRetryAttempts)
       .leftJoin(botPositions, eq(tpslRetryAttempts.positionId, botPositions.id));
 
-    // ✅ Apply where condition BEFORE limit
+    // ✅ Apply filters and execute query - separate paths for TypeScript type safety
+    let attempts;
     if (positionId) {
-      query = query.where(eq(tpslRetryAttempts.positionId, parseInt(positionId)));
+      attempts = await baseQuery
+        .where(eq(tpslRetryAttempts.positionId, parseInt(positionId)))
+        .orderBy(desc(tpslRetryAttempts.createdAt))
+        .limit(limit);
+    } else {
+      attempts = await baseQuery
+        .orderBy(desc(tpslRetryAttempts.createdAt))
+        .limit(limit);
     }
-
-    // ✅ Apply orderBy and limit at the end
-    const attempts = await query
-      .orderBy(desc(tpslRetryAttempts.createdAt))
-      .limit(limit);
 
     // Group by position
     const byPosition = attempts.reduce((acc, item) => {
