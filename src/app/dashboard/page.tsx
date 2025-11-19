@@ -1263,7 +1263,10 @@ export default function DashboardPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button 
-                          onClick={() => document.querySelector('[value="bot-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
+                          onClick={() => {
+                            const positionsTab = document.querySelector('[value="positions"]') as HTMLElement;
+                            positionsTab?.click();
+                          }}
                           className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
                           variant="secondary"
                         >
@@ -1298,7 +1301,10 @@ export default function DashboardPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button 
-                          onClick={() => document.querySelector('[value="all-positions"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))}
+                          onClick={() => {
+                            const positionsTab = document.querySelector('[value="positions"]') as HTMLElement;
+                            positionsTab?.click();
+                          }}
                           className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white"
                           variant="secondary"
                         >

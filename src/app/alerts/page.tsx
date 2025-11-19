@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash, CheckCircle2, XCircle, Send } from "lucide-react";
+import { Bell, Copy, Trash2, RefreshCw, ArrowUpRight, ArrowDownRight, Filter, Trash, CheckCircle2, XCircle, Send, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface AlertData {
   id: number;
@@ -57,6 +58,8 @@ export default function AlertsPage() {
   const [cleaningOld, setCleaningOld] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
+  const [selectedAlert, setSelectedAlert] = useState<AlertData | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   
   // Filtry
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -686,15 +689,28 @@ export default function AlertsPage() {
 
                         {/* Akcje */}
                         <td className="p-3">
-                          <Button
-                            onClick={() => deleteAlert(alert.id)}
-                            disabled={deletingId === alert.id}
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 hover:bg-red-500/20"
-                          >
-                            <Trash2 className={`h-4 w-4 text-red-400 ${deletingId === alert.id ? 'animate-spin' : ''}`} />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              onClick={() => {
+                                setSelectedAlert(alert);
+                                setDetailsDialogOpen(true);
+                              }}
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 hover:bg-blue-500/20"
+                            >
+                              <Info className="h-4 w-4 text-blue-400" />
+                            </Button>
+                            <Button
+                              onClick={() => deleteAlert(alert.id)}
+                              disabled={deletingId === alert.id}
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 hover:bg-red-500/20"
+                            >
+                              <Trash2 className={`h-4 w-4 text-red-400 ${deletingId === alert.id ? 'animate-spin' : ''}`} />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -704,6 +720,244 @@ export default function AlertsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Alert Details Dialog */}
+        <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
+          <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <Info className="h-6 w-6 text-blue-400" />
+                Szczegóły Alertu #{selectedAlert?.id}
+              </DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Pełne informacje o otrzymanym alercie z TradingView
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedAlert && (
+              <div className="space-y-4 py-4">
+                {/* Podstawowe informacje */}
+                <Card className="bg-gray-800/60 border-gray-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-white">📊 Podstawowe Informacje</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Symbol:</span>
+                        <span className="font-bold text-white">{selectedAlert.symbol}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Strona:</span>
+                        <Badge variant="outline" className={selectedAlert.side === 'BUY' ? 'border-green-500 text-green-300' : 'border-red-500 text-red-300'}>
+                          {selectedAlert.side}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Tier:</span>
+                        <Badge className={getTierColor(selectedAlert.tier)}>{selectedAlert.tier}</Badge>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Tier Numeric:</span>
+                        <span className="font-bold text-white">{selectedAlert.tierNumeric}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Siła:</span>
+                        <span className="font-bold text-white">{(selectedAlert.strength * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Leverage:</span>
+                        <span className="font-bold text-white">{selectedAlert.leverage}x</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Sesja:</span>
+                        <span className="font-bold text-white">{selectedAlert.session}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Latencja:</span>
+                        <Badge variant="outline" className={selectedAlert.latency < 1000 ? 'border-green-500 text-green-300' : 'border-yellow-500 text-yellow-300'}>
+                          {selectedAlert.latency}ms
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Ceny i SL/TP */}
+                <Card className="bg-gray-800/60 border-gray-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-white">💰 Ceny i Stop Loss / Take Profit</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex justify-between p-2 rounded bg-blue-900/20 border border-blue-700/30">
+                        <span className="text-gray-300">Entry Price:</span>
+                        <span className="font-bold text-white">{selectedAlert.entryPrice.toFixed(4)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-red-900/20 border border-red-700/30">
+                        <span className="text-gray-300">Stop Loss:</span>
+                        <span className="font-bold text-red-300">{selectedAlert.sl.toFixed(4)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-green-900/20 border border-green-700/30">
+                        <span className="text-gray-300">TP1:</span>
+                        <span className="font-bold text-green-300">{selectedAlert.tp1.toFixed(4)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-green-900/20 border border-green-700/30">
+                        <span className="text-gray-300">TP2:</span>
+                        <span className="font-bold text-green-300">{selectedAlert.tp2.toFixed(4)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-green-900/20 border border-green-700/30">
+                        <span className="text-gray-300">TP3:</span>
+                        <span className="font-bold text-green-300">{selectedAlert.tp3.toFixed(4)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-green-900/20 border border-green-700/30">
+                        <span className="text-gray-300">Main TP:</span>
+                        <span className="font-bold text-green-300">{selectedAlert.mainTp.toFixed(4)}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Wskaźniki techniczne */}
+                <Card className="bg-gray-800/60 border-gray-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-white">📈 Wskaźniki Techniczne</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">ATR:</span>
+                        <span className="font-bold text-white">{selectedAlert.atr.toFixed(4)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Volume Ratio:</span>
+                        <span className="font-bold text-white">{selectedAlert.volumeRatio.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Regime:</span>
+                        <span className="font-bold text-white">{selectedAlert.regime}</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Regime Confidence:</span>
+                        <span className="font-bold text-white">{(selectedAlert.regimeConfidence * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">MTF Agreement:</span>
+                        <span className="font-bold text-white">{(selectedAlert.mtfAgreement * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">Volume Climax:</span>
+                        <Badge variant={selectedAlert.volumeClimax ? "default" : "outline"}>
+                          {selectedAlert.volumeClimax ? "TAK" : "NIE"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* ICT/SMC Struktury */}
+                <Card className="bg-gray-800/60 border-gray-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-white">🎯 ICT/SMC Struktury</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">W Order Block:</span>
+                        <Badge variant={selectedAlert.inOb ? "default" : "outline"} className={selectedAlert.inOb ? "bg-green-600" : ""}>
+                          {selectedAlert.inOb ? "✓ TAK" : "✗ NIE"}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">OB Score:</span>
+                        <span className="font-bold text-white">{(selectedAlert.obScore * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">W Fair Value Gap:</span>
+                        <Badge variant={selectedAlert.inFvg ? "default" : "outline"} className={selectedAlert.inFvg ? "bg-green-600" : ""}>
+                          {selectedAlert.inFvg ? "✓ TAK" : "✗ NIE"}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                        <span className="text-gray-300">FVG Score:</span>
+                        <span className="font-bold text-white">{(selectedAlert.fvgScore * 100).toFixed(1)}%</span>
+                      </div>
+                      {selectedAlert.institutionalFlow !== null && (
+                        <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                          <span className="text-gray-300">Institutional Flow:</span>
+                          <span className="font-bold text-white">{(selectedAlert.institutionalFlow * 100).toFixed(1)}%</span>
+                        </div>
+                      )}
+                      {selectedAlert.accumulation !== null && (
+                        <div className="flex justify-between p-2 rounded bg-gray-900/50">
+                          <span className="text-gray-300">Accumulation:</span>
+                          <span className="font-bold text-white">{(selectedAlert.accumulation * 100).toFixed(1)}%</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Status wykonania */}
+                <Card className="bg-gray-800/60 border-gray-700">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-white">⚡ Status Wykonania</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded bg-gray-900/50">
+                      <span className="text-gray-300">Status:</span>
+                      <Badge variant="outline" className={getStatusColor(selectedAlert.executionStatus)}>
+                        {getStatusLabel(selectedAlert.executionStatus)}
+                      </Badge>
+                    </div>
+                    {selectedAlert.rejectionReason && (
+                      <div className="p-3 rounded bg-red-900/20 border border-red-700/30">
+                        <div className="text-xs text-gray-300 mb-1">Powód odrzucenia:</div>
+                        <div className="text-sm font-semibold text-red-300">
+                          {getRejectionReasonLabel(selectedAlert.rejectionReason)}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between p-3 rounded bg-gray-900/50">
+                      <span className="text-gray-300">Czas otrzymania:</span>
+                      <span className="font-mono text-xs text-white">{formatReceivedTime(selectedAlert.createdAt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded bg-gray-900/50">
+                      <span className="text-gray-300">Timestamp TradingView:</span>
+                      <span className="font-mono text-xs text-white">{formatTimestamp(selectedAlert.timestamp)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Raw JSON */}
+                <Card className="bg-gray-800/60 border-gray-700">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base text-white">📄 Raw JSON z TradingView</CardTitle>
+                      <Button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedAlert.rawJson);
+                          toast.success("JSON skopiowany!");
+                        }}
+                        size="sm"
+                        variant="outline"
+                        className="border-gray-600 text-gray-200 hover:bg-gray-800"
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        Kopiuj
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="p-4 rounded bg-gray-900/80 border border-gray-700 overflow-x-auto text-xs font-mono text-gray-200">
+                      {JSON.stringify(JSON.parse(selectedAlert.rawJson), null, 2)}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

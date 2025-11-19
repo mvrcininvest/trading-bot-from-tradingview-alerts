@@ -106,17 +106,26 @@ export default function BotHistoryPage() {
   // Get unique close reasons
   const closeReasons = Array.from(new Set(positions.map((p) => p.closeReason)));
 
-  // Close reason labels
+  // Close reason labels - ROZSZERZONY SŁOWNIK
   const closeReasonLabels: Record<string, string> = {
-    sl_hit: "Stop Loss",
-    tp_main_hit: "Take Profit",
-    tp1_hit: "TP1 Osiągnięty",
-    tp2_hit: "TP2 Osiągnięty",
-    tp3_hit: "TP3 Osiągnięty",
-    emergency_override: "Emergency Override",
-    opposite_direction: "Przeciwny Kierunek",
-    manual_close: "Zamknięcie Ręczne",
-    auto_sync: "Auto Sync (zamknięte na giełdzie)",
+    sl_hit: "🛑 Stop Loss",
+    tp_main_hit: "🎯 Take Profit",
+    tp1_hit: "🎯 TP1 Osiągnięty",
+    tp2_hit: "🎯 TP2 Osiągnięty",
+    tp3_hit: "🎯 TP3 Osiągnięty",
+    emergency_override: "⚠️ Emergency Override",
+    opposite_direction: "🔄 Przeciwny Kierunek",
+    manual_close: "👤 Zamknięcie Ręczne",
+    manual_close_all: "👤 Zamknięcie Wszystkich (Ręczne)",
+    auto_sync: "🔄 Auto Sync (zamknięte na giełdzie)",
+    market_reversal: "🔄 Market Reversal",
+    closed_on_exchange: "🔄 Zamknięte na giełdzie",
+    emergency_verification_failure: "⚠️ Błąd weryfikacji (emergency)",
+    partial_close: "📊 Częściowe zamknięcie",
+  };
+
+  const getCloseReasonLabel = (reason: string) => {
+    return closeReasonLabels[reason] || `❓ ${reason}`;
   };
 
   return (
@@ -239,7 +248,7 @@ export default function BotHistoryPage() {
                     <SelectItem value="all">Wszystkie</SelectItem>
                     {closeReasons.map((reason) => (
                       <SelectItem key={reason} value={reason}>
-                        {closeReasonLabels[reason] || reason}
+                        {getCloseReasonLabel(reason)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -321,7 +330,7 @@ export default function BotHistoryPage() {
                             </Badge>
                           </div>
                           <div className="text-sm text-gray-200">
-                            {closeReasonLabels[position.closeReason] || position.closeReason}
+                            {getCloseReasonLabel(position.closeReason)}
                           </div>
                         </div>
 

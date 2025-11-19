@@ -172,45 +172,58 @@ export default function StatystykiPage() {
       return;
     }
 
-    // Basic stats
+    // ✅ POPRAWKA: Basic stats - tylko closed positions dla win/loss
     const totalTrades = closed.length;
     const winningTrades = closed.filter(p => p.pnl > 0).length;
     const losingTrades = closed.filter(p => p.pnl < 0).length;
-    const winRate = (winningTrades / totalTrades) * 100;
+    const breakEvenTrades = closed.filter(p => p.pnl === 0).length;
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
     
-    const totalPnL = closed.reduce((sum, p) => sum + p.pnl, 0);
-    const currentUnrealisedPnL = open.reduce((sum, p) => sum + p.unrealisedPnl, 0);
+    // ✅ POPRAWKA: Total PnL - tylko realised z closed (bez unrealised)
+    const realisedPnL = closed.reduce((sum, p) => sum + p.pnl, 0);
+    const unrealisedPnL = open.reduce((sum, p) => sum + p.unrealisedPnl, 0);
+    const totalPnL = realisedPnL + unrealisedPnL;
     
     const wins = closed.filter(p => p.pnl > 0);
     const losses = closed.filter(p => p.pnl < 0);
     
+    // ✅ POPRAWKA: Avg Win/Loss - prawidłowe obliczenia
     const avgWin = wins.length > 0 ? wins.reduce((sum, p) => sum + p.pnl, 0) / wins.length : 0;
-    const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, p) => sum + p.pnl, 0) / losses.length) : 0;
+    const totalLossSum = losses.reduce((sum, p) => sum + p.pnl, 0); // będzie ujemny
+    const avgLoss = losses.length > 0 ? Math.abs(totalLossSum / losses.length) : 0;
     
-    const avgHoldingTime = closed.reduce((sum, p) => sum + (p.durationMinutes || 0), 0) / totalTrades;
+    const avgHoldingTime = totalTrades > 0 
+      ? closed.reduce((sum, p) => sum + (p.durationMinutes || 0), 0) / totalTrades 
+      : 0;
     
     const pnls = closed.map(p => p.pnl);
-    const bestTrade = Math.max(...pnls);
-    const worstTrade = Math.min(...pnls);
+    const bestTrade = pnls.length > 0 ? Math.max(...pnls) : 0;
+    const worstTrade = pnls.length > 0 ? Math.min(...pnls) : 0;
     
+    // ✅ POPRAWKA: Profit Factor - sum of wins / sum of absolute losses
     const totalWins = wins.reduce((sum, p) => sum + p.pnl, 0);
     const totalLosses = Math.abs(losses.reduce((sum, p) => sum + p.pnl, 0));
-    const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
+    const profitFactor = totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0);
     
-    // Calculate Sharpe Ratio (simplified)
-    const returns = closed.map(p => p.pnlPercent);
-    const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-    const stdDev = Math.sqrt(
-      returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length
-    );
+    // ✅ POPRAWKA: Sharpe Ratio - używa pnlPercent jako zwrotów
+    const returns = closed.map(p => p.pnlPercent || 0);
+    const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
+    const variance = returns.length > 0 
+      ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length 
+      : 0;
+    const stdDev = Math.sqrt(variance);
     const sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0; // Annualized
     
-    // Calculate drawdown
+    // ✅ POPRAWKA: Drawdown - iteruj chronologicznie i śledź peak equity
+    const sortedPositions = [...closed].sort((a, b) => 
+      new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime()
+    );
+    
     let peak = 0;
     let maxDrawdown = 0;
     let runningPnL = 0;
     
-    closed.forEach(position => {
+    sortedPositions.forEach(position => {
       runningPnL += position.pnl;
       if (runningPnL > peak) {
         peak = runningPnL;
@@ -228,7 +241,7 @@ export default function StatystykiPage() {
       winningTrades,
       losingTrades,
       winRate,
-      totalPnL: totalPnL + currentUnrealisedPnL,
+      totalPnL,
       avgWin,
       avgLoss,
       avgHoldingTime,
@@ -240,7 +253,7 @@ export default function StatystykiPage() {
       currentDrawdown
     });
 
-    // Calculate tier statistics
+    // ✅ POPRAWKA: Calculate tier statistics - tylko closed positions
     const tierMap = new Map<string, { wins: number; total: number; pnl: number }>();
     closed.forEach(p => {
       const tier = p.tier || 'Unknown';
@@ -256,14 +269,14 @@ export default function StatystykiPage() {
     const tierStatsData: TierStats[] = Array.from(tierMap.entries()).map(([tier, data]) => ({
       tier,
       totalTrades: data.total,
-      winRate: (data.wins / data.total) * 100,
-      avgPnL: data.pnl / data.total,
+      winRate: data.total > 0 ? (data.wins / data.total) * 100 : 0,
+      avgPnL: data.total > 0 ? data.pnl / data.total : 0,
       totalPnL: data.pnl
     })).sort((a, b) => b.totalPnL - a.totalPnL);
     
     setTierStats(tierStatsData);
 
-    // Calculate symbol statistics
+    // ✅ POPRAWKA: Calculate symbol statistics - tylko closed positions
     const symbolMap = new Map<string, { wins: number; total: number; pnl: number }>();
     closed.forEach(p => {
       const symbol = p.symbol;
@@ -279,24 +292,26 @@ export default function StatystykiPage() {
     const symbolStatsData: SymbolStats[] = Array.from(symbolMap.entries()).map(([symbol, data]) => ({
       symbol,
       totalTrades: data.total,
-      winRate: (data.wins / data.total) * 100,
-      avgPnL: data.pnl / data.total,
+      winRate: data.total > 0 ? (data.wins / data.total) * 100 : 0,
+      avgPnL: data.total > 0 ? data.pnl / data.total : 0,
       totalPnL: data.pnl
     })).sort((a, b) => b.totalPnL - a.totalPnL).slice(0, 10); // Top 10
     
     setSymbolStats(symbolStatsData);
 
-    // Calculate time-based statistics
+    // ✅ POPRAWKA: Calculate time-based statistics - prawidłowe filtrowanie dat
     const now = new Date();
     const last7Days = closed.filter(p => {
       const closedDate = new Date(p.closedAt);
-      const diffDays = Math.floor((now.getTime() - closedDate.getTime()) / (1000 * 60 * 60 * 24));
+      const diffMs = now.getTime() - closedDate.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
       return diffDays <= 7;
     });
     
     const last30Days = closed.filter(p => {
       const closedDate = new Date(p.closedAt);
-      const diffDays = Math.floor((now.getTime() - closedDate.getTime()) / (1000 * 60 * 60 * 24));
+      const diffMs = now.getTime() - closedDate.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
       return diffDays <= 30;
     });
 
@@ -317,7 +332,7 @@ export default function StatystykiPage() {
         period: 'Cały czas',
         totalTrades: closed.length,
         winRate,
-        totalPnL
+        totalPnL: realisedPnL
       }
     ];
     
