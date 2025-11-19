@@ -112,3 +112,6 @@ export function requiresPermanentLock(errorType: ErrorType): boolean {
 export function canRetry(errorType: ErrorType): boolean {
   return errorType === 'api_temporary' || errorType === 'unknown';
 }
+
+// ✅ Export alias for compatibility with webhook
+export const classifyError = classifyOkxError;

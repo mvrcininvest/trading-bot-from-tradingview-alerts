@@ -1151,3 +1151,6 @@ export async function monitorAndManagePositions(silent = true) {
     };
   }
 }
+
+// ✅ Export alias for compatibility with route handler
+export const monitorAllPositions = monitorAndManagePositions;
