@@ -1,0 +1,37 @@
+-- Migration: Add bot_detailed_logs table for position verification
+-- Created: 2025-01-19
+
+CREATE TABLE IF NOT EXISTS `bot_detailed_logs` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`position_id` integer,
+	`alert_id` integer,
+	`action_type` text NOT NULL,
+	`stage` text NOT NULL,
+	`planned_symbol` text,
+	`planned_side` text,
+	`planned_quantity` real,
+	`planned_entry_price` real,
+	`planned_sl_price` real,
+	`planned_tp1_price` real,
+	`planned_tp2_price` real,
+	`planned_tp3_price` real,
+	`planned_leverage` integer,
+	`actual_symbol` text,
+	`actual_side` text,
+	`actual_quantity` real,
+	`actual_entry_price` real,
+	`actual_sl_price` real,
+	`actual_tp1_price` real,
+	`actual_tp2_price` real,
+	`actual_tp3_price` real,
+	`actual_leverage` integer,
+	`has_discrepancy` integer NOT NULL,
+	`discrepancy_details` text,
+	`discrepancy_threshold` real,
+	`settings_snapshot` text,
+	`order_id` text,
+	`timestamp` text NOT NULL,
+	`created_at` text NOT NULL,
+	FOREIGN KEY (`position_id`) REFERENCES `bot_positions`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`alert_id`) REFERENCES `alerts`(`id`) ON UPDATE no action ON DELETE no action
+);

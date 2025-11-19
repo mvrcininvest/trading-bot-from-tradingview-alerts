@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { alerts, botSettings, botPositions, botActions, botLogs, symbolLocks } from '@/db/schema';
+import { alerts, botSettings, botPositions, botActions, botLogs, symbolLocks, botDetailedLogs, diagnosticFailures } from '@/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { monitorAndManagePositions } from '@/lib/position-monitor';
@@ -781,6 +781,329 @@ async function addAdditionalTakeProfit(
 }
 
 // ============================================
+// 🔍 VERIFY POSITION OPENING (NEW: ZADANIE 7)
+// ============================================
+
+interface VerificationResult {
+  success: boolean;
+  discrepancies: Array<{
+    field: string;
+    planned: number | string;
+    actual: number | string;
+    diff: number;
+    threshold: number;
+  }>;
+}
+
+async function verifyPositionOpening(
+  positionId: number,
+  planned: {
+    symbol: string;
+    side: string;
+    quantity: number;
+    entryPrice: number;
+    slPrice: number | null;
+    tp1Price: number | null;
+    tp2Price: number | null;
+    tp3Price: number | null;
+    leverage: number;
+  },
+  orderId: string,
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean,
+  alertId: number,
+  botSettings: any
+): Promise<VerificationResult> {
+  console.log(`\n🔍 ========== POSITION VERIFICATION START ==========`);
+  console.log(`   Position ID: ${positionId}`);
+  console.log(`   Order ID: ${orderId}`);
+  console.log(`   Symbol: ${planned.symbol}`);
+  
+  const discrepancies: VerificationResult['discrepancies'] = [];
+  const PRICE_TOLERANCE = 0.005; // 0.5%
+  const QUANTITY_TOLERANCE = 0.01; // 1%
+  
+  try {
+    // ============================================
+    // STEP 1: Get actual position from exchange
+    // ============================================
+    console.log(`\n📊 Fetching actual position from OKX...`);
+    const { data: posData } = await makeOkxRequest(
+      'GET',
+      `/api/v5/account/positions?instType=SWAP&instId=${planned.symbol}`,
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+      undefined,
+      alertId
+    );
+    
+    if (posData.code !== '0' || !posData.data || posData.data.length === 0) {
+      console.error(`   ❌ Position not found on exchange`);
+      throw new Error(`Position not found on exchange after opening`);
+    }
+    
+    const actualPosition = posData.data.find((p: any) => 
+      p.instId === planned.symbol && parseFloat(p.pos) !== 0
+    );
+    
+    if (!actualPosition) {
+      console.error(`   ❌ No matching position found for ${planned.symbol}`);
+      throw new Error(`No matching position found for ${planned.symbol}`);
+    }
+    
+    console.log(`   ✅ Position found on exchange`);
+    
+    // ============================================
+    // STEP 2: Get algo orders (SL/TP)
+    // ============================================
+    console.log(`\n📋 Fetching algo orders (SL/TP)...`);
+    const { data: algoData } = await makeOkxRequest(
+      'GET',
+      `/api/v5/trade/orders-algo-pending?instType=SWAP&instId=${planned.symbol}`,
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+      undefined,
+      alertId
+    );
+    
+    const algoOrders = algoData.code === '0' && algoData.data ? algoData.data : [];
+    console.log(`   ✅ Found ${algoOrders.length} algo orders`);
+    
+    // ============================================
+    // STEP 3: Extract actual values
+    // ============================================
+    const actualQuantity = Math.abs(parseFloat(actualPosition.pos));
+    const actualEntryPrice = parseFloat(actualPosition.avgPx);
+    const actualLeverage = parseInt(actualPosition.lever);
+    
+    // Find SL and TP orders
+    const slOrder = algoOrders.find((o: any) => o.slTriggerPx && parseFloat(o.slTriggerPx) > 0);
+    const tp1Order = algoOrders.find((o: any) => o.tpTriggerPx && parseFloat(o.tpTriggerPx) > 0);
+    
+    const actualSlPrice = slOrder ? parseFloat(slOrder.slTriggerPx) : null;
+    const actualTp1Price = tp1Order ? parseFloat(tp1Order.tpTriggerPx) : null;
+    
+    console.log(`\n📊 Actual values from exchange:`);
+    console.log(`   Quantity: ${actualQuantity}`);
+    console.log(`   Entry: ${actualEntryPrice}`);
+    console.log(`   Leverage: ${actualLeverage}x`);
+    console.log(`   SL: ${actualSlPrice}`);
+    console.log(`   TP1: ${actualTp1Price}`);
+    
+    // ============================================
+    // STEP 4: Compare with tolerances
+    // ============================================
+    console.log(`\n🔍 Comparing planned vs actual...`);
+    
+    // Quantity check
+    const quantityDiff = Math.abs(actualQuantity - planned.quantity);
+    const quantityDiffPercent = quantityDiff / planned.quantity;
+    console.log(`   Quantity: planned ${planned.quantity}, actual ${actualQuantity}, diff ${(quantityDiffPercent * 100).toFixed(2)}%`);
+    
+    if (quantityDiffPercent > QUANTITY_TOLERANCE) {
+      discrepancies.push({
+        field: 'quantity',
+        planned: planned.quantity,
+        actual: actualQuantity,
+        diff: quantityDiff,
+        threshold: QUANTITY_TOLERANCE
+      });
+      console.log(`      ⚠️ DISCREPANCY: ${(quantityDiffPercent * 100).toFixed(2)}% > ${(QUANTITY_TOLERANCE * 100).toFixed(2)}%`);
+    } else {
+      console.log(`      ✅ OK`);
+    }
+    
+    // Entry price check
+    const entryDiff = Math.abs(actualEntryPrice - planned.entryPrice);
+    const entryDiffPercent = entryDiff / planned.entryPrice;
+    console.log(`   Entry: planned ${planned.entryPrice}, actual ${actualEntryPrice}, diff ${(entryDiffPercent * 100).toFixed(2)}%`);
+    
+    if (entryDiffPercent > PRICE_TOLERANCE) {
+      discrepancies.push({
+        field: 'entryPrice',
+        planned: planned.entryPrice,
+        actual: actualEntryPrice,
+        diff: entryDiff,
+        threshold: PRICE_TOLERANCE
+      });
+      console.log(`      ⚠️ DISCREPANCY: ${(entryDiffPercent * 100).toFixed(2)}% > ${(PRICE_TOLERANCE * 100).toFixed(2)}%`);
+    } else {
+      console.log(`      ✅ OK`);
+    }
+    
+    // SL check
+    if (planned.slPrice && actualSlPrice) {
+      const slDiff = Math.abs(actualSlPrice - planned.slPrice);
+      const slDiffPercent = slDiff / planned.slPrice;
+      console.log(`   SL: planned ${planned.slPrice.toFixed(4)}, actual ${actualSlPrice.toFixed(4)}, diff ${(slDiffPercent * 100).toFixed(2)}%`);
+      
+      if (slDiffPercent > PRICE_TOLERANCE) {
+        discrepancies.push({
+          field: 'slPrice',
+          planned: planned.slPrice,
+          actual: actualSlPrice,
+          diff: slDiff,
+          threshold: PRICE_TOLERANCE
+        });
+        console.log(`      ⚠️ DISCREPANCY: ${(slDiffPercent * 100).toFixed(2)}% > ${(PRICE_TOLERANCE * 100).toFixed(2)}%`);
+      } else {
+        console.log(`      ✅ OK`);
+      }
+    } else if (planned.slPrice && !actualSlPrice) {
+      discrepancies.push({
+        field: 'slPrice',
+        planned: planned.slPrice,
+        actual: 'MISSING',
+        diff: 0,
+        threshold: PRICE_TOLERANCE
+      });
+      console.log(`      ⚠️ DISCREPANCY: SL not found on exchange`);
+    }
+    
+    // TP1 check
+    if (planned.tp1Price && actualTp1Price) {
+      const tp1Diff = Math.abs(actualTp1Price - planned.tp1Price);
+      const tp1DiffPercent = tp1Diff / planned.tp1Price;
+      console.log(`   TP1: planned ${planned.tp1Price.toFixed(4)}, actual ${actualTp1Price.toFixed(4)}, diff ${(tp1DiffPercent * 100).toFixed(2)}%`);
+      
+      if (tp1DiffPercent > PRICE_TOLERANCE) {
+        discrepancies.push({
+          field: 'tp1Price',
+          planned: planned.tp1Price,
+          actual: actualTp1Price,
+          diff: tp1Diff,
+          threshold: PRICE_TOLERANCE
+        });
+        console.log(`      ⚠️ DISCREPANCY: ${(tp1DiffPercent * 100).toFixed(2)}% > ${(PRICE_TOLERANCE * 100).toFixed(2)}%`);
+      } else {
+        console.log(`      ✅ OK`);
+      }
+    } else if (planned.tp1Price && !actualTp1Price) {
+      discrepancies.push({
+        field: 'tp1Price',
+        planned: planned.tp1Price,
+        actual: 'MISSING',
+        diff: 0,
+        threshold: PRICE_TOLERANCE
+      });
+      console.log(`      ⚠️ DISCREPANCY: TP1 not found on exchange`);
+    }
+    
+    // ============================================
+    // STEP 5: Log to bot_detailed_logs
+    // ============================================
+    console.log(`\n📝 Logging verification to bot_detailed_logs...`);
+    
+    await db.insert(botDetailedLogs).values({
+      positionId,
+      alertId,
+      actionType: 'open_position',
+      stage: 'verification',
+      plannedSymbol: planned.symbol,
+      plannedSide: planned.side,
+      plannedQuantity: planned.quantity,
+      plannedEntryPrice: planned.entryPrice,
+      plannedSlPrice: planned.slPrice,
+      plannedTp1Price: planned.tp1Price,
+      plannedTp2Price: planned.tp2Price,
+      plannedTp3Price: planned.tp3Price,
+      plannedLeverage: planned.leverage,
+      actualSymbol: actualPosition.instId,
+      actualSide: parseFloat(actualPosition.pos) > 0 ? 'BUY' : 'SELL',
+      actualQuantity,
+      actualEntryPrice,
+      actualSlPrice,
+      actualTp1Price,
+      actualTp2Price: null, // TP2/TP3 are separate orders, not checked in first verification
+      actualTp3Price: null,
+      actualLeverage,
+      hasDiscrepancy: discrepancies.length > 0,
+      discrepancyDetails: discrepancies.length > 0 ? JSON.stringify(discrepancies) : null,
+      discrepancyThreshold: PRICE_TOLERANCE,
+      settingsSnapshot: JSON.stringify(botSettings),
+      orderId,
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+    
+    console.log(`   ✅ Verification logged to database`);
+    
+    // ============================================
+    // STEP 6: Return result
+    // ============================================
+    const success = discrepancies.length === 0;
+    
+    console.log(`\n🔍 ========== VERIFICATION ${success ? 'PASSED ✅' : 'FAILED ❌'} ==========`);
+    if (!success) {
+      console.log(`   Discrepancies found: ${discrepancies.length}`);
+      discrepancies.forEach(d => {
+        console.log(`   - ${d.field}: planned ${d.planned}, actual ${d.actual}`);
+      });
+    }
+    console.log(`${'='.repeat(60)}\n`);
+    
+    return {
+      success,
+      discrepancies
+    };
+    
+  } catch (error: any) {
+    console.error(`\n❌ Verification failed with error:`, error.message);
+    
+    // Log error verification
+    await db.insert(botDetailedLogs).values({
+      positionId,
+      alertId,
+      actionType: 'open_position',
+      stage: 'verification_error',
+      plannedSymbol: planned.symbol,
+      plannedSide: planned.side,
+      plannedQuantity: planned.quantity,
+      plannedEntryPrice: planned.entryPrice,
+      plannedSlPrice: planned.slPrice,
+      plannedTp1Price: planned.tp1Price,
+      plannedTp2Price: planned.tp2Price,
+      plannedTp3Price: planned.tp3Price,
+      plannedLeverage: planned.leverage,
+      actualSymbol: null,
+      actualSide: null,
+      actualQuantity: null,
+      actualEntryPrice: null,
+      actualSlPrice: null,
+      actualTp1Price: null,
+      actualTp2Price: null,
+      actualTp3Price: null,
+      actualLeverage: null,
+      hasDiscrepancy: true,
+      discrepancyDetails: JSON.stringify({ error: error.message }),
+      discrepancyThreshold: PRICE_TOLERANCE,
+      settingsSnapshot: JSON.stringify(botSettings),
+      orderId,
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+    
+    // Return as failed verification
+    return {
+      success: false,
+      discrepancies: [{
+        field: 'verification_error',
+        planned: 'N/A',
+        actual: error.message,
+        diff: 0,
+        threshold: 0
+      }]
+    };
+  }
+}
+
+// ============================================
 // 🌐 GET ENDPOINT (TEST)
 // ============================================
 
@@ -944,6 +1267,41 @@ export async function POST(request: Request) {
       await logToBot('error', 'rejected', 'OKX API credentials incomplete', { reason: 'no_api_credentials' }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: "Alert saved, OKX credentials incomplete" });
     }
+
+    // ============================================
+    // 🔍 NEW: LOG BOT SETTINGS VERIFICATION (ZADANIE 8)
+    // ============================================
+    console.log(`\n📋 ========== BOT SETTINGS VERIFICATION ==========`);
+    console.log(`✅ Using bot settings from DATABASE (not hardcoded):`);
+    console.log(`   Bot Enabled: ${botConfig.botEnabled}`);
+    console.log(`   Exchange: ${botConfig.exchange}`);
+    console.log(`   Environment: ${botConfig.environment}`);
+    console.log(`   Position Size: $${botConfig.positionSizeFixed}`);
+    console.log(`   Leverage Mode: ${botConfig.leverageMode}`);
+    console.log(`   Leverage Fixed: ${botConfig.leverageFixed}x`);
+    console.log(`   Use Default SL/TP: ${botConfig.useDefaultSlTp}`);
+    console.log(`   SL as Margin %: ${botConfig.slAsMarginPercent}`);
+    console.log(`   SL Margin Risk %: ${botConfig.slMarginRiskPercent}%`);
+    console.log(`   TP Count: ${botConfig.tpCount}`);
+    console.log(`   TP1 R:R: ${botConfig.tp1RR}`);
+    console.log(`   TP2 R:R: ${botConfig.tp2RR}`);
+    console.log(`   TP3 R:R: ${botConfig.tp3RR}`);
+    console.log(`   Adaptive R:R: ${botConfig.adaptiveRR}`);
+    console.log(`   Disabled Tiers: ${botConfig.disabledTiers}`);
+    console.log(`${'='.repeat(50)}\n`);
+    
+    await logToBot('info', 'settings_loaded', `Bot settings loaded from DB - Position: $${botConfig.positionSizeFixed}, Leverage: ${botConfig.leverageFixed}x, SL as margin: ${botConfig.slAsMarginPercent}, TP count: ${botConfig.tpCount}`, {
+      botEnabled: botConfig.botEnabled,
+      positionSize: botConfig.positionSizeFixed,
+      leverage: botConfig.leverageFixed,
+      slAsMarginPercent: botConfig.slAsMarginPercent,
+      slMarginRiskPercent: botConfig.slMarginRiskPercent,
+      tpCount: botConfig.tpCount,
+      tp1RR: botConfig.tp1RR,
+      tp2RR: botConfig.tp2RR,
+      tp3RR: botConfig.tp3RR,
+      adaptiveRR: botConfig.adaptiveRR
+    }, alert.id);
 
     const apiKey = botConfig.apiKey;
     const apiSecret = botConfig.apiSecret;
@@ -1510,6 +1868,138 @@ export async function POST(request: Request) {
           tp3: tp3Price,
           environment
         }, alert.id, botPosition.id);
+
+        // ============================================
+        // 🔍 NEW: VERIFY POSITION OPENING (ZADANIE 7)
+        // ============================================
+        console.log(`\n🔍 Running position verification...`);
+        try {
+          const verificationResult = await verifyPositionOpening(
+            botPosition.id,
+            {
+              symbol: okxSymbol,
+              side: data.side,
+              quantity: finalQuantity,
+              entryPrice,
+              slPrice,
+              tp1Price,
+              tp2Price,
+              tp3Price,
+              leverage
+            },
+            orderId,
+            apiKey,
+            apiSecret,
+            passphrase,
+            environment === "demo",
+            alert.id,
+            botConfig
+          );
+
+          if (!verificationResult.success) {
+            console.error(`🚨 CRITICAL: Position verification FAILED!`);
+            console.error(`   Discrepancies:`, verificationResult.discrepancies);
+            
+            // ============================================
+            // 1. Log błędu w diagnostice
+            // ============================================
+            await db.insert(diagnosticFailures).values({
+              positionId: botPosition.id,
+              failureType: 'verification_failed',
+              reason: `Position opened with discrepancies: ${verificationResult.discrepancies.map(d => d.field).join(', ')}`,
+              attemptCount: 1,
+              errorDetails: JSON.stringify(verificationResult.discrepancies),
+              createdAt: new Date().toISOString()
+            });
+            
+            await logToBot('error', 'verification_failed', `Position verification failed - ${verificationResult.discrepancies.length} discrepancies`, {
+              positionId: botPosition.id,
+              discrepancies: verificationResult.discrepancies
+            }, alert.id, botPosition.id);
+            
+            // ============================================
+            // 2. Zablokuj symbol
+            // ============================================
+            console.log(`🔒 Locking symbol ${data.symbol} due to verification failure...`);
+            await db.insert(symbolLocks).values({
+              symbol: data.symbol,
+              lockReason: 'verification_failure',
+              lockedAt: new Date().toISOString(),
+              failureCount: 1,
+              lastError: `Discrepancies detected: ${verificationResult.discrepancies.map(d => `${d.field} (planned: ${d.planned}, actual: ${d.actual})`).join(', ')}`,
+              unlockedAt: null,
+              isPermanent: false,
+              createdAt: new Date().toISOString()
+            });
+            
+            console.log(`✅ Symbol ${data.symbol} locked`);
+            await logToBot('warning', 'symbol_locked', `Symbol ${data.symbol} locked due to verification failure`, {
+              symbol: data.symbol,
+              discrepancyCount: verificationResult.discrepancies.length
+            }, alert.id, botPosition.id);
+            
+            // ============================================
+            // 3. Awaryjnie zamknij pozycję
+            // ============================================
+            console.log(`🚨 Attempting emergency close of position ${botPosition.id}...`);
+            try {
+              await closeOkxPosition(
+                okxSymbol,
+                side,
+                finalQuantity,
+                apiKey,
+                apiSecret,
+                passphrase,
+                environment === "demo",
+                alert.id,
+                botPosition.id
+              );
+              
+              await db.update(botPositions).set({
+                status: 'closed',
+                closeReason: 'emergency_verification_failure',
+                closedAt: new Date().toISOString()
+              }).where(eq(botPositions.id, botPosition.id));
+              
+              console.log(`✅ Position ${botPosition.id} closed due to verification failure`);
+              await logToBot('success', 'emergency_close_verification', `Position ${botPosition.id} closed due to verification failure`, { 
+                discrepancies: verificationResult.discrepancies 
+              }, alert.id, botPosition.id);
+            } catch (closeError: any) {
+              console.error(`❌ Failed to emergency close position:`, closeError.message);
+              await logToBot('error', 'emergency_close_failed', `Failed to close position after verification failure: ${closeError.message}`, {
+                closeError: closeError.message,
+                positionId: botPosition.id
+              }, alert.id, botPosition.id);
+            }
+            
+            // ============================================
+            // 4. Zwróć error response
+            // ============================================
+            return NextResponse.json({
+              success: false,
+              alert_id: alert.id,
+              position_id: botPosition.id,
+              error: 'Position verification failed - symbol locked and position closed',
+              discrepancies: verificationResult.discrepancies,
+              symbolLocked: true,
+              positionClosed: true
+            });
+          }
+          
+          console.log(`✅ Position verification PASSED - all values match`);
+          await logToBot('success', 'verification_passed', `Position ${botPosition.id} verified successfully`, {
+            positionId: botPosition.id
+          }, alert.id, botPosition.id);
+          
+        } catch (verifyError: any) {
+          console.error(`⚠️ Verification process failed:`, verifyError.message);
+          // Don't block the trade if verification itself fails, just log it
+          await logToBot('warning', 'verification_error', `Verification process failed: ${verifyError.message}`, {
+            error: verifyError.message,
+            positionId: botPosition.id
+          }, alert.id, botPosition.id);
+        }
 
         // ✅ CRITICAL FIX #6: Set TP2 and TP3 as separate algo orders if configured
         if (botConfig.tpCount >= 2 && tp2Price) {

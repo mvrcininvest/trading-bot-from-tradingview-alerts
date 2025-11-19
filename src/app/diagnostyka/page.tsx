@@ -64,6 +64,46 @@ interface RetryAttempt {
   } | null;
 }
 
+interface VerificationLog {
+  log: {
+    id: number;
+    positionId: number;
+    alertId: number;
+    actionType: string;
+    stage: string;
+    plannedSymbol: string | null;
+    plannedSide: string | null;
+    plannedQuantity: number | null;
+    plannedEntryPrice: number | null;
+    plannedSlPrice: number | null;
+    plannedTp1Price: number | null;
+    plannedTp2Price: number | null;
+    plannedTp3Price: number | null;
+    plannedLeverage: number | null;
+    actualSymbol: string | null;
+    actualSide: string | null;
+    actualQuantity: number | null;
+    actualEntryPrice: number | null;
+    actualSlPrice: number | null;
+    actualTp1Price: number | null;
+    actualTp2Price: number | null;
+    actualTp3Price: number | null;
+    actualLeverage: number | null;
+    hasDiscrepancy: boolean;
+    discrepancyDetails: string | null;
+    discrepancyThreshold: number | null;
+    settingsSnapshot: string | null;
+    orderId: string | null;
+    timestamp: string;
+    createdAt: string;
+  };
+  position: {
+    symbol: string;
+    side: string;
+    tier: string;
+  } | null;
+}
+
 interface DiagnosticSummary {
   activeSymbolLocks: number;
   totalSymbolLocks: number;
@@ -82,6 +122,7 @@ export default function DiagnosticsPage() {
   const [failures, setFailures] = useState<DiagnosticFailure[]>([]);
   const [errorAlerts, setErrorAlerts] = useState<ErrorAlert[]>([]);
   const [retryAttempts, setRetryAttempts] = useState<RetryAttempt[]>([]);
+  const [verifications, setVerifications] = useState<VerificationLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [unlocking, setUnlocking] = useState<string | null>(null);
 
@@ -97,7 +138,8 @@ export default function DiagnosticsPage() {
         fetchLocks(),
         fetchFailures(),
         fetchErrorAlerts(),
-        fetchRetryAttempts()
+        fetchRetryAttempts(),
+        fetchVerifications()
       ]);
     } catch (error) {
       console.error("Failed to fetch diagnostic data:", error);
@@ -167,6 +209,18 @@ export default function DiagnosticsPage() {
     }
   };
 
+  const fetchVerifications = async () => {
+    try {
+      const response = await fetch("/api/bot/diagnostics/verifications?limit=50");
+      const data = await response.json();
+      if (data.success) {
+        setVerifications(data.verifications);
+      }
+    } catch (error) {
+      console.error("Failed to fetch verifications:", error);
+    }
+  };
+
   const handleUnlockSymbol = async (symbol: string) => {
     setUnlocking(symbol);
     try {
@@ -193,6 +247,9 @@ export default function DiagnosticsPage() {
 
   const activeLocks = locks.filter(l => !l.unlockedAt);
   const historicalLocks = locks.filter(l => l.unlockedAt);
+
+  const passedVerifications = verifications.filter(v => !v.log.hasDiscrepancy);
+  const failedVerifications = verifications.filter(v => v.log.hasDiscrepancy);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
@@ -305,14 +362,18 @@ export default function DiagnosticsPage() {
 
         {/* Main Content with Tabs */}
         <Tabs defaultValue="locks" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+          <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
             <TabsTrigger value="locks" className="data-[state=active]:bg-red-600/30 data-[state=active]:text-red-200 text-gray-300">
               <Lock className="mr-2 h-4 w-4" />
               Blokady ({activeLocks.length})
             </TabsTrigger>
+            <TabsTrigger value="verifications" className="data-[state=active]:bg-green-600/30 data-[state=active]:text-green-200 text-gray-300">
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Weryfikacje ({verifications.length})
+            </TabsTrigger>
             <TabsTrigger value="errors" className="data-[state=active]:bg-orange-600/30 data-[state=active]:text-orange-200 text-gray-300">
               <XCircle className="mr-2 h-4 w-4" />
-              Błędy Alertów ({errorAlerts.length})
+              Błędy ({errorAlerts.length})
             </TabsTrigger>
             <TabsTrigger value="failures" className="data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-200 text-gray-300">
               <AlertCircle className="mr-2 h-4 w-4" />
@@ -320,7 +381,7 @@ export default function DiagnosticsPage() {
             </TabsTrigger>
             <TabsTrigger value="retries" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Clock className="mr-2 h-4 w-4" />
-              Retry Log ({retryAttempts.length})
+              Retry ({retryAttempts.length})
             </TabsTrigger>
           </TabsList>
 
@@ -437,6 +498,235 @@ export default function DiagnosticsPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* NEW: Verifications Tab */}
+          <TabsContent value="verifications" className="space-y-6">
+            <Card className="border-green-700 bg-gradient-to-br from-green-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white">
+                  <CheckCircle className="h-5 w-5 text-green-400" />
+                  Weryfikacje Pozycji
+                  {verifications.length > 0 && (
+                    <>
+                      <Badge variant="secondary" className="ml-2 bg-green-600/20 text-green-300">
+                        {passedVerifications.length} ✓
+                      </Badge>
+                      {failedVerifications.length > 0 && (
+                        <Badge variant="destructive" className="ml-1">
+                          {failedVerifications.length} ✗
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </CardTitle>
+                <CardDescription className="text-gray-200">
+                  Weryfikacja zgodności pozycji planned vs actual z giełdy
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {verifications.length === 0 ? (
+                  <div className="text-center py-12">
+                    <CheckCircle className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
+                    <p className="text-gray-300">Brak danych weryfikacji</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {verifications.map((item) => {
+                      const log = item.log;
+                      const position = item.position;
+                      const isPassed = !log.hasDiscrepancy;
+                      
+                      let discrepancies: any[] = [];
+                      if (log.discrepancyDetails) {
+                        try {
+                          discrepancies = JSON.parse(log.discrepancyDetails);
+                        } catch (e) {
+                          console.error("Failed to parse discrepancy details:", e);
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={log.id}
+                          className={`p-5 rounded-xl border-2 transition-all ${
+                            isPassed
+                              ? 'border-green-700/30 bg-gradient-to-r from-green-900/20 to-gray-900/80 hover:from-green-900/30'
+                              : 'border-red-700/30 bg-gradient-to-r from-red-900/20 to-gray-900/80 hover:from-red-900/30'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
+                                isPassed
+                                  ? 'bg-green-500/30 border border-green-500/40'
+                                  : 'bg-red-500/30 border border-red-500/40'
+                              }`}>
+                                {isPassed ? (
+                                  <CheckCircle className="h-6 w-6 text-green-400" />
+                                ) : (
+                                  <XCircle className="h-6 w-6 text-red-400" />
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-bold text-xl text-white mb-1">
+                                  {log.plannedSymbol} {log.plannedSide}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge 
+                                    variant={isPassed ? "default" : "destructive"} 
+                                    className={isPassed ? "bg-green-600" : ""}
+                                  >
+                                    {isPassed ? "✓ PASSED" : "✗ FAILED"}
+                                  </Badge>
+                                  {position && (
+                                    <Badge variant="outline" className="text-xs border-gray-700 text-gray-200">
+                                      {position.tier}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs text-gray-300">Position ID</div>
+                              <div className="font-mono text-sm text-gray-100">#{log.positionId}</div>
+                              <div className="text-xs text-gray-300 mt-1">Alert ID</div>
+                              <div className="font-mono text-xs text-gray-100">#{log.alertId}</div>
+                            </div>
+                          </div>
+                          
+                          {/* Planned vs Actual Comparison */}
+                          <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-gray-800/40 mb-3">
+                            <div>
+                              <div className="text-xs font-semibold text-blue-300 mb-2">📋 PLANNED</div>
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">Quantity:</span>
+                                  <span className="font-semibold text-gray-100">{log.plannedQuantity?.toFixed(4)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">Entry:</span>
+                                  <span className="font-semibold text-gray-100">{log.plannedEntryPrice?.toFixed(4)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">SL:</span>
+                                  <span className="font-semibold text-gray-100">{log.plannedSlPrice?.toFixed(4)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">TP1:</span>
+                                  <span className="font-semibold text-gray-100">{log.plannedTp1Price?.toFixed(4)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-xs font-semibold text-green-300 mb-2">✅ ACTUAL (z giełdy)</div>
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">Quantity:</span>
+                                  <span className={`font-semibold ${
+                                    discrepancies.find(d => d.field === 'quantity') 
+                                      ? 'text-red-300' 
+                                      : 'text-green-300'
+                                  }`}>
+                                    {log.actualQuantity?.toFixed(4) || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">Entry:</span>
+                                  <span className={`font-semibold ${
+                                    discrepancies.find(d => d.field === 'entryPrice') 
+                                      ? 'text-red-300' 
+                                      : 'text-green-300'
+                                  }`}>
+                                    {log.actualEntryPrice?.toFixed(4) || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">SL:</span>
+                                  <span className={`font-semibold ${
+                                    discrepancies.find(d => d.field === 'slPrice') 
+                                      ? 'text-red-300' 
+                                      : 'text-green-300'
+                                  }`}>
+                                    {log.actualSlPrice?.toFixed(4) || 'MISSING'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-300">TP1:</span>
+                                  <span className={`font-semibold ${
+                                    discrepancies.find(d => d.field === 'tp1Price') 
+                                      ? 'text-red-300' 
+                                      : 'text-green-300'
+                                  }`}>
+                                    {log.actualTp1Price?.toFixed(4) || 'MISSING'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Discrepancies Details */}
+                          {!isPassed && discrepancies.length > 0 && (
+                            <div className="p-4 rounded-lg bg-red-900/20 border border-red-700/30 mb-3">
+                              <div className="text-xs font-semibold text-red-300 mb-2">
+                                🚨 WYKRYTE ROZBIEŻNOŚCI ({discrepancies.length}):
+                              </div>
+                              <div className="space-y-2">
+                                {discrepancies.map((disc, idx) => (
+                                  <div 
+                                    key={idx}
+                                    className="p-2 rounded bg-red-800/20 border border-red-700/20"
+                                  >
+                                    <div className="text-sm text-red-200 font-semibold mb-1">
+                                      {disc.field}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div>
+                                        <span className="text-gray-300">Planned: </span>
+                                        <span className="text-gray-100 font-mono">{disc.planned}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-300">Actual: </span>
+                                        <span className="text-red-300 font-mono font-bold">{disc.actual}</span>
+                                      </div>
+                                    </div>
+                                    {typeof disc.diff === 'number' && disc.diff > 0 && (
+                                      <div className="text-xs text-red-300 mt-1">
+                                        Diff: {disc.diff.toFixed(6)} ({((disc.diff / (typeof disc.planned === 'number' ? disc.planned : 1)) * 100).toFixed(2)}%)
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Status Summary */}
+                          <div className="flex items-center justify-between text-xs text-gray-300 pt-3 border-t border-gray-800">
+                            <span>
+                              {new Date(log.timestamp).toLocaleString("pl-PL")}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {log.orderId && (
+                                <Badge variant="outline" className="text-xs border-gray-700 text-gray-300">
+                                  Order: {log.orderId.substring(0, 8)}...
+                                </Badge>
+                              )}
+                              {log.stage === 'verification_error' && (
+                                <Badge variant="destructive" className="text-xs">
+                                  Verification Error
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
