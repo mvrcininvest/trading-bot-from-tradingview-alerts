@@ -106,6 +106,7 @@ export default function DashboardPage() {
   const [closePositionDialogOpen, setClosePositionDialogOpen] = useState(false);
   const [positionToClose, setPositionToClose] = useState<Position | null>(null);
   const [loadingClosePosition, setLoadingClosePosition] = useState(false);
+  const [balanceCollapsed, setBalanceCollapsed] = useState(false);
 
   useEffect(() => {
     // Load credentials from localStorage
@@ -1155,7 +1156,7 @@ export default function DashboardPage() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Balance Card - Dark Theme */}
+            {/* Balance Card - Dark Theme with Collapse */}
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -1168,77 +1169,106 @@ export default function DashboardPage() {
                       {lastUpdate && <span className="text-xs">Zaktualizowano: {lastUpdate}</span>}
                     </CardDescription>
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => fetchBalance()}
-                        disabled={loading}
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
-                      >
-                        <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                        Odśwież
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Odśwież saldo konta z giełdy - pobiera aktualne dane o wolnych i zablokowanych środkach</p>
-                    </TooltipContent>
-                  </Tooltip>
+                  <div className="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={() => setBalanceCollapsed(!balanceCollapsed)}
+                          size="sm"
+                          variant="ghost"
+                          className="text-gray-300 hover:text-white"
+                        >
+                          {balanceCollapsed ? (
+                            <>
+                              <ArrowDownRight className="mr-2 h-4 w-4" />
+                              Rozwiń
+                            </>
+                          ) : (
+                            <>
+                              <ArrowUpRight className="mr-2 h-4 w-4" />
+                              Zwiń
+                            </>
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-gray-200">{balanceCollapsed ? "Rozwiń" : "Zwiń"} szczegóły salda</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={() => fetchBalance()}
+                          disabled={loading}
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                          Odśwież
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-gray-200">Odśwież saldo konta z giełdy - pobiera aktualne dane o wolnych i zablokowanych środkach</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                {error && (
-                  <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
-                    <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm text-yellow-300">
-                      <strong>Nie można pobrać salda:</strong> {error}
-                    </AlertDescription>
-                  </Alert>
-                )}
+              {!balanceCollapsed && (
+                <CardContent>
+                  {error && (
+                    <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
+                      <AlertCircle className="h-4 w-4 text-yellow-500" />
+                      <AlertDescription className="text-sm text-yellow-300">
+                        <strong>Nie można pobrać salda:</strong> {error}
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
-                {loading && (
-                  <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-300">Pobieranie salda...</p>
-                  </div>
-                )}
+                  {loading && (
+                    <div className="text-center py-8">
+                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
+                      <p className="text-sm text-gray-300">Pobieranie salda...</p>
+                    </div>
+                  )}
 
-                {!loading && balances.length === 0 && !error && (
-                  <div className="text-center py-8">
-                    <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                    <p className="text-sm text-gray-300">Brak danych o saldzie</p>
-                  </div>
-                )}
+                  {!loading && balances.length === 0 && !error && (
+                    <div className="text-center py-8">
+                      <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
+                      <p className="text-sm text-gray-300">Brak danych o saldzie</p>
+                    </div>
+                  )}
 
-                {!loading && balances.length > 0 && (
-                  <div className="space-y-2">
-                    {balances.map((balance, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-800/40 hover:from-gray-800/60 hover:to-gray-900/60 transition-all"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 flex items-center justify-center border border-blue-500/30">
-                            <span className="text-sm font-bold text-blue-300">
-                              {balance.asset.substring(0, 2)}
-                            </span>
-                          </div>
-                          <div>
-                            <div className="font-semibold text-lg text-white">{balance.asset}</div>
-                            <div className="text-xs text-gray-300">
-                              Wolne: {balance.free} · Zablokowane: {balance.locked}
+                  {!loading && balances.length > 0 && (
+                    <div className="space-y-2">
+                      {balances.map((balance, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-800/40 hover:from-gray-800/60 hover:to-gray-900/60 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 flex items-center justify-center border border-blue-500/30">
+                              <span className="text-sm font-bold text-blue-300">
+                                {balance.asset.substring(0, 2)}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-lg text-white">{balance.asset}</div>
+                              <div className="text-xs text-gray-300">
+                                Wolne: {balance.free} · Zablokowane: {balance.locked}
+                              </div>
                             </div>
                           </div>
+                          <div className="text-right">
+                            <div className="font-bold text-2xl text-white">{balance.total}</div>
+                            <div className="text-xs text-gray-300">Łącznie</div>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-bold text-2xl text-white">{balance.total}</div>
-                          <div className="text-xs text-gray-300">Łącznie</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              )}
             </Card>
 
             {/* Quick Summary - Dark Theme */}

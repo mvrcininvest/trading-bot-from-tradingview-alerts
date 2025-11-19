@@ -361,11 +361,19 @@ export default function BotHistoryPage() {
                         </div>
                         <div>
                           <div className="text-gray-300">Wyjście</div>
-                          <div className="font-semibold text-white">{position.closePrice.toFixed(4)}</div>
+                          <div className="font-semibold text-white">
+                            {position.closePrice && position.closePrice > 0 
+                              ? position.closePrice.toFixed(4) 
+                              : "N/A"}
+                          </div>
                         </div>
                         <div>
                           <div className="text-gray-300">Rozmiar</div>
-                          <div className="font-semibold text-white">{position.quantity.toFixed(4)}</div>
+                          <div className="font-semibold text-white">
+                            {position.quantity && position.quantity > 0 
+                              ? position.quantity.toFixed(4) 
+                              : "N/A"}
+                          </div>
                         </div>
                         <div>
                           <div className="text-gray-300">Czas Trwania</div>
@@ -379,28 +387,36 @@ export default function BotHistoryPage() {
                         </div>
                       </div>
 
-                      {/* TP Status */}
-                      <div className="flex items-center gap-2 text-xs mb-2">
-                        <span className="text-gray-300">Take Profit:</span>
-                        <Badge
-                          variant={position.tp1Hit ? "default" : "outline"}
-                          className={position.tp1Hit ? "bg-green-500" : "border-gray-600 text-gray-300"}
-                        >
-                          TP1 {position.tp1Hit ? "✓" : "✗"}
-                        </Badge>
-                        <Badge
-                          variant={position.tp2Hit ? "default" : "outline"}
-                          className={position.tp2Hit ? "bg-green-500" : "border-gray-600 text-gray-300"}
-                        >
-                          TP2 {position.tp2Hit ? "✓" : "✗"}
-                        </Badge>
-                        <Badge
-                          variant={position.tp3Hit ? "default" : "outline"}
-                          className={position.tp3Hit ? "bg-green-500" : "border-gray-600 text-gray-300"}
-                        >
-                          TP3 {position.tp3Hit ? "✓" : "✗"}
-                        </Badge>
-                      </div>
+                      {/* TP Status - Only show TPs that exist */}
+                      {(position.tp1Hit || position.tp2Hit || position.tp3Hit) && (
+                        <div className="flex items-center gap-2 text-xs mb-2">
+                          <span className="text-gray-300">Take Profit:</span>
+                          {position.tp1Hit && (
+                            <Badge
+                              variant="default"
+                              className="bg-green-500"
+                            >
+                              TP1 ✓
+                            </Badge>
+                          )}
+                          {position.tp2Hit && (
+                            <Badge
+                              variant="default"
+                              className="bg-green-500"
+                            >
+                              TP2 ✓
+                            </Badge>
+                          )}
+                          {position.tp3Hit && (
+                            <Badge
+                              variant="default"
+                              className="bg-green-500"
+                            >
+                              TP3 ✓
+                            </Badge>
+                          )}
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between text-xs text-gray-300">
                         <span>Confirmations: {position.confirmationCount}</span>

@@ -106,6 +106,7 @@ export default function StatystykiPage() {
   const [historicalPositions, setHistoricalPositions] = useState<HistoricalPosition[]>([]);
   const [currentPositions, setCurrentPositions] = useState<BotPosition[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [totalAlerts, setTotalAlerts] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
   const [tierStats, setTierStats] = useState<TierStats[]>([]);
   const [symbolStats, setSymbolStats] = useState<SymbolStats[]>([]);
@@ -130,10 +131,11 @@ export default function StatystykiPage() {
       const openPositions = positionsData.success ? positionsData.positions : [];
       setCurrentPositions(openPositions);
 
-      // Fetch alerts
+      // Fetch alerts - get TOTAL count, not just fetched alerts
       const alertsRes = await fetch("/api/alerts");
       const alertsData = await alertsRes.json();
       setAlerts(alertsData.success ? alertsData.alerts : []);
+      setTotalAlerts(alertsData.success ? alertsData.total : 0);
 
       // Calculate statistics
       calculateStatistics(closedPositions, openPositions, alertsData.alerts || []);
@@ -392,7 +394,7 @@ export default function StatystykiPage() {
                     <BarChart3 className="h-5 w-5 text-blue-400" />
                   </div>
                   <Badge variant="outline" className="text-xs text-gray-200">
-                    Wszystkie trady
+                    Wszystkie trade
                   </Badge>
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">{stats.totalTrades}</p>
@@ -743,7 +745,7 @@ export default function StatystykiPage() {
               <CardTitle className="text-sm font-medium text-gray-200">Otrzymane Alerty</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-white">{alerts.length}</p>
+              <p className="text-3xl font-bold text-white">{totalAlerts}</p>
               <p className="text-xs text-gray-300 mt-1">Całkowita liczba alertów z TradingView</p>
             </CardContent>
           </Card>

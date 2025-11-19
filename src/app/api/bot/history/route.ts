@@ -33,7 +33,7 @@ function convertSymbolFromOkx(okxSymbol: string): string {
 }
 
 // ============================================
-// 📜 GET CLOSED POSITIONS HISTORY FROM OKX
+// 🔥 NEW: FETCH CLOSED POSITIONS FROM OKX
 // ============================================
 
 async function getOkxPositionsHistory(
@@ -77,6 +77,37 @@ async function getOkxPositionsHistory(
   }
 
   return data.data || [];
+}
+
+// ============================================
+// 🔥 SMART CLOSE REASON CLASSIFIER
+// ============================================
+
+function classifyCloseReason(position: any): string {
+  // If closeReason already exists and is not "unknown" or "okx_history", use it
+  if (position.closeReason && position.closeReason !== 'unknown' && position.closeReason !== 'okx_history') {
+    return position.closeReason;
+  }
+
+  const pnl = typeof position.pnl === 'number' ? position.pnl : parseFloat(position.pnl || "0");
+
+  // If PnL is positive -> must be TP hit
+  if (pnl > 0) {
+    // Check which TP was hit based on TP flags
+    if (position.tp3Hit) return 'tp3_hit';
+    if (position.tp2Hit) return 'tp2_hit';
+    if (position.tp1Hit) return 'tp1_hit';
+    // If no TP flags but profitable, assume main TP
+    return 'tp_main_hit';
+  }
+
+  // If PnL is negative -> must be SL hit
+  if (pnl < 0) {
+    return 'sl_hit';
+  }
+
+  // If PnL is exactly 0 -> probably manual close or closed on exchange
+  return 'manual_close';
 }
 
 export async function GET(request: NextRequest) {
@@ -237,22 +268,47 @@ export async function GET(request: NextRequest) {
               const symbol = convertSymbolFromOkx(p.instId);
               const side = parseFloat(p.pos) > 0 ? "BUY" : "SELL";
               const pnl = parseFloat(p.pnl || "0");
+              const pnlRealised = parseFloat(p.realizedPnl || p.pnl || "0");
               const closedAt = new Date(parseInt(p.uTime)).toISOString();
               const leverage = parseFloat(p.lever || "1");
+              const avgPx = parseFloat(p.avgPx || "0");
+              const closeAvgPx = parseFloat(p.closeAvgPx || p.avgPx || "0");
+              const quantity = Math.abs(parseFloat(p.closeTotalPos || p.pos || "0"));
+              
+              // Calculate close price from PnL if not available
+              let closePrice = closeAvgPx;
+              if (closePrice === 0 && avgPx > 0 && quantity > 0) {
+                // Estimate close price from PnL
+                // For LONG: closePrice = entryPrice + (pnl / quantity)
+                // For SHORT: closePrice = entryPrice - (pnl / quantity)
+                if (side === "BUY") {
+                  closePrice = avgPx + (pnlRealised / quantity);
+                } else {
+                  closePrice = avgPx - (pnlRealised / quantity);
+                }
+              }
+              
+              const tempPosition = {
+                pnl: pnlRealised,
+                tp1Hit: false,
+                tp2Hit: false,
+                tp3Hit: false,
+                closeReason: 'okx_history'
+              };
               
               return {
                 id: `okx_${p.posId}`,
                 positionId: null,
                 symbol,
                 side,
-                tier: "unknown",
-                entryPrice: parseFloat(p.avgPx || "0"),
-                closePrice: parseFloat(p.avgPx || "0"),
-                quantity: Math.abs(parseFloat(p.pos || "0")),
+                tier: "OKX Historie",
+                entryPrice: avgPx,
+                closePrice: closePrice > 0 ? closePrice : avgPx,
+                quantity,
                 leverage,
-                pnl,
-                pnlPercent: 0,
-                closeReason: "okx_history",
+                pnl: pnlRealised,
+                pnlPercent: avgPx > 0 ? ((closePrice - avgPx) / avgPx * 100 * (side === "BUY" ? 1 : -1)) : 0,
+                closeReason: classifyCloseReason(tempPosition),
                 tp1Hit: false,
                 tp2Hit: false,
                 tp3Hit: false,
