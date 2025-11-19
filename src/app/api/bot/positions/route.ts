@@ -84,6 +84,52 @@ async function getOkxPositions(
   return data.data?.filter((p: any) => parseFloat(p.pos) !== 0) || [];
 }
 
+// ============================================
+// 🏦 GET ALGO ORDERS FROM OKX (SL/TP)
+// ============================================
+
+async function getOkxAlgoOrders(
+  apiKey: string,
+  apiSecret: string,
+  passphrase: string,
+  demo: boolean
+) {
+  const timestamp = new Date().toISOString();
+  const method = "GET";
+  const requestPath = "/api/v5/trade/orders-algo-pending";
+  const queryString = "?ordType=conditional";
+  const body = "";
+  
+  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  
+  const baseUrl = "https://www.okx.com";
+  const headers: Record<string, string> = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-SIGN": signature,
+    "OK-ACCESS-TIMESTAMP": timestamp,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+  };
+  
+  if (demo) {
+    headers["x-simulated-trading"] = "1";
+  }
+  
+  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
+    method: "GET",
+    headers,
+  });
+
+  const data = await response.json();
+
+  if (data.code !== "0") {
+    console.error("OKX API error (algo orders):", data);
+    return [];
+  }
+
+  return data.data || [];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -139,7 +185,7 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(botPositions.openedAt));
 
     // ============================================
-    // 🔥 CRITICAL FIX: FETCH LIVE PNL FROM OKX
+    // 🔥 CRITICAL FIX: FETCH LIVE PNL AND SL/TP FROM OKX
     // ============================================
     
     // Get bot settings for API credentials
@@ -154,13 +200,11 @@ export async function GET(request: NextRequest) {
         const demo = botConfig.environment === "demo";
         
         try {
-          // Fetch live positions from OKX
-          const okxPositions = await getOkxPositions(
-            apiKey,
-            apiSecret,
-            passphrase,
-            demo
-          );
+          // Fetch live positions and algo orders from OKX in parallel
+          const [okxPositions, okxAlgoOrders] = await Promise.all([
+            getOkxPositions(apiKey, apiSecret, passphrase, demo),
+            getOkxAlgoOrders(apiKey, apiSecret, passphrase, demo)
+          ]);
           
           // Create map for quick lookup: "SYMBOL_SIDE" -> OKX position
           const okxPositionsMap = new Map(
@@ -171,23 +215,75 @@ export async function GET(request: NextRequest) {
             })
           );
           
-          // Update each position with live PnL from OKX
+          // Create map for algo orders: "SYMBOL" -> { sl, tp1, tp2, tp3 }
+          const algoOrdersMap = new Map<string, { 
+            liveSlPrice: number | null;
+            liveTp1Price: number | null;
+            liveTp2Price: number | null;
+            liveTp3Price: number | null;
+          }>();
+          
+          // Group algo orders by symbol
+          for (const order of okxAlgoOrders) {
+            const symbol = order.instId;
+            
+            if (!algoOrdersMap.has(symbol)) {
+              algoOrdersMap.set(symbol, {
+                liveSlPrice: null,
+                liveTp1Price: null,
+                liveTp2Price: null,
+                liveTp3Price: null
+              });
+            }
+            
+            const orderData = algoOrdersMap.get(symbol)!;
+            
+            // Check if it's SL or TP order
+            if (order.slTriggerPx && parseFloat(order.slTriggerPx) > 0) {
+              orderData.liveSlPrice = parseFloat(order.slTriggerPx);
+            }
+            
+            if (order.tpTriggerPx && parseFloat(order.tpTriggerPx) > 0) {
+              const tpPrice = parseFloat(order.tpTriggerPx);
+              
+              // Assign to TP1, TP2, or TP3 based on availability
+              if (orderData.liveTp1Price === null) {
+                orderData.liveTp1Price = tpPrice;
+              } else if (orderData.liveTp2Price === null) {
+                orderData.liveTp2Price = tpPrice;
+              } else if (orderData.liveTp3Price === null) {
+                orderData.liveTp3Price = tpPrice;
+              }
+            }
+          }
+          
+          // Update each position with live PnL and SL/TP from OKX
           const updatedPositions = positions.map(pos => {
             const okxSymbol = convertSymbolToOkx(pos.symbol);
             const posKey = `${okxSymbol}_${pos.side}`;
             const okxPos = okxPositionsMap.get(posKey) as any;
+            const algoOrders = algoOrdersMap.get(okxSymbol);
             
+            let updatedPos = { ...pos };
+            
+            // Update live PnL
             if (okxPos) {
-              // Use live PnL from OKX
               const livePnl = parseFloat(okxPos.upl || "0");
+              updatedPos.unrealisedPnl = livePnl;
+            }
+            
+            // Update live SL/TP
+            if (algoOrders) {
               return {
-                ...pos,
-                unrealisedPnl: livePnl,
+                ...updatedPos,
+                liveSlPrice: algoOrders.liveSlPrice,
+                liveTp1Price: algoOrders.liveTp1Price,
+                liveTp2Price: algoOrders.liveTp2Price,
+                liveTp3Price: algoOrders.liveTp3Price,
               };
             }
             
-            // Position not found on OKX - keep DB value
-            return pos;
+            return updatedPos;
           });
           
           return NextResponse.json(
@@ -196,23 +292,25 @@ export async function GET(request: NextRequest) {
               positions: updatedPositions,
               count: updatedPositions.length,
               livePnlEnabled: true,
+              liveSlTpEnabled: true,
             },
             { status: 200 }
           );
         } catch (error) {
-          console.error("Failed to fetch live PnL from OKX:", error);
-          // If OKX fetch fails, return positions with DB PnL
+          console.error("Failed to fetch live data from OKX:", error);
+          // If OKX fetch fails, return positions with DB values
         }
       }
     }
     
-    // Fallback: return positions without live PnL
+    // Fallback: return positions without live data
     return NextResponse.json(
       {
         success: true,
         positions,
         count: positions.length,
         livePnlEnabled: false,
+        liveSlTpEnabled: false,
       },
       { status: 200 }
     );

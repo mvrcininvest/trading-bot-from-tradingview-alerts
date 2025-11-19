@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle, Wrench } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle, Wrench, XCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Balance {
   asset: string;
@@ -64,6 +65,11 @@ interface BotPosition {
   confidenceScore: number;
   openedAt: string;
   status: string;
+  // NEW: Live prices from exchange
+  liveSlPrice?: number | null;
+  liveTp1Price?: number | null;
+  liveTp2Price?: number | null;
+  liveTp3Price?: number | null;
 }
 
 interface SymbolLock {
@@ -95,6 +101,11 @@ export default function DashboardPage() {
   const [syncingCredentials, setSyncingCredentials] = useState(false);
   const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
   const [loadingLocks, setLoadingLocks] = useState(false);
+  const [closeAllDialogOpen, setCloseAllDialogOpen] = useState(false);
+  const [loadingCloseAll, setLoadingCloseAll] = useState(false);
+  const [closePositionDialogOpen, setClosePositionDialogOpen] = useState(false);
+  const [positionToClose, setPositionToClose] = useState<Position | null>(null);
+  const [loadingClosePosition, setLoadingClosePosition] = useState(false);
 
   useEffect(() => {
     // Load credentials from localStorage
@@ -670,6 +681,89 @@ export default function DashboardPage() {
     }
   };
 
+  const handleCloseAllPositions = async () => {
+    if (!credentials) {
+      toast.error("Brak konfiguracji API");
+      return;
+    }
+
+    setLoadingCloseAll(true);
+    try {
+      const response = await fetch("/api/exchange/close-all-positions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: credentials.exchange,
+          apiKey: credentials.apiKey,
+          apiSecret: credentials.apiSecret,
+          passphrase: credentials.passphrase,
+          environment: credentials.environment
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`✅ Zamknięto ${data.results.positionsClosed} pozycji i anulowano ${data.results.ordersCancelled} orderów!`);
+        
+        // Refresh data
+        await fetchBotPositions();
+        await fetchPositions(credentials);
+        
+        setCloseAllDialogOpen(false);
+      } else {
+        toast.error(`❌ Błąd: ${data.message}`);
+      }
+    } catch (error: any) {
+      toast.error(`❌ Błąd połączenia: ${error.message}`);
+    } finally {
+      setLoadingCloseAll(false);
+    }
+  };
+
+  const handleClosePosition = async (position: Position) => {
+    if (!credentials) {
+      toast.error("Brak konfiguracji API");
+      return;
+    }
+
+    setLoadingClosePosition(true);
+    try {
+      const response = await fetch("/api/exchange/close-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: credentials.exchange,
+          apiKey: credentials.apiKey,
+          apiSecret: credentials.apiSecret,
+          passphrase: credentials.passphrase,
+          environment: credentials.environment,
+          symbol: position.symbol,
+          cancelOrders: true
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`✅ Zamknięto pozycję ${position.symbol}${data.ordersCancelled > 0 ? ` i anulowano ${data.ordersCancelled} orderów` : ''}!`);
+        
+        // Refresh data
+        await fetchBotPositions();
+        await fetchPositions(credentials);
+        
+        setClosePositionDialogOpen(false);
+        setPositionToClose(null);
+      } else {
+        toast.error(`❌ Błąd: ${data.message}`);
+      }
+    } catch (error: any) {
+      toast.error(`❌ Błąd połączenia: ${error.message}`);
+    } finally {
+      setLoadingClosePosition(false);
+    }
+  };
+
   // Calculate stats
   const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0);
   const totalPnL = [...positions, ...botPositions.map(bp => ({
@@ -1040,18 +1134,14 @@ export default function DashboardPage() {
 
         {/* Main Content with Tabs - Dark Theme */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+          <TabsList className="grid w-full grid-cols-4 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
             <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <BarChart3 className="mr-2 h-4 w-4" />
               Przegląd
             </TabsTrigger>
-            <TabsTrigger value="bot-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <Bot className="mr-2 h-4 w-4" />
-              Pozycje Bota
-            </TabsTrigger>
-            <TabsTrigger value="all-positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
+            <TabsTrigger value="positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Activity className="mr-2 h-4 w-4" />
-              Wszystkie Pozycje
+              Otwarte Pozycje
             </TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Settings className="mr-2 h-4 w-4" />
@@ -1225,23 +1315,23 @@ export default function DashboardPage() {
             </div>
           </TabsContent>
 
-          {/* Bot Positions Tab - Dark Theme */}
-          <TabsContent value="bot-positions" className="space-y-6">
-            <Card className="border-blue-700 bg-gradient-to-br from-blue-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
+          {/* NEW: Single Positions Tab (merged) */}
+          <TabsContent value="positions" className="space-y-6">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="flex items-center gap-2 text-white">
-                      <Bot className="h-5 w-5 text-blue-400" />
-                      Pozycje Bota
-                      {botPositions.length > 0 && (
-                        <Badge variant="default" className="ml-2 bg-blue-600 text-white">
-                          {botPositions.length} Aktywnych
+                      <Activity className="h-5 w-5" />
+                      Otwarte Pozycje
+                      {positions.length > 0 && (
+                        <Badge variant="secondary" className="ml-2 bg-gray-700 text-gray-200">
+                          {positions.length} Aktywnych
                         </Badge>
                       )}
                     </CardTitle>
                     <CardDescription className="text-gray-300">
-                      Pozycje otwarte automatycznie przez bota
+                      Wszystkie otwarte pozycje bota na giełdzie
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1259,195 +1349,27 @@ export default function DashboardPage() {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="max-w-xs text-gray-200">Synchronizuj pozycje bota z rzeczywistymi pozycjami na giełdzie - zamyka pozycje w bazie danych jeśli zostały zamknięte na giełdzie</p>
+                        <p className="max-w-xs text-gray-200">Synchronizuj pozycje bota z rzeczywistymi pozycjami na giełdzie</p>
                       </TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          onClick={() => fetchBotPositions()}
-                          disabled={loadingBotPositions}
+                          onClick={() => fetchPositions()}
+                          disabled={loadingPositions}
                           size="sm"
                           variant="outline"
                           className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200 hover:scale-105 transition-transform"
                         >
-                          <RefreshCw className={`mr-2 h-4 w-4 ${loadingBotPositions ? "animate-spin" : ""}`} />
+                          <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
                           Odśwież
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="text-gray-200">Odśwież listę pozycji bota z bazy danych (automatyczne odświeżanie co 2s)</p>
+                        <p className="text-gray-200">Odśwież pozycje bezpośrednio z giełdy (automatyczne odświeżanie co 0.5s)</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {botPositionsError && (
-                  <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
-                    <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm text-yellow-300">
-                      <strong>Błąd:</strong> {botPositionsError}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {loadingBotPositions && (
-                  <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-300">Pobieranie pozycji bota...</p>
-                  </div>
-                )}
-
-                {!loadingBotPositions && botPositions.length === 0 && !botPositionsError && (
-                  <div className="text-center py-12">
-                    <Bot className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
-                    <p className="text-gray-300">Brak aktywnych pozycji bota</p>
-                  </div>
-                )}
-
-                {!loadingBotPositions && botPositions.length > 0 && (
-                  <div className="space-y-3">
-                    {botPositions.map((position) => {
-                      const pnl = position.unrealisedPnl;
-                      const pnlPercent = position.initialMargin !== 0 ? (pnl / position.initialMargin) * 100 : 0;
-                      const isProfitable = pnl >= 0;
-                      
-                      const tierColors: Record<string, string> = {
-                        'Platinum': 'bg-purple-500/20 text-purple-200 border-purple-500/40',
-                        'Premium': 'bg-blue-500/20 text-blue-200 border-blue-500/40',
-                        'Standard': 'bg-green-500/20 text-green-200 border-green-500/40',
-                        'Quick': 'bg-orange-500/20 text-orange-200 border-orange-500/40',
-                        'Emergency': 'bg-red-500/20 text-red-200 border-red-500/40',
-                      };
-                      
-                      return (
-                        <div
-                          key={position.id}
-                          className="p-5 rounded-xl border-2 border-blue-700/30 bg-gradient-to-r from-gray-900/80 to-blue-900/20 hover:from-gray-900 hover:to-blue-900/30 transition-all"
-                        >
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                                position.side === "BUY" ? "bg-green-500/30 border border-green-500/40" : "bg-red-500/30 border border-red-500/40"
-                              }`}>
-                                {position.side === "BUY" ? (
-                                  <ArrowUpRight className="h-6 w-6 text-green-400" />
-                                ) : (
-                                  <ArrowDownRight className="h-6 w-6 text-red-400" />
-                                )}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-xl text-white">{position.symbol}</span>
-                                  <Badge variant="outline" className={tierColors[position.tier] || ''}>
-                                    {position.tier}
-                                  </Badge>
-                                </div>
-                                <div className={`text-sm font-semibold ${
-                                  position.side === "BUY" ? "text-green-400" : "text-red-400"
-                                }`}>
-                                  {position.side === "BUY" ? "LONG" : "SHORT"} {position.leverage}x
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className={`text-xl font-bold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
-                                {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
-                              </div>
-                              <div className={`text-sm font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
-                                ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-3 text-sm mb-3 p-3 rounded-lg bg-gray-800/40">
-                            <div>
-                              <div className="text-gray-300">Rozmiar</div>
-                              <div className="font-semibold text-gray-100">{position.quantity.toFixed(4)}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-300">Wartość</div>
-                              <div className="font-semibold text-gray-100">{position.positionValue.toFixed(2)} USDT</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-300">Cena Wejścia</div>
-                              <div className="font-semibold text-gray-100">{position.entryPrice.toFixed(4)}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-300">Stop Loss</div>
-                              <div className="font-semibold text-red-400">{position.currentSl.toFixed(4)}</div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 text-xs mb-2">
-                            <span className="text-gray-300">Take Profit:</span>
-                            {position.tp1Price && (
-                              <Badge variant={position.tp1Hit ? "default" : "outline"} className={position.tp1Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-300"}>
-                                TP1: {position.tp1Price.toFixed(4)} {position.tp1Hit ? "✓" : ""}
-                              </Badge>
-                            )}
-                            {position.tp2Price && (
-                              <Badge variant={position.tp2Hit ? "default" : "outline"} className={position.tp2Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-300"}>
-                                TP2: {position.tp2Price.toFixed(4)} {position.tp2Hit ? "✓" : ""}
-                              </Badge>
-                            )}
-                            {position.tp3Price && (
-                              <Badge variant={position.tp3Hit ? "default" : "outline"} className={position.tp3Hit ? "bg-green-600 text-white" : "border-gray-700 text-gray-300"}>
-                                TP3: {position.tp3Price.toFixed(4)} {position.tp3Hit ? "✓" : ""}
-                              </Badge>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between text-xs text-gray-300 pt-2 border-t border-gray-800">
-                            <span>Confidence: {(position.confidenceScore * 100).toFixed(0)}%</span>
-                            <span>{new Date(position.openedAt).toLocaleString("pl-PL")}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* All Positions Tab */}
-          <TabsContent value="all-positions" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-white">
-                      <Activity className="h-5 w-5" />
-                      Wszystkie Pozycje
-                      {positions.length > 0 && (
-                        <Badge variant="secondary" className="ml-2 bg-gray-700 text-gray-200">
-                          {positions.length} Otwartych
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="text-gray-300">
-                      Wszystkie otwarte pozycje na giełdzie
-                    </CardDescription>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => fetchPositions()}
-                        disabled={loadingPositions}
-                        size="sm"
-                        variant="outline"
-                        className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200 hover:scale-105 transition-transform"
-                      >
-                        <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
-                        Odśwież
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Odśwież pozycje bezpośrednio z giełdy (automatyczne odświeżanie co 0.5s)</p>
-                    </TooltipContent>
-                  </Tooltip>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1489,14 +1411,14 @@ export default function DashboardPage() {
                         bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "BUY" : "SELL")
                       );
                       
+                      const botPositionData = botPositions.find(bp => 
+                        bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "BUY" : "SELL")
+                      );
+                      
                       return (
                         <div
                           key={idx}
-                          className={`p-5 rounded-xl border transition-all ${
-                            isBotPosition 
-                              ? "border-blue-700/40 bg-gradient-to-r from-blue-600/10 to-gray-900/80 hover:from-blue-600/20" 
-                              : "border-gray-800 bg-gray-900/80 hover:bg-gray-900"
-                          }`}
+                          className="p-5 rounded-xl border-2 border-blue-700/30 bg-gradient-to-r from-gray-900/80 to-blue-900/20 hover:from-gray-900 hover:to-blue-900/30 transition-all"
                         >
                           <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-3">
@@ -1512,8 +1434,11 @@ export default function DashboardPage() {
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="font-bold text-xl text-white">{position.symbol}</span>
-                                  {isBotPosition && (
-                                    <Badge variant="default" className="text-xs bg-blue-600 text-white">BOT</Badge>
+                                  <Badge variant="default" className="text-xs bg-blue-600 text-white">BOT</Badge>
+                                  {botPositionData && (
+                                    <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
+                                      {botPositionData.tier}
+                                    </Badge>
                                   )}
                                 </div>
                                 <div className={`text-sm font-semibold ${
@@ -1523,13 +1448,33 @@ export default function DashboardPage() {
                                 </div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div className={`text-xl font-bold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
-                                {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
+                            <div className="text-right flex items-start gap-2">
+                              <div>
+                                <div className={`text-xl font-bold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
+                                  {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
+                                </div>
+                                <div className={`text-sm font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
+                                  ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
+                                </div>
                               </div>
-                              <div className={`text-sm font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
-                                ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
-                              </div>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    onClick={() => {
+                                      setPositionToClose(position);
+                                      setClosePositionDialogOpen(true);
+                                    }}
+                                    size="sm"
+                                    variant="destructive"
+                                    className="bg-red-600 hover:bg-red-700 text-white"
+                                  >
+                                    <XCircle className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-gray-200">Zamknij pozycję i anuluj SL/TP</p>
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
                           </div>
                           
@@ -1550,19 +1495,120 @@ export default function DashboardPage() {
                               <div className="text-gray-300">Cena Bieżąca</div>
                               <div className="font-semibold text-gray-100">{parseFloat(position.markPrice).toFixed(4)}</div>
                             </div>
-                            {parseFloat(position.takeProfit) > 0 && (
-                              <div>
-                                <div className="text-gray-300">Take Profit</div>
-                                <div className="font-semibold text-green-400">{parseFloat(position.takeProfit).toFixed(4)}</div>
-                              </div>
-                            )}
-                            {parseFloat(position.stopLoss) > 0 && (
-                              <div>
-                                <div className="text-gray-300">Stop Loss</div>
-                                <div className="font-semibold text-red-400">{parseFloat(position.stopLoss).toFixed(4)}</div>
-                              </div>
-                            )}
                           </div>
+
+                          {botPositionData && (
+                            <div className="mt-3">
+                              <div className="flex items-center gap-2 text-xs mb-2">
+                                <span className="text-gray-300">SL:</span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="outline" className={
+                                      botPositionData.liveSlPrice 
+                                        ? "border-green-700 text-green-300" 
+                                        : "border-red-700 text-red-300"
+                                    }>
+                                      {botPositionData.liveSlPrice 
+                                        ? `${botPositionData.liveSlPrice.toFixed(4)} 🟢` 
+                                        : `${botPositionData.currentSl.toFixed(4)} 🟡`}
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-gray-200">
+                                      {botPositionData.liveSlPrice 
+                                        ? "🟢 Cena z giełdy (live)" 
+                                        : "🟡 Cena z bazy danych (cache)"}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs flex-wrap">
+                                <span className="text-gray-300">TP:</span>
+                                {(botPositionData.liveTp1Price || botPositionData.tp1Price) && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant={botPositionData.tp1Hit ? "default" : "outline"} className={
+                                        botPositionData.tp1Hit 
+                                          ? "bg-green-600 text-white" 
+                                          : botPositionData.liveTp1Price
+                                            ? "border-green-700 text-green-300"
+                                            : "border-gray-700 text-gray-300"
+                                      }>
+                                        TP1: {(botPositionData.liveTp1Price || botPositionData.tp1Price)?.toFixed(4)} 
+                                        {botPositionData.tp1Hit ? " ✓" : botPositionData.liveTp1Price ? " 🟢" : " 🟡"}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-gray-200">
+                                        {botPositionData.tp1Hit 
+                                          ? "✓ TP1 osiągnięty" 
+                                          : botPositionData.liveTp1Price 
+                                            ? "🟢 Cena z giełdy (live)" 
+                                            : "🟡 Cena z bazy danych (cache)"}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {(botPositionData.liveTp2Price || botPositionData.tp2Price) && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant={botPositionData.tp2Hit ? "default" : "outline"} className={
+                                        botPositionData.tp2Hit 
+                                          ? "bg-green-600 text-white" 
+                                          : botPositionData.liveTp2Price
+                                            ? "border-green-700 text-green-300"
+                                            : "border-gray-700 text-gray-300"
+                                      }>
+                                        TP2: {(botPositionData.liveTp2Price || botPositionData.tp2Price)?.toFixed(4)} 
+                                        {botPositionData.tp2Hit ? " ✓" : botPositionData.liveTp2Price ? " 🟢" : " 🟡"}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-gray-200">
+                                        {botPositionData.tp2Hit 
+                                          ? "✓ TP2 osiągnięty" 
+                                          : botPositionData.liveTp2Price 
+                                            ? "🟢 Cena z giełdy (live)" 
+                                            : "🟡 Cena z bazy danych (cache)"}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {(botPositionData.liveTp3Price || botPositionData.tp3Price) && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant={botPositionData.tp3Hit ? "default" : "outline"} className={
+                                        botPositionData.tp3Hit 
+                                          ? "bg-green-600 text-white" 
+                                          : botPositionData.liveTp3Price
+                                            ? "border-green-700 text-green-300"
+                                            : "border-gray-700 text-gray-300"
+                                      }>
+                                        TP3: {(botPositionData.liveTp3Price || botPositionData.tp3Price)?.toFixed(4)} 
+                                        {botPositionData.tp3Hit ? " ✓" : botPositionData.liveTp3Price ? " 🟢" : " 🟡"}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-gray-200">
+                                        {botPositionData.tp3Hit 
+                                          ? "✓ TP3 osiągnięty" 
+                                          : botPositionData.liveTp3Price 
+                                            ? "🟢 Cena z giełdy (live)" 
+                                            : "🟡 Cena z bazy danych (cache)"}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {botPositionData && (
+                            <div className="flex items-center justify-between text-xs text-gray-300 pt-2 mt-2 border-t border-gray-800">
+                              <span>Confidence: {(botPositionData.confidenceScore * 100).toFixed(0)}%</span>
+                              <span>{new Date(botPositionData.openedAt).toLocaleString("pl-PL")}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1741,6 +1787,29 @@ export default function DashboardPage() {
                 <CardDescription className="text-gray-300">Najczęściej używane funkcje</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* NEW: Close All Positions Button */}
+                <div className="grid grid-cols-1 gap-4 mb-4">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => setCloseAllDialogOpen(true)}
+                        disabled={positions.length === 0 && botPositions.length === 0}
+                        className="h-24 flex-col gap-2 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white hover:scale-105 transition-all shadow-xl border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        variant="default"
+                      >
+                        <XCircle className="h-8 w-8" />
+                        <span className="font-semibold">⚠️ ZAMKNIJ WSZYSTKIE POZYCJE</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-gray-200">
+                        Zamyka wszystkie otwarte pozycje na giełdzie i anuluje wszystkie ordery SL/TP. 
+                        {(positions.length === 0 && botPositions.length === 0) && " (Brak otwartych pozycji)"}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1846,6 +1915,192 @@ export default function DashboardPage() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Close All Positions Confirmation Dialog */}
+        <Dialog open={closeAllDialogOpen} onOpenChange={setCloseAllDialogOpen}>
+          <DialogContent className="sm:max-w-[500px] bg-gray-900 border-red-700">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <AlertTriangle className="h-6 w-6 text-red-400" />
+                ⚠️ Potwierdzenie Zamknięcia Wszystkich Pozycji
+              </DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Ta akcja zamknie WSZYSTKIE otwarte pozycje i anuluje wszystkie ordery SL/TP.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <Alert className="border-red-700 bg-red-900/20">
+                <AlertTriangle className="h-4 w-4 text-red-400" />
+                <AlertDescription className="text-sm text-red-200">
+                  <strong>UWAGA:</strong> Ta akcja jest nieodwracalna!
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2 p-4 rounded-lg bg-gray-800/60 border border-gray-700">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-300">Pozycje do zamknięcia:</span>
+                  <span className="font-bold text-white">{positions.length}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-300">Pozycje bota:</span>
+                  <span className="font-bold text-white">{botPositions.length}</span>
+                </div>
+                <div className="flex justify-between text-sm pt-2 border-t border-gray-700">
+                  <span className="text-gray-300">Całkowity PnL:</span>
+                  <span className={`font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
+                  </span>
+                </div>
+              </div>
+
+              {positions.length > 0 && (
+                <div className="max-h-40 overflow-y-auto space-y-1 p-3 rounded-lg bg-gray-800/40 border border-gray-700">
+                  <p className="text-xs text-gray-300 mb-2 font-semibold">Pozycje do zamknięcia:</p>
+                  {positions.map((pos, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs p-2 rounded bg-gray-900/50">
+                      <span className="text-gray-200">{pos.symbol}</span>
+                      <Badge variant={pos.side === "Buy" ? "default" : "destructive"} className="text-xs">
+                        {pos.side === "Buy" ? "LONG" : "SHORT"}
+                      </Badge>
+                      <span className={`font-semibold ${parseFloat(pos.unrealisedPnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {parseFloat(pos.unrealisedPnl) >= 0 ? '+' : ''}{parseFloat(pos.unrealisedPnl).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setCloseAllDialogOpen(false)}
+                disabled={loadingCloseAll}
+                className="border-gray-700 text-gray-200 hover:bg-gray-800"
+              >
+                Anuluj
+              </Button>
+              <Button
+                onClick={handleCloseAllPositions}
+                disabled={loadingCloseAll}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {loadingCloseAll ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Zamykam...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    TAK, ZAMKNIJ WSZYSTKO
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Close Single Position Confirmation Dialog */}
+        <Dialog open={closePositionDialogOpen} onOpenChange={setClosePositionDialogOpen}>
+          <DialogContent className="sm:max-w-[450px] bg-gray-900 border-red-700">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <AlertTriangle className="h-6 w-6 text-red-400" />
+                Potwierdzenie Zamknięcia Pozycji
+              </DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Ta akcja zamknie pozycję i anuluje wszystkie powiązane ordery SL/TP.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {positionToClose && (
+              <div className="space-y-4 py-4">
+                <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                      positionToClose.side === "Buy" ? "bg-green-500/30 border border-green-500/40" : "bg-red-500/30 border border-red-500/40"
+                    }`}>
+                      {positionToClose.side === "Buy" ? (
+                        <ArrowUpRight className="h-5 w-5 text-green-400" />
+                      ) : (
+                        <ArrowDownRight className="h-5 w-5 text-red-400" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="font-bold text-lg text-white">{positionToClose.symbol}</div>
+                      <div className={`text-sm font-semibold ${
+                        positionToClose.side === "Buy" ? "text-green-400" : "text-red-400"
+                      }`}>
+                        {positionToClose.side === "Buy" ? "LONG" : "SHORT"} {positionToClose.leverage}x
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Rozmiar:</span>
+                      <span className="font-bold text-white">{positionToClose.size}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Cena Wejścia:</span>
+                      <span className="font-bold text-white">{parseFloat(positionToClose.entryPrice).toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Cena Bieżąca:</span>
+                      <span className="font-bold text-white">{parseFloat(positionToClose.markPrice).toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-gray-700">
+                      <span className="text-gray-300">PnL:</span>
+                      <span className={`font-bold ${parseFloat(positionToClose.unrealisedPnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {parseFloat(positionToClose.unrealisedPnl) >= 0 ? '+' : ''}{parseFloat(positionToClose.unrealisedPnl).toFixed(4)} USDT
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <Alert className="border-yellow-700 bg-yellow-900/20">
+                  <AlertCircle className="h-4 w-4 text-yellow-400" />
+                  <AlertDescription className="text-sm text-yellow-200">
+                    Wszystkie ordery SL/TP dla tej pozycji zostaną anulowane.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setClosePositionDialogOpen(false);
+                  setPositionToClose(null);
+                }}
+                disabled={loadingClosePosition}
+                className="border-gray-700 text-gray-200 hover:bg-gray-800"
+              >
+                Anuluj
+              </Button>
+              <Button
+                onClick={() => positionToClose && handleClosePosition(positionToClose)}
+                disabled={loadingClosePosition}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {loadingClosePosition ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Zamykam...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    ZAMKNIJ POZYCJĘ
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

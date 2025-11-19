@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { db } from "@/db";
+import { botPositions } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -33,6 +36,7 @@ export async function POST(req: NextRequest) {
       passphrase,
       environment,
       symbol,
+      cancelOrders = true, // NEW: Option to cancel SL/TP orders
     } = body;
 
     if (!exchange || !apiKey || !apiSecret || !symbol) {
@@ -104,10 +108,119 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // NEW: Cancel all algo orders (SL/TP) for this symbol if requested
+      let ordersCancelled = 0;
+      if (cancelOrders) {
+        try {
+          console.log(`\n🧹 Cancelling algo orders for ${symbol}...`);
+          
+          const algoTimestamp = new Date().toISOString();
+          const algoMethod = "GET";
+          const algoPath = "/api/v5/trade/orders-algo-pending";
+          const algoQuery = `?ordType=conditional&instId=${symbol}`;
+          
+          const algoSignature = signOkxRequest(
+            algoTimestamp,
+            algoMethod,
+            algoPath + algoQuery,
+            "",
+            apiSecret
+          );
+          
+          const algoHeaders: Record<string, string> = {
+            "OK-ACCESS-KEY": apiKey,
+            "OK-ACCESS-SIGN": algoSignature,
+            "OK-ACCESS-TIMESTAMP": algoTimestamp,
+            "OK-ACCESS-PASSPHRASE": passphrase,
+            "Content-Type": "application/json",
+          };
+          
+          if (demo) {
+            algoHeaders["x-simulated-trading"] = "1";
+          }
+          
+          const algoResponse = await fetch(`${baseUrl}${algoPath}${algoQuery}`, {
+            method: "GET",
+            headers: algoHeaders,
+          });
+
+          const algoData = await algoResponse.json();
+
+          if (algoData.code === "0" && algoData.data && algoData.data.length > 0) {
+            console.log(`   Found ${algoData.data.length} algo orders to cancel`);
+            
+            for (const order of algoData.data) {
+              try {
+                const cancelTimestamp = new Date().toISOString();
+                const cancelMethod = "POST";
+                const cancelPath = "/api/v5/trade/cancel-algos";
+                const cancelPayload = [{ algoId: order.algoId, instId: symbol }];
+                const cancelBody = JSON.stringify(cancelPayload);
+                
+                const cancelSignature = signOkxRequest(cancelTimestamp, cancelMethod, cancelPath, cancelBody, apiSecret);
+                
+                const cancelHeaders: Record<string, string> = {
+                  "OK-ACCESS-KEY": apiKey,
+                  "OK-ACCESS-SIGN": cancelSignature,
+                  "OK-ACCESS-TIMESTAMP": cancelTimestamp,
+                  "OK-ACCESS-PASSPHRASE": passphrase,
+                  "Content-Type": "application/json",
+                };
+                
+                if (demo) {
+                  cancelHeaders["x-simulated-trading"] = "1";
+                }
+                
+                const cancelResponse = await fetch(`${baseUrl}${cancelPath}`, {
+                  method: "POST",
+                  headers: cancelHeaders,
+                  body: cancelBody,
+                });
+                
+                const cancelData = await cancelResponse.json();
+                
+                if (cancelData.code === "0") {
+                  ordersCancelled++;
+                  console.log(`   ✅ Cancelled order: ${order.algoId}`);
+                } else {
+                  console.warn(`   ⚠️ Failed to cancel ${order.algoId}: ${cancelData.msg}`);
+                }
+              } catch (cancelError: any) {
+                console.error(`   ❌ Error cancelling ${order.algoId}:`, cancelError);
+              }
+            }
+          } else {
+            console.log(`   No algo orders to cancel for ${symbol}`);
+          }
+        } catch (ordersError: any) {
+          console.error(`   ⚠️ Failed to cancel orders:`, ordersError.message);
+          // Continue anyway - order cancellation is best-effort
+        }
+      }
+
+      // NEW: Update bot_positions status in DB
+      try {
+        await db.update(botPositions)
+          .set({
+            status: "closed",
+            closeReason: "manual_close",
+            closedAt: new Date().toISOString()
+          })
+          .where(
+            and(
+              eq(botPositions.symbol, symbol),
+              eq(botPositions.status, "open")
+            )
+          );
+      } catch (dbError) {
+        console.error(`   ⚠️ Failed to update DB for ${symbol}:`, dbError);
+      }
+
       return NextResponse.json({
         success: true,
-        message: "OKX position closed successfully",
+        message: `OKX position closed successfully${cancelOrders ? ` and ${ordersCancelled} orders cancelled` : ''}`,
         data: closeData.data,
+        ordersCancelled
       });
     } catch (error) {
       console.error("Error closing OKX position:", error);
