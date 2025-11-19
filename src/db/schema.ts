@@ -237,3 +237,56 @@ export const positionConflictLog = sqliteTable('position_conflict_log', {
   alertIdIdx: index('idx_position_conflict_log_alert').on(table.alertId),
   symbolResolvedIdx: index('idx_position_conflict_log_symbol_resolved').on(table.symbol, table.resolvedAt),
 }));
+
+export const botDetailedLogs = sqliteTable('bot_detailed_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  positionId: integer('position_id').references(() => botPositions.id),
+  alertId: integer('alert_id').references(() => alerts.id),
+  actionType: text('action_type').notNull(), // 'open_position', 'set_sl', 'set_tp', 'modify_sl', 'modify_tp', 'close_position'
+  stage: text('stage').notNull(), // 'request', 'exchange_response', 'verification'
+  
+  // Planned values (from bot)
+  plannedSymbol: text('planned_symbol'),
+  plannedSide: text('planned_side'),
+  plannedQuantity: real('planned_quantity'),
+  plannedEntryPrice: real('planned_entry_price'),
+  plannedSlPrice: real('planned_sl_price'),
+  plannedTp1Price: real('planned_tp1_price'),
+  plannedTp2Price: real('planned_tp2_price'),
+  plannedTp3Price: real('planned_tp3_price'),
+  plannedLeverage: integer('planned_leverage'),
+  plannedMargin: real('planned_margin'),
+  
+  // Actual values (from exchange)
+  actualSymbol: text('actual_symbol'),
+  actualSide: text('actual_side'),
+  actualQuantity: real('actual_quantity'),
+  actualEntryPrice: real('actual_entry_price'),
+  actualSlPrice: real('actual_sl_price'),
+  actualTp1Price: real('actual_tp1_price'),
+  actualTp2Price: real('actual_tp2_price'),
+  actualTp3Price: real('actual_tp3_price'),
+  actualLeverage: integer('actual_leverage'),
+  actualMargin: real('actual_margin'),
+  
+  // Verification
+  hasDiscrepancy: integer('has_discrepancy', { mode: 'boolean' }).notNull(),
+  discrepancyDetails: text('discrepancy_details'), // JSON array of discrepancies
+  discrepancyThreshold: real('discrepancy_threshold'), // e.g., 0.005 for 0.5%
+  
+  // Settings snapshot (JSON)
+  settingsSnapshot: text('settings_snapshot'), // Complete bot_settings at time of action
+  
+  // Exchange metadata
+  orderId: text('order_id'),
+  algoOrderId: text('algo_order_id'),
+  exchangeResponse: text('exchange_response'), // Full response from exchange
+  
+  // Timestamps
+  timestamp: text('timestamp').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => ({
+  positionIdx: index('idx_bot_detailed_logs_position').on(table.positionId),
+  alertIdx: index('idx_bot_detailed_logs_alert').on(table.alertId),
+  discrepancyIdx: index('idx_bot_detailed_logs_discrepancy').on(table.hasDiscrepancy),
+}));
