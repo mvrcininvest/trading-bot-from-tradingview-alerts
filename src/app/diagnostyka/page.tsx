@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, Lock, XCircle, AlertCircle, CheckCircle, Clock, TrendingDown } from "lucide-react";
+import { RefreshCw, AlertTriangle, Lock, XCircle, AlertCircle, CheckCircle, Clock, TrendingDown, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -125,6 +125,7 @@ export default function DiagnosticsPage() {
   const [verifications, setVerifications] = useState<VerificationLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [unlocking, setUnlocking] = useState<string | null>(null);
+  const [cleaning, setCleaning] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAllData();
@@ -232,9 +233,25 @@ export default function DiagnosticsPage() {
 
       const data = await response.json();
       if (data.success) {
-        toast.success(`Symbol ${symbol} został odblokowany!`);
-        await fetchLocks();
-        await fetchSummary();
+        const cleanedInfo = data.cleaned;
+        const cleanedCount = cleanedInfo.diagnosticFailures + cleanedInfo.failedVerifications;
+        
+        if (cleanedCount > 0) {
+          toast.success(
+            `✅ Symbol ${symbol} odblokowany!\n` +
+            `🗑️ Wyczyszczono: ${cleanedInfo.diagnosticFailures} awarii, ${cleanedInfo.failedVerifications} weryfikacji`
+          );
+        } else {
+          toast.success(`✅ Symbol ${symbol} został odblokowany!`);
+        }
+        
+        // Refresh all diagnostic data to reflect cleanup
+        await Promise.all([
+          fetchLocks(),
+          fetchFailures(),
+          fetchVerifications(),
+          fetchSummary()
+        ]);
       } else {
         toast.error(`Błąd: ${data.error}`);
       }
@@ -242,6 +259,34 @@ export default function DiagnosticsPage() {
       toast.error("Błąd podczas odblokowywania symbolu");
     } finally {
       setUnlocking(null);
+    }
+  };
+
+  const handleCleanup = async (type: string, confirmMessage: string) => {
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setCleaning(type);
+    try {
+      const response = await fetch("/api/bot/diagnostics/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        toast.success(`✅ ${data.message}`);
+        // Odśwież dane
+        await fetchAllData();
+      } else {
+        toast.error(`Błąd: ${data.error}`);
+      }
+    } catch (error) {
+      toast.error("Błąd podczas czyszczenia danych");
+    } finally {
+      setCleaning(null);
     }
   };
 
@@ -269,14 +314,34 @@ export default function DiagnosticsPage() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={fetchAllData}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Odśwież
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => handleCleanup('all', '⚠️ CZY NA PEWNO? To usunie CAŁĄ historię diagnostyczną:\n\n• Wszystkie awarie\n• Wszystkie błędy alertów\n• Wszystkie nieudane weryfikacje\n• Wszystkie próby ponowne\n• Historię odblokowań\n\nAKTYWNE BLOKADY NIE ZOSTANĄ USUNIĘTE.\n\nCzy kontynuować?')}
+              disabled={cleaning !== null || loading}
+              variant="destructive"
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {cleaning === 'all' ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Czyszczenie...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Wyczyść Wszystko
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={fetchAllData}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Odśwież
+            </Button>
+          </div>
         </div>
 
         {/* Active Locks Alert */}
@@ -389,18 +454,43 @@ export default function DiagnosticsPage() {
           <TabsContent value="locks" className="space-y-6">
             <Card className="border-red-700 bg-gradient-to-br from-red-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <Lock className="h-5 w-5 text-red-400" />
-                  Zablokowane Symbole
-                  {activeLocks.length > 0 && (
-                    <Badge variant="destructive" className="ml-2">
-                      {activeLocks.length} Aktywnych
-                    </Badge>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <Lock className="h-5 w-5 text-red-400" />
+                      Zablokowane Symbole
+                      {activeLocks.length > 0 && (
+                        <Badge variant="destructive" className="ml-2">
+                          {activeLocks.length} Aktywnych
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-gray-200">
+                      Symbole zablokowane z powodu błędów krytycznych
+                    </CardDescription>
+                  </div>
+                  {historicalLocks.length > 0 && (
+                    <Button
+                      onClick={() => handleCleanup('history_locks', `Czy na pewno chcesz wyczyścić historię ${historicalLocks.length} odblokowań?\n\nAKTYWNE BLOKADY NIE ZOSTANĄ USUNIĘTE.`)}
+                      disabled={cleaning !== null}
+                      variant="outline"
+                      size="sm"
+                      className="border-red-700 text-red-300 hover:bg-red-900/30"
+                    >
+                      {cleaning === 'history_locks' ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Czyszczenie...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Wyczyść Historię
+                        </>
+                      )}
+                    </Button>
                   )}
-                </CardTitle>
-                <CardDescription className="text-gray-200">
-                  Symbole zablokowane z powodu błędów krytycznych
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
                 {activeLocks.length === 0 ? (
@@ -508,25 +598,50 @@ export default function DiagnosticsPage() {
           <TabsContent value="verifications" className="space-y-6">
             <Card className="border-green-700 bg-gradient-to-br from-green-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <CheckCircle className="h-5 w-5 text-green-400" />
-                  Weryfikacje Pozycji
-                  {verifications.length > 0 && (
-                    <>
-                      <Badge variant="secondary" className="ml-2 bg-green-600/20 text-green-300">
-                        {passedVerifications.length} ✓
-                      </Badge>
-                      {failedVerifications.length > 0 && (
-                        <Badge variant="destructive" className="ml-1">
-                          {failedVerifications.length} ✗
-                        </Badge>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                      Weryfikacje Pozycji
+                      {verifications.length > 0 && (
+                        <>
+                          <Badge variant="secondary" className="ml-2 bg-green-600/20 text-green-300">
+                            {passedVerifications.length} ✓
+                          </Badge>
+                          {failedVerifications.length > 0 && (
+                            <Badge variant="destructive" className="ml-1">
+                              {failedVerifications.length} ✗
+                            </Badge>
+                          )}
+                        </>
                       )}
-                    </>
+                    </CardTitle>
+                    <CardDescription className="text-gray-200">
+                      Weryfikacja zgodności pozycji planned vs actual z giełdy
+                    </CardDescription>
+                  </div>
+                  {failedVerifications.length > 0 && (
+                    <Button
+                      onClick={() => handleCleanup('verifications', `Czy na pewno chcesz wyczyścić ${failedVerifications.length} nieudanych weryfikacji?\n\nWeryfikacje PASSED nie zostaną usunięte.`)}
+                      disabled={cleaning !== null}
+                      variant="outline"
+                      size="sm"
+                      className="border-red-700 text-red-300 hover:bg-red-900/30"
+                    >
+                      {cleaning === 'verifications' ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Czyszczenie...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Wyczyść Nieudane
+                        </>
+                      )}
+                    </Button>
                   )}
-                </CardTitle>
-                <CardDescription className="text-gray-200">
-                  Weryfikacja zgodności pozycji planned vs actual z giełdy
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
                 {verifications.length === 0 ? (
@@ -737,18 +852,43 @@ export default function DiagnosticsPage() {
           <TabsContent value="errors" className="space-y-6">
             <Card className="border-orange-700 bg-gradient-to-br from-orange-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <XCircle className="h-5 w-5 text-orange-400" />
-                  Błędy Alertów (error_rejected)
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <XCircle className="h-5 w-5 text-orange-400" />
+                      Błędy Alertów (error_rejected)
+                      {errorAlerts.length > 0 && (
+                        <Badge variant="secondary" className="ml-2 bg-orange-600/20 text-orange-300">
+                          {errorAlerts.length}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-gray-200">
+                      Alerty odrzucone z powodu błędów technicznych
+                    </CardDescription>
+                  </div>
                   {errorAlerts.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 bg-orange-600/20 text-orange-300">
-                      {errorAlerts.length}
-                    </Badge>
+                    <Button
+                      onClick={() => handleCleanup('error_alerts', `Czy na pewno chcesz wyczyścić ${errorAlerts.length} błędnych alertów?`)}
+                      disabled={cleaning !== null}
+                      variant="outline"
+                      size="sm"
+                      className="border-orange-700 text-orange-300 hover:bg-orange-900/30"
+                    >
+                      {cleaning === 'error_alerts' ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Czyszczenie...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Wyczyść Błędy
+                        </>
+                      )}
+                    </Button>
                   )}
-                </CardTitle>
-                <CardDescription className="text-gray-200">
-                  Alerty odrzucone z powodu błędów technicznych
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
                 {errorAlerts.length === 0 ? (
@@ -824,18 +964,43 @@ export default function DiagnosticsPage() {
           <TabsContent value="failures" className="space-y-6">
             <Card className="border-purple-700 bg-gradient-to-br from-purple-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <AlertCircle className="h-5 w-5 text-purple-400" />
-                  Awarie Diagnostyczne
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <AlertCircle className="h-5 w-5 text-purple-400" />
+                      Awarie Diagnostyczne
+                      {failures.length > 0 && (
+                        <Badge variant="secondary" className="ml-2 bg-purple-600/20 text-purple-300">
+                          {failures.length}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-gray-200">
+                      Awaryjne zamknięcia i krytyczne błędy
+                    </CardDescription>
+                  </div>
                   {failures.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 bg-purple-600/20 text-purple-300">
-                      {failures.length}
-                    </Badge>
+                    <Button
+                      onClick={() => handleCleanup('failures', `Czy na pewno chcesz wyczyścić ${failures.length} awarii diagnostycznych?`)}
+                      disabled={cleaning !== null}
+                      variant="outline"
+                      size="sm"
+                      className="border-purple-700 text-purple-300 hover:bg-purple-900/30"
+                    >
+                      {cleaning === 'failures' ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Czyszczenie...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Wyczyść Awarie
+                        </>
+                      )}
+                    </Button>
                   )}
-                </CardTitle>
-                <CardDescription className="text-gray-200">
-                  Awaryjne zamknięcia i krytyczne błędy
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
                 {failures.length === 0 ? (
@@ -920,18 +1085,43 @@ export default function DiagnosticsPage() {
           <TabsContent value="retries" className="space-y-6">
             <Card className="border-blue-700 bg-gradient-to-br from-blue-600/10 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <Clock className="h-5 w-5 text-blue-400" />
-                  Log Prób Ponownych TP/SL
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <Clock className="h-5 w-5 text-blue-400" />
+                      Log Prób Ponownych TP/SL
+                      {retryAttempts.length > 0 && (
+                        <Badge variant="secondary" className="ml-2 bg-blue-600/20 text-blue-300">
+                          {retryAttempts.length}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-gray-200">
+                      Historia prób ustawienia Stop Loss i Take Profit
+                    </CardDescription>
+                  </div>
                   {retryAttempts.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 bg-blue-600/20 text-blue-300">
-                      {retryAttempts.length}
-                    </Badge>
+                    <Button
+                      onClick={() => handleCleanup('retries', `Czy na pewno chcesz wyczyścić ${retryAttempts.length} prób ponownych?`)}
+                      disabled={cleaning !== null}
+                      variant="outline"
+                      size="sm"
+                      className="border-blue-700 text-blue-300 hover:bg-blue-900/30"
+                    >
+                      {cleaning === 'retries' ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Czyszczenie...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Wyczyść Logi
+                        </>
+                      )}
+                    </Button>
                   )}
-                </CardTitle>
-                <CardDescription className="text-gray-200">
-                  Historia prób ustawienia Stop Loss i Take Profit
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
                 {retryAttempts.length === 0 ? (
