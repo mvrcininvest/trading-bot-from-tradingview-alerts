@@ -820,10 +820,18 @@ async function verifyPositionOpening(
   console.log(`   Position ID: ${positionId}`);
   console.log(`   Order ID: ${orderId}`);
   console.log(`   Symbol: ${planned.symbol}`);
+  console.log(`   Environment: ${demo ? 'DEMO' : 'PRODUCTION'}`);
   
   const discrepancies: VerificationResult['discrepancies'] = [];
   const PRICE_TOLERANCE = 0.005; // 0.5%
   const QUANTITY_TOLERANCE = 0.01; // 1%
+  
+  // ✅ NEW: Increase retry for Demo environment
+  const MAX_RETRIES = demo ? 5 : 2; // Demo: 5 tries, Prod: 2 tries
+  const WAIT_TIME = demo ? 3000 : 2000; // Demo: 3s, Prod: 2s
+  
+  console.log(`   Retry config: MAX_RETRIES=${MAX_RETRIES}, WAIT_TIME=${WAIT_TIME}ms`);
+  console.log(`   Total max wait: ${(MAX_RETRIES + 1) * WAIT_TIME / 1000}s`);
   
   try {
     // ============================================
@@ -864,7 +872,6 @@ async function verifyPositionOpening(
     
     let algoOrders: any[] = [];
     let retryCount = 0;
-    const MAX_RETRIES = 2;
     
     // ✅ FIX: Try to get algo orders with retry mechanism
     while (retryCount <= MAX_RETRIES) {
@@ -897,20 +904,26 @@ async function verifyPositionOpening(
       
       // If missing and can retry, wait and try again
       if (retryCount < MAX_RETRIES) {
-        const waitTime = 2000; // 2 seconds
-        console.log(`   ⚠️ SL/TP not found yet, waiting ${waitTime}ms before retry...`);
+        console.log(`   ⚠️ SL/TP not found yet, waiting ${WAIT_TIME}ms before retry...`);
         console.log(`      Expected SL: ${planned.slPrice ? 'YES' : 'NO'}, Found: ${slOrder ? 'YES' : 'NO'}`);
         console.log(`      Expected TP1: ${planned.tp1Price ? 'YES' : 'NO'}, Found: ${tp1Order ? 'YES' : 'NO'}`);
         
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        if (demo) {
+          console.log(`      🐌 Demo environment detected - allowing extra time for order propagation`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, WAIT_TIME));
         retryCount++;
       } else {
-        console.log(`   ⚠️ Max retries reached, proceeding with verification...`);
+        console.log(`   ⚠️ Max retries (${MAX_RETRIES}) reached, proceeding with verification...`);
+        if (demo) {
+          console.log(`      ⚠️ Demo environment may need more time for SL/TP propagation`);
+        }
         break;
       }
     }
     
-    console.log(`   ✅ Final algo orders count: ${algoOrders.length}`);
+    console.log(`   ✅ Final algo orders count: ${algoOrders.length} (after ${retryCount} retries)`);
     
     // ============================================
     // STEP 3: Extract actual values
@@ -932,7 +945,7 @@ async function verifyPositionOpening(
     console.log(`   Leverage: ${actualLeverage}x`);
     console.log(`   SL: ${actualSlPrice || 'NOT FOUND'}`);
     console.log(`   TP1: ${actualTp1Price || 'NOT FOUND'}`);
-    console.log(`   Retry attempts used: ${retryCount}`);
+    console.log(`   Total wait time used: ${retryCount * WAIT_TIME / 1000}s`);
     
     // ============================================
     // STEP 4: Compare with tolerances
@@ -1001,7 +1014,10 @@ async function verifyPositionOpening(
         diff: 0,
         threshold: PRICE_TOLERANCE
       });
-      console.log(`      ⚠️ DISCREPANCY: SL not found on exchange (after ${retryCount} retries)`);
+      console.log(`      ⚠️ DISCREPANCY: SL not found on exchange (after ${retryCount} retries, ${retryCount * WAIT_TIME / 1000}s wait)`);
+      if (demo) {
+        console.log(`      ⚠️ Demo environment: Consider manual verification or longer wait times`);
+      }
     }
     
     // TP1 check
@@ -1030,7 +1046,10 @@ async function verifyPositionOpening(
         diff: 0,
         threshold: PRICE_TOLERANCE
       });
-      console.log(`      ⚠️ DISCREPANCY: TP1 not found on exchange (after ${retryCount} retries)`);
+      console.log(`      ⚠️ DISCREPANCY: TP1 not found on exchange (after ${retryCount} retries, ${retryCount * WAIT_TIME / 1000}s wait)`);
+      if (demo) {
+        console.log(`      ⚠️ Demo environment: Consider manual verification or longer wait times`);
+      }
     }
     
     // ============================================

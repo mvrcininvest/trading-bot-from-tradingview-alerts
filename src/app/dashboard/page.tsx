@@ -852,20 +852,21 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* CRITICAL WARNING for Demo Environment */}
-        {credentials.environment === "demo" && credentials.exchange === "bybit" && (
+        {credentials.environment === "demo" && (
           <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <AlertDescription className="text-sm text-red-200">
               <strong className="text-red-100 text-base">⚠️ OSTRZEŻENIE: Używasz środowiska DEMO</strong>
               <div className="mt-2 space-y-2">
                 <p className="font-medium text-gray-100">
-                  Bybit API Demo jest często <strong>blokowane przez CloudFlare/WAF</strong> dla requestów server-side (webhook, bot).
+                  API Demo ({credentials.exchange.toUpperCase()}) może być <strong>wolniejsze</strong> niż produkcja. 
+                  Webhook i bot działają, ale weryfikacja pozycji może wymagać więcej czasu.
                 </p>
-                <p className="text-red-200 font-semibold">
-                  ❌ Webhook i automatyczny bot <u>NIE BĘDĄ DZIAŁAĆ</u> z Demo environment!
+                <p className="text-amber-200 font-semibold">
+                  ⚠️ System automatycznie czeka dłużej (15s) na SL/TP w środowisku Demo
                 </p>
                 <p className="mt-3 bg-green-600/20 border border-green-500/30 rounded-lg p-3 text-gray-100">
-                  ✅ <strong>ROZWIĄZANIE:</strong> Przejdź do <Button 
+                  💡 <strong>OPCJONALNIE:</strong> Dla najlepszej wydajności przejdź do <Button 
                     variant="link" 
                     className="text-green-200 underline p-0 h-auto font-bold"
                     onClick={() => router.push("/exchange-test")}
