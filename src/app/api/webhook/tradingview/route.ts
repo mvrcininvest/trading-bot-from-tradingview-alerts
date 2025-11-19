@@ -1014,12 +1014,12 @@ export async function POST(request: Request) {
         await db.update(alerts).set({ 
           executionStatus: 'error_rejected', 
           rejectionReason: 'failed_close_opposite',
-          errorType
+          errorType: errorType.type
         }).where(eq(alerts.id, alert.id));
         
         await logToBot('error', 'close_failed', `Failed to close for reversal: ${error.message}`, { 
           error: error.message,
-          errorType
+          errorType: errorType.type
         }, alert.id, conflictAnalysis.existingPosition.id);
         
         return NextResponse.json({ 
@@ -1240,7 +1240,7 @@ export async function POST(request: Request) {
       } catch (openError: any) {
         const errorType = classifyError(openError.code || '', openError.message);
         
-        console.error(`❌ Position opening failed (${errorType}):`, openError.message);
+        console.error(`❌ Position opening failed (${errorType.type}):`, openError.message);
         
         if (trackingId) {
           await markPositionOpenFailed(trackingId);
@@ -1250,7 +1250,7 @@ export async function POST(request: Request) {
         await db.update(alerts).set({ 
           executionStatus: 'error_rejected', 
           rejectionReason: 'exchange_error',
-          errorType
+          errorType: errorType.type
         }).where(eq(alerts.id, alert.id));
 
         await db.insert(botActions).values({
@@ -1263,16 +1263,16 @@ export async function POST(request: Request) {
           details: JSON.stringify({ 
             error: openError.message, 
             exchange: "okx",
-            errorType
+            errorType: errorType.type
           }),
           success: false,
           errorMessage: openError.message,
           createdAt: new Date().toISOString(),
         });
 
-        await logToBot('error', 'position_failed', `❌ Position opening failed (${errorType}): ${openError.message}`, { 
+        await logToBot('error', 'position_failed', `❌ Position opening failed (${errorType.type}): ${openError.message}`, { 
           error: openError.message,
-          errorType,
+          errorType: errorType.type,
           symbol: data.symbol
         }, alert.id);
 
@@ -1280,7 +1280,7 @@ export async function POST(request: Request) {
           success: true, 
           alert_id: alert.id, 
           error: openError.message, 
-          errorType,
+          errorType: errorType.type,
           message: "Alert saved but position opening failed" 
         });
       }
