@@ -858,22 +858,59 @@ async function verifyPositionOpening(
     console.log(`   ✅ Position found on exchange`);
     
     // ============================================
-    // STEP 2: Get algo orders (SL/TP)
+    // STEP 2: Get algo orders (SL/TP) WITH RETRY
     // ============================================
     console.log(`\n📋 Fetching algo orders (SL/TP)...`);
-    const { data: algoData } = await makeOkxRequest(
-      'GET',
-      `/api/v5/trade/orders-algo-pending?instType=SWAP&instId=${planned.symbol}`,
-      apiKey,
-      apiSecret,
-      passphrase,
-      demo,
-      undefined,
-      alertId
-    );
     
-    const algoOrders = algoData.code === '0' && algoData.data ? algoData.data : [];
-    console.log(`   ✅ Found ${algoOrders.length} algo orders`);
+    let algoOrders: any[] = [];
+    let retryCount = 0;
+    const MAX_RETRIES = 2;
+    
+    // ✅ FIX: Try to get algo orders with retry mechanism
+    while (retryCount <= MAX_RETRIES) {
+      const { data: algoData } = await makeOkxRequest(
+        'GET',
+        `/api/v5/trade/orders-algo-pending?instType=SWAP&instId=${planned.symbol}`,
+        apiKey,
+        apiSecret,
+        passphrase,
+        demo,
+        undefined,
+        alertId
+      );
+      
+      algoOrders = algoData.code === '0' && algoData.data ? algoData.data : [];
+      console.log(`   📊 Attempt ${retryCount + 1}/${MAX_RETRIES + 1}: Found ${algoOrders.length} algo orders`);
+      
+      // Find SL and TP orders
+      const slOrder = algoOrders.find((o: any) => o.slTriggerPx && parseFloat(o.slTriggerPx) > 0);
+      const tp1Order = algoOrders.find((o: any) => o.tpTriggerPx && parseFloat(o.tpTriggerPx) > 0);
+      
+      const hasExpectedSL = !planned.slPrice || !!slOrder;
+      const hasExpectedTP = !planned.tp1Price || !!tp1Order;
+      
+      // If we found all expected orders, break
+      if (hasExpectedSL && hasExpectedTP) {
+        console.log(`   ✅ All expected algo orders found`);
+        break;
+      }
+      
+      // If missing and can retry, wait and try again
+      if (retryCount < MAX_RETRIES) {
+        const waitTime = 2000; // 2 seconds
+        console.log(`   ⚠️ SL/TP not found yet, waiting ${waitTime}ms before retry...`);
+        console.log(`      Expected SL: ${planned.slPrice ? 'YES' : 'NO'}, Found: ${slOrder ? 'YES' : 'NO'}`);
+        console.log(`      Expected TP1: ${planned.tp1Price ? 'YES' : 'NO'}, Found: ${tp1Order ? 'YES' : 'NO'}`);
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        retryCount++;
+      } else {
+        console.log(`   ⚠️ Max retries reached, proceeding with verification...`);
+        break;
+      }
+    }
+    
+    console.log(`   ✅ Final algo orders count: ${algoOrders.length}`);
     
     // ============================================
     // STEP 3: Extract actual values
@@ -893,8 +930,9 @@ async function verifyPositionOpening(
     console.log(`   Quantity: ${actualQuantity}`);
     console.log(`   Entry: ${actualEntryPrice}`);
     console.log(`   Leverage: ${actualLeverage}x`);
-    console.log(`   SL: ${actualSlPrice}`);
-    console.log(`   TP1: ${actualTp1Price}`);
+    console.log(`   SL: ${actualSlPrice || 'NOT FOUND'}`);
+    console.log(`   TP1: ${actualTp1Price || 'NOT FOUND'}`);
+    console.log(`   Retry attempts used: ${retryCount}`);
     
     // ============================================
     // STEP 4: Compare with tolerances
@@ -963,7 +1001,7 @@ async function verifyPositionOpening(
         diff: 0,
         threshold: PRICE_TOLERANCE
       });
-      console.log(`      ⚠️ DISCREPANCY: SL not found on exchange`);
+      console.log(`      ⚠️ DISCREPANCY: SL not found on exchange (after ${retryCount} retries)`);
     }
     
     // TP1 check
@@ -992,7 +1030,7 @@ async function verifyPositionOpening(
         diff: 0,
         threshold: PRICE_TOLERANCE
       });
-      console.log(`      ⚠️ DISCREPANCY: TP1 not found on exchange`);
+      console.log(`      ⚠️ DISCREPANCY: TP1 not found on exchange (after ${retryCount} retries)`);
     }
     
     // ============================================
@@ -1020,7 +1058,7 @@ async function verifyPositionOpening(
       actualEntryPrice,
       actualSlPrice,
       actualTp1Price,
-      actualTp2Price: null, // TP2/TP3 are separate orders, not checked in first verification
+      actualTp2Price: null,
       actualTp3Price: null,
       actualLeverage,
       hasDiscrepancy: discrepancies.length > 0,
