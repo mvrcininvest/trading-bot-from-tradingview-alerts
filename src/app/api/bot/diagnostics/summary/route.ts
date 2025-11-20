@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { symbolLocks, diagnosticFailures, alerts, tpslRetryAttempts } from '@/db/schema';
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, gte } from 'drizzle-orm';
 
 // GET /api/bot/diagnostics/summary - Get diagnostic summary
 export async function GET() {
@@ -24,7 +24,7 @@ export async function GET() {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const recentRetries = await db.select()
       .from(tpslRetryAttempts)
-      .where(eq(tpslRetryAttempts.createdAt, oneDayAgo));
+      .where(gte(tpslRetryAttempts.createdAt, oneDayAgo));
 
     // Calculate stats
     const failedRetries = recentRetries.filter(r => r.errorMessage !== null);
