@@ -631,7 +631,7 @@ export async function monitorAndManagePositions(silent = true) {
     console.log(`📊 [MONITOR] Found ${dbPositions.length} open positions in database`);
 
     if (dbPositions.length === 0) {
-      return { success: true, checked: 0, tpHits: 0, slAdjustments: 0, slTpFixed: 0 };
+      return { success: true, checked: 0, tpHits: 0, slAdjustments: 0, slTpFixed: 0, emergencyClosed: 0 };
     }
 
     // Get OKX positions
@@ -645,6 +645,7 @@ export async function monitorAndManagePositions(silent = true) {
     let tpHits = 0;
     let slAdjustments = 0;
     let slTpFixed = 0;
+    let emergencyClosed = 0;
     const errors: string[] = [];
     const details: any[] = [];
 
@@ -976,8 +977,95 @@ export async function monitorAndManagePositions(silent = true) {
 
       console.log(`   🔍 Algo Orders: SL=${hasSL}, TP=${hasTP} (Total: ${positionAlgos.length})`);
 
+      // ✅ NEW: Check position age and retry attempts
+      const positionAge = Date.now() - new Date(dbPos.openedAt).getTime();
+      const positionAgeSeconds = positionAge / 1000;
+      
+      console.log(`   ⏱️ Position age: ${positionAgeSeconds.toFixed(0)}s`);
+
       if (!hasSL || !hasTP) {
-        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - FIXING NOW...`);
+        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking retry attempts...`);
+        
+        // ✅ NEW: Count previous repair attempts from tpslRetryAttempts table
+        const retryAttempts = await db.select()
+          .from(tpslRetryAttempts)
+          .where(eq(tpslRetryAttempts.positionId, dbPos.id));
+        
+        const slAttempts = retryAttempts.filter(r => r.orderType === 'sl' && !r.success).length;
+        const tpAttempts = retryAttempts.filter(r => r.orderType === 'tp1' && !r.success).length;
+        
+        console.log(`   📊 Repair attempts: SL=${slAttempts}, TP=${tpAttempts}`);
+        
+        // ✅ NEW: If position > 30 seconds old AND 3+ failed repair attempts → EMERGENCY CLOSE + LOCK
+        if (positionAgeSeconds > 30 && (slAttempts >= 3 || tpAttempts >= 3)) {
+          console.error(`   🚨 EMERGENCY: Position > 30s old with ${Math.max(slAttempts, tpAttempts)} failed repair attempts!`);
+          console.error(`   → CLOSING POSITION AND LOCKING SYMBOL`);
+          
+          try {
+            const closeOrderId = await closePositionPartial(symbol, side, dbPos.quantity, apiKey, apiSecret, passphrase, demo);
+            
+            await db.update(botPositions)
+              .set({
+                status: "closed",
+                closeReason: "emergency_tpsl_failure_30s",
+                closedAt: new Date().toISOString(),
+              })
+              .where(eq(botPositions.id, dbPos.id));
+
+            // Log to diagnostic failures
+            await db.insert(diagnosticFailures).values({
+              positionId: dbPos.id,
+              failureType: 'emergency_close_30s',
+              reason: `Position > 30s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`,
+              attemptCount: Math.max(slAttempts, tpAttempts),
+              errorDetails: JSON.stringify({ 
+                positionAgeSeconds: positionAgeSeconds.toFixed(0),
+                slAttempts, 
+                tpAttempts,
+                hasSL,
+                hasTP
+              }),
+              createdAt: new Date().toISOString(),
+            });
+
+            // Lock symbol permanently
+            await db.insert(symbolLocks).values({
+              symbol,
+              lockReason: 'tpsl_failures_30s_timeout',
+              lockedAt: new Date().toISOString(),
+              failureCount: Math.max(slAttempts, tpAttempts),
+              lastError: `Failed to set SL/TP after ${Math.max(slAttempts, tpAttempts)} attempts over 30+ seconds`,
+              isPermanent: false,
+              createdAt: new Date().toISOString(),
+            });
+
+            console.log(`🚫 Symbol ${symbol} LOCKED due to 30s TP/SL timeout`);
+            
+            emergencyClosed++;
+            details.push({
+              symbol,
+              side,
+              action: "emergency_closed_30s",
+              reason: `Position > 30s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`
+            });
+
+            // ✅ Cleanup orphaned orders
+            await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+            
+            continue;
+            
+          } catch (closeError: any) {
+            console.error(`   ❌ Emergency close failed:`, closeError.message);
+            errors.push(`Emergency close failed for ${symbol}: ${closeError.message}`);
+            continue;
+          }
+        }
+        
+        // ✅ If position < 30s old, give it more time
+        if (positionAgeSeconds < 30) {
+          console.log(`   ⏳ Position < 30s old - giving more time for SL/TP to propagate...`);
+          continue;
+        }
         
         const slRR = config.defaultSlRR || 1.0;
         const nextTpRR = !dbPos.tp1Hit ? (config.tp1RR || 1.0) 
@@ -1078,8 +1166,8 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // ✅ NEW: Use setAlgoOrderWithRetry instead of setAlgoOrder
-        if (!hasSL && !slAlreadyHit) {
+        // ✅ Use setAlgoOrderWithRetry (but only if < 3 previous attempts)
+        if (!hasSL && !slAlreadyHit && slAttempts < 3) {
           const slAlgoId = await setAlgoOrderWithRetry(
             symbol,
             side,
@@ -1098,54 +1186,12 @@ export async function monitorAndManagePositions(silent = true) {
             console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)}`);
             slTpFixed++;
           } else {
-            // All retries failed - emergency close
-            console.error(`   🚨 EMERGENCY: Failed to set SL after 3 attempts - closing position`);
-            
-            try {
-              const closeOrderId = await closePositionPartial(symbol, side, dbPos.quantity, apiKey, apiSecret, passphrase, demo);
-              
-              await db.update(botPositions)
-                .set({
-                  status: "closed",
-                  closeReason: "emergency_tpsl_failure",
-                  closedAt: new Date().toISOString(),
-                })
-                .where(eq(botPositions.id, dbPos.id));
-
-              // Log to diagnostic failures
-              await db.insert(diagnosticFailures).values({
-                positionId: dbPos.id,
-                failureType: 'emergency_close',
-                reason: 'tpsl_set_failed_after_3_attempts',
-                attemptCount: 3,
-                errorDetails: JSON.stringify({ orderType: 'sl', triggerPrice: newSL }),
-                createdAt: new Date().toISOString(),
-              });
-
-              // Lock symbol
-              await db.insert(symbolLocks).values({
-                symbol,
-                lockReason: 'tpsl_failures',
-                lockedAt: new Date().toISOString(),
-                failureCount: 3,
-                lastError: 'Failed to set SL after 3 attempts',
-                isPermanent: false,
-                createdAt: new Date().toISOString(),
-              });
-
-              console.log(`🚫 Symbol ${symbol} LOCKED due to TP/SL failures`);
-              
-              // Do NOT save to positionHistory - this is diagnostic only
-              
-            } catch (closeError: any) {
-              console.error(`   ❌ Emergency close failed:`, closeError.message);
-              errors.push(`Emergency close failed for ${symbol}: ${closeError.message}`);
-            }
+            console.error(`   ⚠️ Failed to set SL - will retry on next monitor cycle`);
           }
         }
         
         // Similar for TP
-        if (!hasTP && !tpAlreadyHit) {
+        if (!hasTP && !tpAlreadyHit && tpAttempts < 3) {
           const tpAlgoId = await setAlgoOrderWithRetry(
             symbol,
             side,
@@ -1164,8 +1210,7 @@ export async function monitorAndManagePositions(silent = true) {
             console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)}`);
             slTpFixed++;
           } else {
-            console.error(`   ⚠️ Failed to set TP after 3 attempts`);
-            // Don't emergency close for TP failure, just log
+            console.error(`   ⚠️ Failed to set TP - will retry on next monitor cycle`);
           }
         }
       } else {
@@ -1173,7 +1218,7 @@ export async function monitorAndManagePositions(silent = true) {
       }
     }
 
-    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}`);
+    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}, Emergency Closed: ${emergencyClosed}`);
     if (errors.length > 0) {
       console.error(`⚠️ [MONITOR] Errors encountered: ${errors.length}`);
     }
@@ -1184,6 +1229,7 @@ export async function monitorAndManagePositions(silent = true) {
       tpHits,
       slAdjustments,
       slTpFixed,
+      emergencyClosed,
       errors,
       details,
     };
