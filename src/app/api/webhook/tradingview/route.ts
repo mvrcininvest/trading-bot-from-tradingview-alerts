@@ -1714,25 +1714,15 @@ export async function POST(request: Request) {
     let tp2Price: number | null = null;
     let tp3Price: number | null = null;
 
-    const hasSlTpInAlert = data.sl && (data.tp1 || data.tp2 || data.tp3);
-
-    if (hasSlTpInAlert) {
-      slPrice = parseFloat(data.sl);
-      
-      if (data.tp1) tp1Price = parseFloat(data.tp1);
-      if (data.tp2) tp2Price = parseFloat(data.tp2);
-      if (data.tp3) tp3Price = parseFloat(data.tp3);
-      
-      console.log("✅ Using SL/TP from alert");
-      await logToBot('info', 'tp_strategy', `Using TPs from alert - TP1: ${tp1Price}, TP2: ${tp2Price}, TP3: ${tp3Price}`, { 
-        entryPrice, 
-        slPrice, 
-        tp1Price,
-        tp2Price,
-        tp3Price
-      }, alert.id);
-    } else if (botConfig.useDefaultSlTp) {
-      // ✅ NEW: Adaptive R:R Logic
+    // ============================================
+    // ✅ CRITICAL FIX: ZAWSZE używaj SL/TP z ustawień bota
+    // Bot IGNORUJE SL/TP z alertów!
+    // ============================================
+    
+    console.log("🎯 Bot IGNORUJE SL/TP z alertu - używa TYLKO ustawień bota");
+    
+    if (botConfig.useDefaultSlTp) {
+      // ✅ Adaptive R:R Logic
       let slRR = botConfig.defaultSlRR || 1.0;
       let tp1RR = botConfig.tp1RR || 1.0;
       let tp2RR = botConfig.tp2RR || 2.0;
@@ -1769,7 +1759,7 @@ export async function POST(request: Request) {
       
       const tpCount = botConfig.tpCount || 3;
       
-      // ✅ NEW: SL as % margin calculation
+      // ✅ SL as % margin calculation
       let positionSizeUsd = botConfig.positionSizeFixed;
       const leverage = botConfig.leverageMode === "from_alert" ? (data.leverage || botConfig.leverageFixed) : botConfig.leverageFixed;
       
@@ -1784,7 +1774,6 @@ export async function POST(request: Request) {
         console.log(`   Initial margin: $${initialMargin.toFixed(2)}`);
         console.log(`   Max loss (${botConfig.slMarginRiskPercent}% margin): $${maxLossUsd.toFixed(2)}`);
         
-        // ✅ CRITICAL FIX: Calculate SL based on actual quantity, not position size percentage
         // Get current market price to calculate quantity
         let marketPriceForCalc: number;
         try {
@@ -1826,8 +1815,7 @@ export async function POST(request: Request) {
         }
       }
 
-      // ✅ CRITICAL FIX: Calculate TPs as Risk:Reward ratio, not % of entry
-      // R:R means: TP distance from entry = RR × SL distance from entry
+      // ✅ Calculate TPs as Risk:Reward ratio
       const slDistance = Math.abs(entryPrice - (slPrice || entryPrice));
       
       if (data.side === "BUY") {
@@ -1848,6 +1836,9 @@ export async function POST(request: Request) {
       if (tpCount >= 3) console.log(`   TP3: ${tp3Price?.toFixed(4)} (${botConfig.tp3Percent}%)${useAdaptive ? ' [Adaptive]' : ''}`);
       
       await logToBot('info', 'tp_strategy_enhanced', `Enhanced TP: ${tpCount} levels${useAdaptive ? ' (Adaptive)' : ''}${botConfig.slAsMarginPercent ? ' + SL as margin' : ''}`, {
+        source: 'bot_settings',
+        alertHadSlTp: !!(data.sl || data.tp1),
+        ignoredAlertSlTp: true,
         tpCount,
         useAdaptive,
         slAsMarginPercent: botConfig.slAsMarginPercent,
@@ -1864,11 +1855,11 @@ export async function POST(request: Request) {
       }, alert.id);
     } else {
       await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_sl_tp' }).where(eq(alerts.id, alert.id));
-      await logToBot('error', 'rejected', 'No SL/TP provided', { reason: 'no_sl_tp' }, alert.id);
-      return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP provided" });
+      await logToBot('error', 'rejected', 'No SL/TP configured in bot settings', { reason: 'no_sl_tp', useDefaultSlTp: botConfig.useDefaultSlTp }, alert.id);
+      return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP configured in bot settings" });
     }
 
-    console.log(`🎯 Final TP/SL - Side: ${data.side}, Entry: ${entryPrice}, TP1: ${tp1Price}, SL: ${slPrice}`);
+    console.log(`🎯 Final TP/SL (FROM BOT SETTINGS) - Side: ${data.side}, Entry: ${entryPrice}, TP1: ${tp1Price}, SL: ${slPrice}`);
 
     // ============================================
     // 💰 CALCULATE POSITION SIZE
