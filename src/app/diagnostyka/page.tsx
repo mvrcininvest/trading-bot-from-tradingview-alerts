@@ -659,7 +659,20 @@ export default function DiagnosticsPage() {
                       let discrepancies: any[] = [];
                       if (log.discrepancyDetails) {
                         try {
-                          discrepancies = JSON.parse(log.discrepancyDetails);
+                          const parsed = JSON.parse(log.discrepancyDetails);
+                          // ✅ FIX: Ensure it's an array, handle objects with "error" key
+                          if (Array.isArray(parsed)) {
+                            discrepancies = parsed;
+                          } else if (parsed.error) {
+                            // Convert error object to discrepancy format
+                            discrepancies = [{
+                              field: "verification_error",
+                              planned: "N/A",
+                              actual: parsed.error,
+                              diff: 0,
+                              threshold: 0
+                            }];
+                          }
                         } catch (e) {
                           console.error("Failed to parse discrepancy details:", e);
                         }
