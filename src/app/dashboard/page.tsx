@@ -1459,34 +1459,42 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
-                          {botPositionData && (
-                            <div className="mt-3">
-                              <div className="flex items-center gap-2 text-xs mb-2">
-                                <span className="text-gray-300">SL:</span>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant="outline" className={
-                                      botPositionData.liveSlPrice 
-                                        ? "border-green-700 text-green-300" 
-                                        : "border-red-700 text-red-300"
-                                    }>
-                                      {botPositionData.liveSlPrice 
-                                        ? `${botPositionData.liveSlPrice.toFixed(4)} 🟢` 
-                                        : `${botPositionData.currentSl.toFixed(4)} 🟡`}
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p className="text-gray-200">
-                                      {botPositionData.liveSlPrice 
-                                        ? "🟢 Cena z giełdy (live)" 
-                                        : "🟡 Cena z bazy danych (cache)"}
-                                    </p>
-                                  </TooltipContent>
-                                </Tooltip>
+                          {/* ✅ ALWAYS show SL/TP section */}
+                          <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-gray-300 font-semibold">Stop Loss:</span>
+                                {botPositionData?.liveSlPrice || botPositionData?.currentSl ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className={
+                                        botPositionData.liveSlPrice 
+                                          ? "border-green-700 text-green-300" 
+                                          : "border-yellow-700 text-yellow-300"
+                                      }>
+                                        {(botPositionData.liveSlPrice || botPositionData.currentSl).toFixed(4)} 
+                                        {botPositionData.liveSlPrice ? " 🟢" : " 🟡"}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-gray-200">
+                                        {botPositionData.liveSlPrice 
+                                          ? "🟢 Aktywny na giełdzie (live)" 
+                                          : "🟡 Planowany (cache) - może nie być ustawiony!"}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <Badge variant="destructive" className="text-xs">
+                                    ⚠️ BRAK SL
+                                  </Badge>
+                                )}
                               </div>
-                              <div className="flex items-center gap-2 text-xs flex-wrap">
-                                <span className="text-gray-300">TP:</span>
-                                {(botPositionData.liveTp1Price || botPositionData.tp1Price) && (
+                            </div>
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
+                              <span className="text-gray-300 font-semibold">Take Profit:</span>
+                              {(botPositionData?.liveTp1Price || botPositionData?.tp1Price) ? (
+                                <>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Badge variant={botPositionData.tp1Hit ? "default" : "outline"} className={
@@ -1494,7 +1502,7 @@ export default function DashboardPage() {
                                           ? "bg-green-600 text-white" 
                                           : botPositionData.liveTp1Price
                                             ? "border-green-700 text-green-300"
-                                            : "border-gray-700 text-gray-300"
+                                            : "border-yellow-700 text-yellow-300"
                                       }>
                                         TP1: {(botPositionData.liveTp1Price || botPositionData.tp1Price)?.toFixed(4)} 
                                         {botPositionData.tp1Hit ? " ✓" : botPositionData.liveTp1Price ? " 🟢" : " 🟡"}
@@ -1505,65 +1513,69 @@ export default function DashboardPage() {
                                         {botPositionData.tp1Hit 
                                           ? "✓ TP1 osiągnięty" 
                                           : botPositionData.liveTp1Price 
-                                            ? "🟢 Cena z giełdy (live)" 
-                                            : "🟡 Cena z bazy danych (cache)"}
+                                            ? "🟢 Aktywny na giełdzie (live)" 
+                                            : "🟡 Planowany (cache) - może nie być ustawiony!"}
                                       </p>
                                     </TooltipContent>
                                   </Tooltip>
-                                )}
-                                {(botPositionData.liveTp2Price || botPositionData.tp2Price) && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant={botPositionData.tp2Hit ? "default" : "outline"} className={
-                                        botPositionData.tp2Hit 
-                                          ? "bg-green-600 text-white" 
-                                          : botPositionData.liveTp2Price
-                                            ? "border-green-700 text-green-300"
-                                            : "border-gray-700 text-gray-300"
-                                      }>
-                                        TP2: {(botPositionData.liveTp2Price || botPositionData.tp2Price)?.toFixed(4)} 
-                                        {botPositionData.tp2Hit ? " ✓" : botPositionData.liveTp2Price ? " 🟢" : " 🟡"}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-gray-200">
-                                        {botPositionData.tp2Hit 
-                                          ? "✓ TP2 osiągnięty" 
-                                          : botPositionData.liveTp2Price 
-                                            ? "🟢 Cena z giełdy (live)" 
-                                            : "🟡 Cena z bazy danych (cache)"}
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {(botPositionData.liveTp3Price || botPositionData.tp3Price) && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant={botPositionData.tp3Hit ? "default" : "outline"} className={
-                                        botPositionData.tp3Hit 
-                                          ? "bg-green-600 text-white" 
-                                          : botPositionData.liveTp3Price
-                                            ? "border-green-700 text-green-300"
-                                            : "border-gray-700 text-gray-300"
-                                      }>
-                                        TP3: {(botPositionData.liveTp3Price || botPositionData.tp3Price)?.toFixed(4)} 
-                                        {botPositionData.tp3Hit ? " ✓" : botPositionData.liveTp3Price ? " 🟢" : " 🟡"}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-gray-200">
-                                        {botPositionData.tp3Hit 
-                                          ? "✓ TP3 osiągnięty" 
-                                          : botPositionData.liveTp3Price 
-                                            ? "🟢 Cena z giełdy (live)" 
-                                            : "🟡 Cena z bazy danych (cache)"}
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
+                                  {(botPositionData.liveTp2Price || botPositionData.tp2Price) && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant={botPositionData.tp2Hit ? "default" : "outline"} className={
+                                          botPositionData.tp2Hit 
+                                            ? "bg-green-600 text-white" 
+                                            : botPositionData.liveTp2Price
+                                              ? "border-green-700 text-green-300"
+                                              : "border-yellow-700 text-yellow-300"
+                                        }>
+                                          TP2: {(botPositionData.liveTp2Price || botPositionData.tp2Price)?.toFixed(4)} 
+                                          {botPositionData.tp2Hit ? " ✓" : botPositionData.liveTp2Price ? " 🟢" : " 🟡"}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="text-gray-200">
+                                          {botPositionData.tp2Hit 
+                                            ? "✓ TP2 osiągnięty" 
+                                            : botPositionData.liveTp2Price 
+                                              ? "🟢 Aktywny na giełdzie (live)" 
+                                              : "🟡 Planowany (cache) - może nie być ustawiony!"}
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  {(botPositionData.liveTp3Price || botPositionData.tp3Price) && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant={botPositionData.tp3Hit ? "default" : "outline"} className={
+                                          botPositionData.tp3Hit 
+                                            ? "bg-green-600 text-white" 
+                                            : botPositionData.liveTp3Price
+                                              ? "border-green-700 text-green-300"
+                                              : "border-yellow-700 text-yellow-300"
+                                        }>
+                                          TP3: {(botPositionData.liveTp3Price || botPositionData.tp3Price)?.toFixed(4)} 
+                                          {botPositionData.tp3Hit ? " ✓" : botPositionData.liveTp3Price ? " 🟢" : " 🟡"}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="text-gray-200">
+                                          {botPositionData.tp3Hit 
+                                            ? "✓ TP3 osiągnięty" 
+                                            : botPositionData.liveTp3Price 
+                                              ? "🟢 Aktywny na giełdzie (live)" 
+                                              : "🟡 Planowany (cache) - może nie być ustawiony!"}
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </>
+                              ) : (
+                                <Badge variant="destructive" className="text-xs">
+                                  ⚠️ BRAK TP
+                                </Badge>
+                              )}
                             </div>
-                          )}
+                          </div>
 
                           {botPositionData && (
                             <div className="flex items-center justify-between text-xs text-gray-300 pt-2 mt-2 border-t border-gray-800">
