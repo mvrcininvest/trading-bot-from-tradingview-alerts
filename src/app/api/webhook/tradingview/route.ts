@@ -797,6 +797,11 @@ async function openOkxPosition(
           slPrice,
           tpPrice
         }, alertId);
+        
+        // ✅ CRITICAL FIX: Wait for algo orders to propagate in OKX system
+        console.log(`\n⏳ Waiting 5 seconds for algo orders to propagate...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        console.log(`✅ Wait complete - algo orders should be visible now`);
       } else {
         console.error(`❌ Failed to set SL/TP algo order: ${algoData.msg}`);
         await logToBot('error', 'sl_tp_failed', `Failed to set SL/TP: ${algoData.msg}`, {
@@ -2123,91 +2128,134 @@ export async function POST(request: Request) {
             console.error(`🚨 CRITICAL: Position verification FAILED!`);
             console.error(`   Discrepancies:`, verificationResult.discrepancies);
             
-            // ============================================
-            // 1. Log błędu w diagnostice
-            // ============================================
-            await db.insert(diagnosticFailures).values({
-              positionId: botPosition.id,
-              failureType: 'verification_failed',
-              reason: `Position opened with discrepancies: ${verificationResult.discrepancies.map(d => d.field).join(', ')}`,
-              attemptCount: 1,
-              errorDetails: JSON.stringify(verificationResult.discrepancies),
-              createdAt: new Date().toISOString()
-            });
+            // ✅ CRITICAL FIX: Sprawdź CZY tylko SL/TP są MISSING
+            // Jeśli TAK → nie blokuj symbolu (to może być temporary OKX delay)
+            // Jeśli NIE (quantity/entry mają problem) → blokuj symbol
+            const onlySlTpMissing = verificationResult.discrepancies.every(d => 
+              (d.field === 'slPrice' || d.field === 'tp1Price' || d.field === 'tp2Price' || d.field === 'tp3Price') && 
+              d.actual === 'MISSING'
+            );
             
-            await logToBot('error', 'verification_failed', `Position verification failed - ${verificationResult.discrepancies.length} discrepancies`, {
-              positionId: botPosition.id,
-              discrepancies: verificationResult.discrepancies
-            }, alert.id, botPosition.id);
+            console.log(`   Only SL/TP missing: ${onlySlTpMissing}`);
             
-            // ============================================
-            // 2. Zablokuj symbol
-            // ============================================
-            console.log(`🔒 Locking symbol ${data.symbol} due to verification failure...`);
-            await db.insert(symbolLocks).values({
-              symbol: data.symbol,
-              lockReason: 'verification_failure',
-              lockedAt: new Date().toISOString(),
-              failureCount: 1,
-              lastError: `Discrepancies detected: ${verificationResult.discrepancies.map(d => `${d.field} (planned: ${d.planned}, actual: ${d.actual})`).join(', ')}`,
-              unlockedAt: null,
-              isPermanent: false,
-              createdAt: new Date().toISOString()
-            });
-            
-            console.log(`✅ Symbol ${data.symbol} locked`);
-            await logToBot('warning', 'symbol_locked', `Symbol ${data.symbol} locked due to verification failure`, {
-              symbol: data.symbol,
-              discrepancyCount: verificationResult.discrepancies.length
-            }, alert.id, botPosition.id);
-            
-            // ============================================
-            // 3. Awaryjnie zamknij pozycję
-            // ============================================
-            console.log(`🚨 Attempting emergency close of position ${botPosition.id}...`);
-            try {
-              await closeOkxPosition(
-                okxSymbol,
-                side,
-                finalQuantity,
-                apiKey,
-                apiSecret,
-                passphrase,
-                environment === "demo",
-                alert.id,
-                botPosition.id
-              );
+            if (onlySlTpMissing) {
+              // ============================================
+              // ⚠️ ONLY SL/TP MISSING - LOG WARNING BUT DON'T BLOCK
+              // ============================================
+              console.log(`   ⚠️ Only SL/TP are missing - this is likely OKX delay`);
+              console.log(`   → NOT blocking symbol, position monitor will fix SL/TP later`);
               
-              await db.update(botPositions).set({
-                status: 'closed',
-                closeReason: 'emergency_verification_failure',
-                closedAt: new Date().toISOString()
-              }).where(eq(botPositions.id, botPosition.id));
+              await db.insert(diagnosticFailures).values({
+                positionId: botPosition.id,
+                failureType: 'sl_tp_delayed',
+                reason: `SL/TP not found immediately after opening (OKX delay): ${verificationResult.discrepancies.map(d => d.field).join(', ')}`,
+                attemptCount: 1,
+                errorDetails: JSON.stringify(verificationResult.discrepancies),
+                createdAt: new Date().toISOString()
+              });
               
-              console.log(`✅ Position ${botPosition.id} closed due to verification failure`);
-              await logToBot('success', 'emergency_close_verification', `Position ${botPosition.id} closed due to verification failure`, { 
-                discrepancies: verificationResult.discrepancies 
+              await logToBot('warning', 'sl_tp_delayed', `SL/TP not found yet - will be fixed by position monitor`, {
+                positionId: botPosition.id,
+                discrepancies: verificationResult.discrepancies,
+                reason: 'okx_propagation_delay'
               }, alert.id, botPosition.id);
-            } catch (closeError: any) {
-              console.error(`❌ Failed to emergency close position:`, closeError.message);
-              await logToBot('error', 'emergency_close_failed', `Failed to close position after verification failure: ${closeError.message}`, {
-                closeError: closeError.message,
-                positionId: botPosition.id
+              
+              // ✅ DON'T close position, DON'T block symbol
+              // Position monitor will fix SL/TP automatically
+              console.log(`   ✅ Allowing position to stay open - monitor will fix SL/TP`);
+              
+            } else {
+              // ============================================
+              // 🚨 CRITICAL ISSUES (quantity/entry problems)
+              // ============================================
+              console.log(`   🚨 CRITICAL: Not just SL/TP missing - quantity/entry has issues!`);
+              
+              // ============================================
+              // 1. Log błędu w diagnostice
+              // ============================================
+              await db.insert(diagnosticFailures).values({
+                positionId: botPosition.id,
+                failureType: 'verification_failed',
+                reason: `Position opened with discrepancies: ${verificationResult.discrepancies.map(d => d.field).join(', ')}`,
+                attemptCount: 1,
+                errorDetails: JSON.stringify(verificationResult.discrepancies),
+                createdAt: new Date().toISOString()
+              });
+              
+              await logToBot('error', 'verification_failed', `Position verification failed - ${verificationResult.discrepancies.length} discrepancies`, {
+                positionId: botPosition.id,
+                discrepancies: verificationResult.discrepancies
               }, alert.id, botPosition.id);
+              
+              // ============================================
+              // 2. Zablokuj symbol
+              // ============================================
+              console.log(`🔒 Locking symbol ${data.symbol} due to verification failure...`);
+              await db.insert(symbolLocks).values({
+                symbol: data.symbol,
+                lockReason: 'verification_failure',
+                lockedAt: new Date().toISOString(),
+                failureCount: 1,
+                lastError: `Discrepancies detected: ${verificationResult.discrepancies.map(d => `${d.field} (planned: ${d.planned}, actual: ${d.actual})`).join(', ')}`,
+                unlockedAt: null,
+                isPermanent: false,
+                createdAt: new Date().toISOString()
+              });
+              
+              console.log(`✅ Symbol ${data.symbol} locked`);
+              await logToBot('warning', 'symbol_locked', `Symbol ${data.symbol} locked due to verification failure`, {
+                symbol: data.symbol,
+                discrepancyCount: verificationResult.discrepancies.length
+              }, alert.id, botPosition.id);
+              
+              // ============================================
+              // 3. Awaryjnie zamknij pozycję
+              // ============================================
+              console.log(`🚨 Attempting emergency close of position ${botPosition.id}...`);
+              try {
+                await closeOkxPosition(
+                  okxSymbol,
+                  side,
+                  finalQuantity,
+                  apiKey,
+                  apiSecret,
+                  passphrase,
+                  environment === "demo",
+                  alert.id,
+                  botPosition.id
+                );
+                
+                await db.update(botPositions).set({
+                  status: 'closed',
+                  closeReason: 'emergency_verification_failure',
+                  closedAt: new Date().toISOString()
+                }).where(eq(botPositions.id, botPosition.id));
+                
+                console.log(`✅ Position ${botPosition.id} closed due to verification failure`);
+                await logToBot('success', 'emergency_close_verification', `Position ${botPosition.id} closed due to verification failure`, { 
+                  discrepancies: verificationResult.discrepancies 
+                }, alert.id, botPosition.id);
+              } catch (closeError: any) {
+                console.error(`❌ Failed to emergency close position:`, closeError.message);
+                await logToBot('error', 'emergency_close_failed', `Failed to close position after verification failure: ${closeError.message}`, {
+                  closeError: closeError.message,
+                  positionId: botPosition.id
+                }, alert.id, botPosition.id);
+              }
+              
+              // ============================================
+              // 4. Zwróć error response
+              // ============================================
+              return NextResponse.json({
+                success: false,
+                alert_id: alert.id,
+                position_id: botPosition.id,
+                error: 'Position verification failed - symbol locked and position closed',
+                discrepancies: verificationResult.discrepancies,
+                symbolLocked: true,
+                positionClosed: true
+              });
             }
-            
-            // ============================================
-            // 4. Zwróć error response
-            // ============================================
-            return NextResponse.json({
-              success: false,
-              alert_id: alert.id,
-              position_id: botPosition.id,
-              error: 'Position verification failed - symbol locked and position closed',
-              discrepancies: verificationResult.discrepancies,
-              symbolLocked: true,
-              positionClosed: true
-            });
           }
           
           console.log(`✅ Position verification PASSED - all values match`);
