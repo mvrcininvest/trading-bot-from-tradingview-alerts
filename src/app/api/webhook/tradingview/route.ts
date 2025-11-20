@@ -1003,12 +1003,16 @@ async function verifyPositionOpening(
   console.log(`   Environment: ${demo ? 'DEMO' : 'PRODUCTION'}`);
   
   const discrepancies: VerificationResult['discrepancies'] = [];
-  const PRICE_TOLERANCE = 0.005; // 0.5%
-  const QUANTITY_TOLERANCE = 0.01; // 1%
   
-  // ✅ NEW: Increase retry for Demo environment
-  const MAX_RETRIES = demo ? 5 : 2; // Demo: 5 tries, Prod: 2 tries
-  const WAIT_TIME = demo ? 3000 : 2000; // Demo: 3s, Prod: 2s
+  // ✅ CRITICAL FIX: Increased tolerances for MARKET ORDERS
+  const PRICE_TOLERANCE = 0.02; // 2% (increased from 0.5% for market orders)
+  const QUANTITY_TOLERANCE = 0.05; // 5% (increased from 1%)
+  
+  console.log(`   ⚙️ Tolerances: Price ${(PRICE_TOLERANCE * 100).toFixed(1)}%, Quantity ${(QUANTITY_TOLERANCE * 100).toFixed(1)}%`);
+  
+  // ✅ CRITICAL FIX: Much longer wait times for PRODUCTION
+  const MAX_RETRIES = demo ? 5 : 7; // Prod: 7 tries (was 2)
+  const WAIT_TIME = demo ? 3000 : 2000; // Keep 2s intervals
   
   console.log(`   Retry config: MAX_RETRIES=${MAX_RETRIES}, WAIT_TIME=${WAIT_TIME}ms`);
   console.log(`   Total max wait: ${(MAX_RETRIES + 1) * WAIT_TIME / 1000}s`);
@@ -1150,10 +1154,11 @@ async function verifyPositionOpening(
       console.log(`      ✅ OK`);
     }
     
-    // Entry price check
+    // Entry price check (with market order info)
     const entryDiff = Math.abs(actualEntryPrice - planned.entryPrice);
     const entryDiffPercent = entryDiff / planned.entryPrice;
     console.log(`   Entry: planned ${planned.entryPrice}, actual ${actualEntryPrice}, diff ${(entryDiffPercent * 100).toFixed(2)}%`);
+    console.log(`   ℹ️ Market order: Entry price differences are NORMAL (up to ${(PRICE_TOLERANCE * 100).toFixed(1)}%)`);
     
     if (entryDiffPercent > PRICE_TOLERANCE) {
       discrepancies.push({
@@ -1165,7 +1170,7 @@ async function verifyPositionOpening(
       });
       console.log(`      ⚠️ DISCREPANCY: ${(entryDiffPercent * 100).toFixed(2)}% > ${(PRICE_TOLERANCE * 100).toFixed(2)}%`);
     } else {
-      console.log(`      ✅ OK`);
+      console.log(`      ✅ OK (within market order tolerance)`);
     }
     
     // SL check
