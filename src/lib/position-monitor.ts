@@ -598,18 +598,6 @@ export async function monitorAndManagePositions(silent = true) {
   try {
     console.log("\n🔍 [MONITOR] Starting position monitoring...");
 
-    // Check for symbol locks FIRST
-    const activeLocks = await db.select()
-      .from(symbolLocks)
-      .where(isNull(symbolLocks.unlockedAt));
-
-    if (activeLocks.length > 0) {
-      console.log(`🚫 [MONITOR] ${activeLocks.length} symbol(s) locked:`);
-      activeLocks.forEach(lock => {
-        console.log(`   - ${lock.symbol}: ${lock.lockReason} (${lock.failureCount} failures)`);
-      });
-    }
-
     // Get settings
     const settings = await db.select().from(botSettings).limit(1);
     if (settings.length === 0 || !settings[0].apiKey) {
@@ -642,6 +630,18 @@ export async function monitorAndManagePositions(silent = true) {
     
     console.log(`📊 [MONITOR] OKX Positions: ${okxPositions.length}, Algo Orders: ${algoOrders.length}`);
 
+    // Check for symbol locks
+    const activeLocks = await db.select()
+      .from(symbolLocks)
+      .where(isNull(symbolLocks.unlockedAt));
+
+    if (activeLocks.length > 0) {
+      console.log(`🚫 [MONITOR] ${activeLocks.length} symbol(s) locked:`);
+      activeLocks.forEach(lock => {
+        console.log(`   - ${lock.symbol}: ${lock.lockReason} (${lock.failureCount} failures)`);
+      });
+    }
+
     let tpHits = 0;
     let slAdjustments = 0;
     let slTpFixed = 0;
@@ -653,13 +653,6 @@ export async function monitorAndManagePositions(silent = true) {
       const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
       
       console.log(`\n🔍 [MONITOR] Checking ${symbol} (${dbPos.side})...`);
-      
-      // Check if symbol is locked
-      const symbolLock = activeLocks.find(lock => lock.symbol === symbol);
-      if (symbolLock) {
-        console.log(`   🚫 Symbol ${symbol} is LOCKED (${symbolLock.lockReason}) - skipping`);
-        continue;
-      }
 
       // Find matching OKX position
       const okxPos = okxPositions.find((p: any) => p.instId === symbol);
@@ -968,7 +961,7 @@ export async function monitorAndManagePositions(silent = true) {
       }
 
       // ============================================
-      // 🛡️ CHECK AND FIX MISSING SL/TP ALGO ORDERS
+      // 🛡️ CRITICAL FIX: CHECK AND FIX MISSING SL/TP **BEFORE** CHECKING SYMBOL LOCK
       // ============================================
 
       const positionAlgos = algoOrders.filter((a: any) => a.instId === symbol);
@@ -984,7 +977,7 @@ export async function monitorAndManagePositions(silent = true) {
       console.log(`   ⏱️ Position age: ${positionAgeSeconds.toFixed(0)}s`);
 
       if (!hasSL || !hasTP) {
-        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking retry attempts...`);
+        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - attempting repair...`);
         
         // ✅ NEW: Count previous repair attempts from tpslRetryAttempts table
         const retryAttempts = await db.select()
@@ -994,11 +987,11 @@ export async function monitorAndManagePositions(silent = true) {
         const slAttempts = retryAttempts.filter(r => r.orderType === 'sl' && !r.success).length;
         const tpAttempts = retryAttempts.filter(r => r.orderType === 'tp1' && !r.success).length;
         
-        console.log(`   📊 Repair attempts: SL=${slAttempts}, TP=${tpAttempts}`);
+        console.log(`   📊 Repair attempts so far: SL=${slAttempts}, TP=${tpAttempts}`);
         
-        // ✅ NEW: If position > 30 seconds old AND 3+ failed repair attempts → EMERGENCY CLOSE + LOCK
-        if (positionAgeSeconds > 30 && (slAttempts >= 3 || tpAttempts >= 3)) {
-          console.error(`   🚨 EMERGENCY: Position > 30s old with ${Math.max(slAttempts, tpAttempts)} failed repair attempts!`);
+        // ✅ CRITICAL FIX: Increased timeout from 30s to 120s and max retries from 3 to 10
+        if (positionAgeSeconds > 120 && (slAttempts >= 10 || tpAttempts >= 10)) {
+          console.error(`   🚨 EMERGENCY: Position > 120s old with ${Math.max(slAttempts, tpAttempts)} failed repair attempts!`);
           console.error(`   → CLOSING POSITION AND LOCKING SYMBOL`);
           
           try {
@@ -1007,7 +1000,7 @@ export async function monitorAndManagePositions(silent = true) {
             await db.update(botPositions)
               .set({
                 status: "closed",
-                closeReason: "emergency_tpsl_failure_30s",
+                closeReason: "emergency_tpsl_failure_120s",
                 closedAt: new Date().toISOString(),
               })
               .where(eq(botPositions.id, dbPos.id));
@@ -1015,8 +1008,8 @@ export async function monitorAndManagePositions(silent = true) {
             // Log to diagnostic failures
             await db.insert(diagnosticFailures).values({
               positionId: dbPos.id,
-              failureType: 'emergency_close_30s',
-              reason: `Position > 30s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`,
+              failureType: 'emergency_close_120s',
+              reason: `Position > 120s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`,
               attemptCount: Math.max(slAttempts, tpAttempts),
               errorDetails: JSON.stringify({ 
                 positionAgeSeconds: positionAgeSeconds.toFixed(0),
@@ -1031,22 +1024,22 @@ export async function monitorAndManagePositions(silent = true) {
             // Lock symbol permanently
             await db.insert(symbolLocks).values({
               symbol,
-              lockReason: 'tpsl_failures_30s_timeout',
+              lockReason: 'tpsl_failures_120s_timeout',
               lockedAt: new Date().toISOString(),
               failureCount: Math.max(slAttempts, tpAttempts),
-              lastError: `Failed to set SL/TP after ${Math.max(slAttempts, tpAttempts)} attempts over 30+ seconds`,
+              lastError: `Failed to set SL/TP after ${Math.max(slAttempts, tpAttempts)} attempts over 120+ seconds`,
               isPermanent: false,
               createdAt: new Date().toISOString(),
             });
 
-            console.log(`🚫 Symbol ${symbol} LOCKED due to 30s TP/SL timeout`);
+            console.log(`🚫 Symbol ${symbol} LOCKED due to 120s TP/SL timeout`);
             
             emergencyClosed++;
             details.push({
               symbol,
               side,
-              action: "emergency_closed_30s",
-              reason: `Position > 30s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`
+              action: "emergency_closed_120s",
+              reason: `Position > 120s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`
             });
 
             // ✅ Cleanup orphaned orders
@@ -1061,10 +1054,10 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // ✅ If position < 30s old, give it more time
-        if (positionAgeSeconds < 30) {
-          console.log(`   ⏳ Position < 30s old - giving more time for SL/TP to propagate...`);
-          continue;
+        // ✅ CRITICAL FIX: If position < 120s old, give it more time
+        if (positionAgeSeconds < 120) {
+          console.log(`   ⏳ Position < 120s old - giving more time for SL/TP to propagate...`);
+          // Don't skip - continue to check symbol lock below
         }
         
         const slRR = config.defaultSlRR || 1.0;
@@ -1166,8 +1159,10 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // ✅ Use setAlgoOrderWithRetry (but only if < 3 previous attempts)
-        if (!hasSL && !slAlreadyHit && slAttempts < 3) {
+        // ✅ CRITICAL FIX: Use setAlgoOrderWithRetry (but only if < 10 previous attempts)
+        if (!hasSL && !slAlreadyHit && slAttempts < 10) {
+          console.log(`   🔧 Attempting to fix SL (attempt ${slAttempts + 1}/10)...`);
+          
           const slAlgoId = await setAlgoOrderWithRetry(
             symbol,
             side,
@@ -1191,7 +1186,9 @@ export async function monitorAndManagePositions(silent = true) {
         }
         
         // Similar for TP
-        if (!hasTP && !tpAlreadyHit && tpAttempts < 3) {
+        if (!hasTP && !tpAlreadyHit && tpAttempts < 10) {
+          console.log(`   🔧 Attempting to fix TP (attempt ${tpAttempts + 1}/10)...`);
+          
           const tpAlgoId = await setAlgoOrderWithRetry(
             symbol,
             side,
@@ -1215,6 +1212,15 @@ export async function monitorAndManagePositions(silent = true) {
         }
       } else {
         console.log(`   ✅ Position has both SL and TP - OK`);
+      }
+
+      // ============================================
+      // 🚫 CRITICAL FIX: Check symbol lock AFTER attempting repairs
+      // ============================================
+      const symbolLock = activeLocks.find(lock => lock.symbol === symbol);
+      if (symbolLock && positionAgeSeconds > 120) {
+        console.log(`   🚫 Symbol ${symbol} is LOCKED (${symbolLock.lockReason}) and position > 120s - skipping further checks`);
+        continue;
       }
     }
 

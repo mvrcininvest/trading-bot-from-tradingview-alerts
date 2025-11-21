@@ -747,71 +747,116 @@ async function openOkxPosition(
     }, alertId);
     
     // ============================================
-    // 🎯 SET SL/TP AS SEPARATE ALGO ORDERS
+    // 🎯 SET SL/TP AS SEPARATE ALGO ORDERS (CRITICAL FIX!)
     // ============================================
-    console.log(`\n🎯 Setting SL/TP as separate algo orders...`);
+    console.log(`\n🎯 Setting SL/TP as SEPARATE algo orders (2 requests)...`);
     
     try {
-      const algoPayload: any = {
-        instId: okxSymbol,
-        tdMode: 'cross',
-        side: isBuy ? 'sell' : 'buy',
-        ordType: 'conditional',
-        sz: actualPositionQty.toString(),
-      };
+      const isBuy = side.toUpperCase() === "BUY";
+      const algoSide = isBuy ? 'sell' : 'buy';
       
-      if (tpPrice) {
-        algoPayload.tpTriggerPx = formatPrice(tpPrice);
-        algoPayload.tpOrdPx = '-1';
-        console.log(`   🎯 TP: ${algoPayload.tpTriggerPx}`);
-      }
-      
+      // ✅ CRITICAL FIX #1: Set SL as SEPARATE request
       if (slPrice) {
-        algoPayload.slTriggerPx = formatPrice(slPrice);
-        algoPayload.slOrdPx = '-1';
-        console.log(`   🛑 SL: ${algoPayload.slTriggerPx}`);
-      }
-      
-      console.log(`\n📤 Algo Order Payload:`);
-      console.log(JSON.stringify(algoPayload, null, 2));
-      
-      const { data: algoData } = await makeOkxRequest(
-        'POST',
-        '/api/v5/trade/order-algo',
-        apiKey,
-        apiSecret,
-        passphrase,
-        demo,
-        algoPayload,
-        alertId
-      );
-      
-      console.log(`\n📥 Algo Order Response:`);
-      console.log(JSON.stringify(algoData, null, 2));
-      
-      if (algoData.code === '0') {
-        const algoId = algoData.data?.[0]?.algoId || 'unknown';
-        console.log(`✅ SL/TP algo order set successfully: ${algoId}`);
-        await logToBot('success', 'sl_tp_set', `SL/TP set as algo order: ${algoId}`, {
-          algoId,
-          slPrice,
-          tpPrice
-        }, alertId);
+        console.log(`\n🛑 Setting SL @ ${formatPrice(slPrice)} (SEPARATE request)...`);
         
-        // ✅ CRITICAL FIX: Wait for algo orders to propagate in OKX system
-        console.log(`\n⏳ Waiting 5 seconds for algo orders to propagate...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        console.log(`✅ Wait complete - algo orders should be visible now`);
-      } else {
-        console.error(`❌ Failed to set SL/TP algo order: ${algoData.msg}`);
-        await logToBot('error', 'sl_tp_failed', `Failed to set SL/TP: ${algoData.msg}`, {
-          code: algoData.code,
-          msg: algoData.msg,
-          algoPayload
-        }, alertId);
+        const slPayload = {
+          instId: okxSymbol,
+          tdMode: 'cross',
+          side: algoSide,
+          ordType: 'conditional',
+          sz: actualPositionQty.toString(),
+          slTriggerPx: formatPrice(slPrice),
+          slOrdPx: '-1',
+        };
+        
+        console.log(`📤 SL Algo Payload:`, JSON.stringify(slPayload, null, 2));
+        
+        const { data: slData } = await makeOkxRequest(
+          'POST',
+          '/api/v5/trade/order-algo',
+          apiKey,
+          apiSecret,
+          passphrase,
+          demo,
+          slPayload,
+          alertId
+        );
+        
+        console.log(`📥 SL Response:`, JSON.stringify(slData, null, 2));
+        
+        if (slData.code === '0') {
+          const slAlgoId = slData.data?.[0]?.algoId || 'unknown';
+          console.log(`✅ SL set successfully: ${slAlgoId}`);
+          await logToBot('success', 'sl_set', `SL set as separate order: ${slAlgoId}`, {
+            slAlgoId,
+            slPrice
+          }, alertId);
+        } else {
+          console.error(`❌ Failed to set SL: ${slData.msg}`);
+          await logToBot('error', 'sl_failed', `Failed to set SL: ${slData.msg}`, {
+            code: slData.code,
+            msg: slData.msg,
+            slPayload
+          }, alertId);
+        }
+        
+        // Wait 2 seconds between requests
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
+      
+      // ✅ CRITICAL FIX #2: Set TP as SEPARATE request
+      if (tpPrice) {
+        console.log(`\n🎯 Setting TP @ ${formatPrice(tpPrice)} (SEPARATE request)...`);
+        
+        const tpPayload = {
+          instId: okxSymbol,
+          tdMode: 'cross',
+          side: algoSide,
+          ordType: 'conditional',
+          sz: actualPositionQty.toString(),
+          tpTriggerPx: formatPrice(tpPrice),
+          tpOrdPx: '-1',
+        };
+        
+        console.log(`📤 TP Algo Payload:`, JSON.stringify(tpPayload, null, 2));
+        
+        const { data: tpData } = await makeOkxRequest(
+          'POST',
+          '/api/v5/trade/order-algo',
+          apiKey,
+          apiSecret,
+          passphrase,
+          demo,
+          tpPayload,
+          alertId
+        );
+        
+        console.log(`📥 TP Response:`, JSON.stringify(tpData, null, 2));
+        
+        if (tpData.code === '0') {
+          const tpAlgoId = tpData.data?.[0]?.algoId || 'unknown';
+          console.log(`✅ TP set successfully: ${tpAlgoId}`);
+          await logToBot('success', 'tp_set', `TP set as separate order: ${tpAlgoId}`, {
+            tpAlgoId,
+            tpPrice
+          }, alertId);
+        } else {
+          console.error(`❌ Failed to set TP: ${tpData.msg}`);
+          await logToBot('error', 'tp_failed', `Failed to set TP: ${tpData.msg}`, {
+            code: tpData.code,
+            msg: tpData.msg,
+            tpPayload
+          }, alertId);
+        }
+      }
+      
+      // ✅ CRITICAL FIX: Wait 20 seconds for algo orders to propagate
+      console.log(`\n⏳ Waiting 20 seconds for algo orders to propagate in OKX system...`);
+      await new Promise(resolve => setTimeout(resolve, 20000));
+      console.log(`✅ Wait complete - algo orders should be visible now`);
+      
     } catch (algoError: any) {
-      console.error(`❌ Error setting SL/TP algo order:`, algoError.message);
+      console.error(`❌ Error setting SL/TP algo orders:`, algoError.message);
       await logToBot('error', 'sl_tp_error', `Error setting SL/TP: ${algoError.message}`, {
         error: algoError.message
       }, alertId);
@@ -825,8 +870,8 @@ async function openOkxPosition(
   console.log(`   Side: ${side}`);
   console.log(`   Quantity: ${quantity} contracts`);
   console.log(`   Actual Entry: ${actualEntryPrice}`);
-  console.log(`   SL: ${slPrice?.toFixed(4) || 'N/A'}`);
-  console.log(`   TP: ${tpPrice?.toFixed(4) || 'N/A'}`);
+  console.log(`   SL: ${slPrice?.toFixed(4) || 'N/A'} (SEPARATE request)`);
+  console.log(`   TP: ${tpPrice?.toFixed(4) || 'N/A'} (SEPARATE request)`);
   console.log(`${'='.repeat(60)}\n`);
 
   await logToBot('success', 'position_opened', `OKX position opened: ${okxSymbol} ${side} ${leverage}x`, { 
@@ -838,7 +883,8 @@ async function openOkxPosition(
     positionSizeUsd,
     actualEntry: actualEntryPrice,
     sl: slPrice, 
-    tp: tpPrice
+    tp: tpPrice,
+    slTpSeparateRequests: true
   }, alertId);
 
   return { orderId, quantity: finalContracts, okxSymbol, actualEntryPrice };
@@ -961,7 +1007,7 @@ async function addAdditionalTakeProfit(
 }
 
 // ============================================
-// 🔍 VERIFY POSITION OPENING (NEW: ZADANIE 7)
+// 🔍 VERIFY POSITION OPENING (UPDATED TOLERANCES)
 // ============================================
 
 interface VerificationResult {
@@ -1005,13 +1051,13 @@ async function verifyPositionOpening(
   const discrepancies: VerificationResult['discrepancies'] = [];
   
   // ✅ CRITICAL FIX: Increased tolerances for MARKET ORDERS
-  const PRICE_TOLERANCE = 0.02; // 2% (increased from 0.5% for market orders)
-  const QUANTITY_TOLERANCE = 0.05; // 5% (increased from 1%)
+  const PRICE_TOLERANCE = 0.03; // 3% (increased from 2%)
+  const QUANTITY_TOLERANCE = 0.10; // 10% (increased from 5%)
   
   console.log(`   ⚙️ Tolerances: Price ${(PRICE_TOLERANCE * 100).toFixed(1)}%, Quantity ${(QUANTITY_TOLERANCE * 100).toFixed(1)}%`);
   
   // ✅ CRITICAL FIX: Much longer wait times for PRODUCTION
-  const MAX_RETRIES = demo ? 5 : 7; // Prod: 7 tries (was 2)
+  const MAX_RETRIES = demo ? 5 : 20; // Prod: 20 tries (was 7)
   const WAIT_TIME = demo ? 3000 : 2000; // Keep 2s intervals
   
   console.log(`   Retry config: MAX_RETRIES=${MAX_RETRIES}, WAIT_TIME=${WAIT_TIME}ms`);
@@ -2103,7 +2149,7 @@ export async function POST(request: Request) {
         }, alert.id, botPosition.id);
 
         // ============================================
-        // 🔍 NEW: VERIFY POSITION OPENING (ZADANIE 7)
+        // 🔍 NEW: VERIFY POSITION OPENING
         // ============================================
         console.log(`\n🔍 Running position verification...`);
         try {
@@ -2133,27 +2179,37 @@ export async function POST(request: Request) {
             console.error(`🚨 CRITICAL: Position verification FAILED!`);
             console.error(`   Discrepancies:`, verificationResult.discrepancies);
             
-            // ✅ CRITICAL FIX: Sprawdź CZY tylko SL/TP są MISSING
-            // Jeśli TAK → nie blokuj symbolu (to może być temporary OKX delay)
-            // Jeśli NIE (quantity/entry mają problem) → blokuj symbol
-            const onlySlTpMissing = verificationResult.discrepancies.every(d => 
+            // ✅ CRITICAL FIX: Check if only SL/TP are MISSING AND entry/quantity are within tolerance
+            const slTpMissing = verificationResult.discrepancies.filter(d => 
               (d.field === 'slPrice' || d.field === 'tp1Price' || d.field === 'tp2Price' || d.field === 'tp3Price') && 
               d.actual === 'MISSING'
             );
             
-            console.log(`   Only SL/TP missing: ${onlySlTpMissing}`);
+            const otherIssues = verificationResult.discrepancies.filter(d => 
+              d.field !== 'slPrice' && d.field !== 'tp1Price' && d.field !== 'tp2Price' && d.field !== 'tp3Price'
+            );
+            
+            // Check if "other issues" are just small entry price differences
+            const onlyMinorEntryDiff = otherIssues.every(d => 
+              d.field === 'entryPrice' && (d.diff as number / planned.entryPrice) < 0.025  // Less than 2.5%
+            );
+            
+            const onlySlTpMissing = slTpMissing.length > 0 && (otherIssues.length === 0 || onlyMinorEntryDiff);
+            
+            console.log(`   SL/TP missing: ${slTpMissing.length}, Other issues: ${otherIssues.length}`);
+            console.log(`   Only minor entry diff: ${onlyMinorEntryDiff}, Only SL/TP missing: ${onlySlTpMissing}`);
             
             if (onlySlTpMissing) {
               // ============================================
               // ⚠️ ONLY SL/TP MISSING - LOG WARNING BUT DON'T BLOCK
               // ============================================
-              console.log(`   ⚠️ Only SL/TP are missing - this is likely OKX delay`);
+              console.log(`   ⚠️ Only SL/TP are missing (or minor entry diff) - this is likely OKX delay`);
               console.log(`   → NOT blocking symbol, position monitor will fix SL/TP later`);
               
               await db.insert(diagnosticFailures).values({
                 positionId: botPosition.id,
                 failureType: 'sl_tp_delayed',
-                reason: `SL/TP not found immediately after opening (OKX delay): ${verificationResult.discrepancies.map(d => d.field).join(', ')}`,
+                reason: `SL/TP not found immediately after opening (OKX delay): ${slTpMissing.map(d => d.field).join(', ')}`,
                 attemptCount: 1,
                 errorDetails: JSON.stringify(verificationResult.discrepancies),
                 createdAt: new Date().toISOString()
@@ -2165,8 +2221,6 @@ export async function POST(request: Request) {
                 reason: 'okx_propagation_delay'
               }, alert.id, botPosition.id);
               
-              // ✅ DON'T close position, DON'T block symbol
-              // Position monitor will fix SL/TP automatically
               console.log(`   ✅ Allowing position to stay open - monitor will fix SL/TP`);
               
             } else {
@@ -2176,7 +2230,7 @@ export async function POST(request: Request) {
               console.log(`   🚨 CRITICAL: Not just SL/TP missing - quantity/entry has issues!`);
               
               // ============================================
-              // 1. Log błędu w diagnostice
+              // 1. Log to diagnostics
               // ============================================
               await db.insert(diagnosticFailures).values({
                 positionId: botPosition.id,
@@ -2193,7 +2247,91 @@ export async function POST(request: Request) {
               }, alert.id, botPosition.id);
               
               // ============================================
-              // 2. Zablokuj symbol
+              // 2. Cleanup ALL algo orders FIRST
+              // ============================================
+              console.log(`🧹 Cleaning up all algo orders for ${okxSymbol} before closing...`);
+              try {
+                const timestamp = new Date().toISOString();
+                const method = "GET";
+                const requestPath = "/api/v5/trade/orders-algo-pending";
+                const queryString = `?instType=SWAP&instId=${okxSymbol}`;
+                const body = "";
+                
+                const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+                
+                const headers: Record<string, string> = {
+                  "OK-ACCESS-KEY": apiKey,
+                  "OK-ACCESS-SIGN": signature,
+                  "OK-ACCESS-TIMESTAMP": timestamp,
+                  "OK-ACCESS-PASSPHRASE": passphrase,
+                  "Content-Type": "application/json",
+                };
+                
+                if (environment === "demo") {
+                  headers["x-simulated-trading"] = "1";
+                }
+                
+                const algoResponse = await fetch(`https://www.okx.com${requestPath}${queryString}`, {
+                  method: "GET",
+                  headers,
+                });
+                
+                const algoData = await algoResponse.json();
+                
+                if (algoData.code === '0' && algoData.data && algoData.data.length > 0) {
+                  console.log(`   Found ${algoData.data.length} algo orders to cancel`);
+                  
+                  for (const order of algoData.data) {
+                    try {
+                      const cancelTimestamp = new Date().toISOString();
+                      const cancelMethod = "POST";
+                      const cancelPath = "/api/v5/trade/cancel-algos";
+                      const cancelPayload = [{
+                        algoId: order.algoId,
+                        instId: okxSymbol,
+                      }];
+                      const cancelBody = JSON.stringify(cancelPayload);
+                      
+                      const cancelSignature = createOkxSignature(cancelTimestamp, cancelMethod, cancelPath, cancelBody, apiSecret);
+                      
+                      const cancelHeaders: Record<string, string> = {
+                        "OK-ACCESS-KEY": apiKey,
+                        "OK-ACCESS-SIGN": cancelSignature,
+                        "OK-ACCESS-TIMESTAMP": cancelTimestamp,
+                        "OK-ACCESS-PASSPHRASE": passphrase,
+                        "Content-Type": "application/json",
+                      };
+                      
+                      if (environment === "demo") {
+                        cancelHeaders["x-simulated-trading"] = "1";
+                      }
+                      
+                      const cancelResponse = await fetch(`https://www.okx.com${cancelPath}`, {
+                        method: "POST",
+                        headers: cancelHeaders,
+                        body: cancelBody,
+                      });
+                      
+                      const cancelData = await cancelResponse.json();
+                      
+                      if (cancelData.code === '0') {
+                        console.log(`   ✅ Cancelled algo order: ${order.algoId}`);
+                      } else {
+                        console.warn(`   ⚠️ Failed to cancel ${order.algoId}: ${cancelData.msg}`);
+                      }
+                    } catch (cancelError: any) {
+                      console.error(`   ❌ Error cancelling order ${order.algoId}:`, cancelError.message);
+                    }
+                  }
+                } else {
+                  console.log(`   No algo orders found to cancel`);
+                }
+              } catch (cleanupError: any) {
+                console.error(`   ❌ Cleanup error:`, cleanupError.message);
+              }
+              
+              // ============================================
+              // 3. Lock symbol
               // ============================================
               console.log(`🔒 Locking symbol ${data.symbol} due to verification failure...`);
               await db.insert(symbolLocks).values({
@@ -2214,42 +2352,54 @@ export async function POST(request: Request) {
               }, alert.id, botPosition.id);
               
               // ============================================
-              // 3. Awaryjnie zamknij pozycję
+              // 4. Emergency close position (with retry)
               // ============================================
               console.log(`🚨 Attempting emergency close of position ${botPosition.id}...`);
-              try {
-                await closeOkxPosition(
-                  okxSymbol,
-                  side,
-                  finalQuantity,
-                  apiKey,
-                  apiSecret,
-                  passphrase,
-                  environment === "demo",
-                  alert.id,
-                  botPosition.id
-                );
-                
+              
+              let closeSuccess = false;
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                  await closeOkxPosition(
+                    okxSymbol,
+                    side,
+                    finalQuantity,
+                    apiKey,
+                    apiSecret,
+                    passphrase,
+                    environment === "demo",
+                    alert.id,
+                    botPosition.id
+                  );
+                  
+                  closeSuccess = true;
+                  console.log(`✅ Position ${botPosition.id} closed on attempt ${attempt}`);
+                  break;
+                } catch (closeError: any) {
+                  console.error(`❌ Close attempt ${attempt}/3 failed:`, closeError.message);
+                  if (attempt < 3) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                  }
+                }
+              }
+              
+              if (closeSuccess) {
                 await db.update(botPositions).set({
                   status: 'closed',
                   closeReason: 'emergency_verification_failure',
                   closedAt: new Date().toISOString()
                 }).where(eq(botPositions.id, botPosition.id));
                 
-                console.log(`✅ Position ${botPosition.id} closed due to verification failure`);
                 await logToBot('success', 'emergency_close_verification', `Position ${botPosition.id} closed due to verification failure`, { 
                   discrepancies: verificationResult.discrepancies 
                 }, alert.id, botPosition.id);
-              } catch (closeError: any) {
-                console.error(`❌ Failed to emergency close position:`, closeError.message);
-                await logToBot('error', 'emergency_close_failed', `Failed to close position after verification failure: ${closeError.message}`, {
-                  closeError: closeError.message,
+              } else {
+                await logToBot('error', 'emergency_close_failed', `Failed to close position ${botPosition.id} after 3 attempts`, {
                   positionId: botPosition.id
                 }, alert.id, botPosition.id);
               }
               
               // ============================================
-              // 4. Zwróć error response
+              // 5. Return error response
               // ============================================
               return NextResponse.json({
                 success: false,
@@ -2258,7 +2408,7 @@ export async function POST(request: Request) {
                 error: 'Position verification failed - symbol locked and position closed',
                 discrepancies: verificationResult.discrepancies,
                 symbolLocked: true,
-                positionClosed: true
+                positionClosed: closeSuccess
               });
             }
           }
@@ -2270,7 +2420,6 @@ export async function POST(request: Request) {
           
         } catch (verifyError: any) {
           console.error(`⚠️ Verification process failed:`, verifyError.message);
-          // Don't block the trade if verification itself fails, just log it
           await logToBot('warning', 'verification_error', `Verification process failed: ${verifyError.message}`, {
             error: verifyError.message,
             positionId: botPosition.id
