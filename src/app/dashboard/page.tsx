@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle, Wrench, XCircle, Eye, Shield } from "lucide-react";
@@ -120,9 +120,8 @@ export default function DashboardPage() {
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [botPositionsError, setBotPositionsError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
-  const [lastPositionsUpdate, setLastPositionsUpdate] = useState<string | null>(null);
   const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
-  const [syncingCredentials, setSyncingCredentials] = useState(false);
+  const [credentialsSynced, setCredentialsSynced] = useState(false); // ✅ NEW: Track if synced
   const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
   const [loadingLocks, setLoadingLocks] = useState(false);
   const [closeAllDialogOpen, setCloseAllDialogOpen] = useState(false);
@@ -136,224 +135,8 @@ export default function DashboardPage() {
   const [loadingOko, setLoadingOko] = useState(false);
   const [okoTimeRange, setOkoTimeRange] = useState<24 | 48 | 168>(24); // 24h, 48h, 7 days
 
-  useEffect(() => {
-    // Load credentials from localStorage
-    const stored = localStorage.getItem("exchange_credentials");
-    if (stored) {
-      const creds = JSON.parse(stored);
-      
-      setCredentials(creds);
-      
-      // ✅ AUTO-SYNC: If passphrase exists in localStorage but not in database, sync it
-      if (creds.passphrase) {
-        syncCredentialsToDatabase(creds);
-      }
-      
-      // Auto-fetch balance and positions on mount
-      fetchBalance(creds);
-      fetchPositions(creds);
-      fetchBotPositions();
-      fetchBotStatus();
-      fetchSymbolLocks();
-    }
-  }, []);
-
-  // Auto-refresh bot positions every 2 seconds
-  useEffect(() => {
-    if (!credentials) return;
-
-    const interval = setInterval(() => {
-      fetchBotPositions(true); // silent mode
-      fetchBotStatus(true); // also refresh bot status silently
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [credentials]);
-
-  // ✅ NEW: Auto-fix missing SL/TP every 10 seconds in background
-  useEffect(() => {
-    if (!credentials) return;
-
-    const autoFixInterval = setInterval(async () => {
-      try {
-        console.log("🔍 [Background] Running position monitor...");
-        const response = await fetch("/api/bot/monitor-positions", {
-          method: "POST",
-        });
-        const data = await response.json();
-
-        if (data.success && data.result) {
-          const { tpHits, slAdjustments, slTpFixed } = data.result;
-          if (tpHits > 0 || slAdjustments > 0 || slTpFixed > 0) {
-            console.log(`✅ [Background] Monitor: TP hits ${tpHits}, SL adj ${slAdjustments}, Fixed ${slTpFixed}`);
-            // Refresh positions after monitor actions
-            fetchBotPositions(true);
-            fetchPositions(credentials, true);
-          }
-        }
-      } catch (error) {
-        // Silent fail - don't disturb user
-        console.error("❌ [Background] Monitor failed:", error);
-      }
-    }, 10000); // Run every 10 seconds
-
-    return () => clearInterval(autoFixInterval);
-  }, [credentials]);
-
-  // Auto-refresh positions every 0.5 seconds (always on)
-  useEffect(() => {
-    if (!credentials) return;
-
-    const interval = setInterval(() => {
-      fetchPositions(credentials, true); // silent mode - no loading indicator
-    }, 500); // 0.5 seconds for ultra real-time data
-
-    return () => clearInterval(interval);
-  }, [credentials]);
-
-  // ✅ NEW: Fetch symbol locks
-  const fetchSymbolLocks = async () => {
-    setLoadingLocks(true);
-    try {
-      const response = await fetch("/api/bot/diagnostics/locks");
-      const data = await response.json();
-      if (data.success) {
-        // Filter only active locks
-        const activeLocks = data.locks.filter((lock: SymbolLock) => !lock.unlockedAt);
-        setSymbolLocks(activeLocks);
-      }
-    } catch (error) {
-      console.error("Failed to fetch symbol locks:", error);
-    } finally {
-      setLoadingLocks(false);
-    }
-  };
-
-  const syncCredentialsToDatabase = async (credsOverride?: ExchangeCredentials) => {
-    const credsToUse = credsOverride || credentials;
-    if (!credsToUse) {
-      toast.error("Brak credentials do synchronizacji");
-      return;
-    }
-
-    setSyncingCredentials(true);
-    try {
-      console.log("🔄 Syncing credentials to database:", {
-        exchange: credsToUse.exchange,
-        environment: credsToUse.environment,
-        apiKeyPreview: credsToUse.apiKey.substring(0, 8) + "...",
-        hasPassphrase: !!credsToUse.passphrase
-      });
-
-      const response = await fetch("/api/bot/credentials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: credsToUse.apiKey,
-          apiSecret: credsToUse.apiSecret,
-          passphrase: credsToUse.passphrase,
-          exchange: credsToUse.exchange,
-          environment: credsToUse.environment
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success(`✅ Credentials ${credsToUse.exchange.toUpperCase()} zapisane do bazy danych!`);
-        console.log("✅ Database sync successful");
-      } else {
-        toast.error(`❌ Błąd zapisu: ${data.error}`);
-        console.error("❌ Database sync failed:", data);
-      }
-    } catch (error) {
-      toast.error(`❌ Błąd połączenia: ${error instanceof Error ? error.message : "Nieznany błąd"}`);
-      console.error("❌ Sync error:", error);
-    } finally {
-      setSyncingCredentials(false);
-    }
-  };
-
-  const clearLocalStorageAndReconfigure = () => {
-    localStorage.removeItem("exchange_credentials");
-    toast.success("✅ localStorage wyczyszczony! Przekierowuję do konfiguracji...");
-    setTimeout(() => {
-      router.push("/exchange-test");
-    }, 1000);
-  };
-
-  const fetchBotStatus = async (silent = false) => {
-    try {
-      const response = await fetch("/api/bot/settings");
-      const data = await response.json();
-      
-      if (data.success && data.settings) {
-        setBotEnabled(data.settings.botEnabled);
-      }
-    } catch (err) {
-      if (!silent) {
-        console.error("Failed to fetch bot status:", err);
-      }
-    }
-  };
-
-  const signBybitRequest = async (apiKey: string, apiSecret: string, timestamp: number, params: Record<string, any>) => {
-    const queryString = Object.keys(params)
-      .sort()
-      .map(key => `${key}=${params[key]}`)
-      .join("&");
-    
-    const signString = timestamp + apiKey + 5000 + queryString;
-    
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(signString);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-    const hashArray = Array.from(new Uint8Array(signature));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-    
-    return hashHex;
-  };
-
-  const signOkxRequest = async (
-    timestamp: string,
-    method: string,
-    requestPath: string,
-    queryString: string,
-    body: string,
-    apiSecret: string
-  ) => {
-    const message = timestamp + method + requestPath + queryString + body;
-    
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(message);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-    const hashArray = Array.from(new Uint8Array(signature));
-    const base64Signature = btoa(String.fromCharCode(...hashArray));
-    
-    return base64Signature;
-  };
-
-  const fetchBotPositions = async (silent = false) => {
+  // ✅ FIXED: useCallback for functions used in useEffect
+  const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) {
       setLoadingBotPositions(true);
     }
@@ -364,7 +147,6 @@ export default function DashboardPage() {
       const data = await response.json();
 
       if (data.success && Array.isArray(data.positions)) {
-        // Filter only open positions
         const openPositions = data.positions.filter((p: BotPosition) => p.status === 'open');
         setBotPositions(openPositions);
       } else {
@@ -377,9 +159,9 @@ export default function DashboardPage() {
         setLoadingBotPositions(false);
       }
     }
-  };
+  }, []);
 
-  const fetchPositions = async (creds?: ExchangeCredentials, silent = false) => {
+  const fetchPositions = useCallback(async (creds?: ExchangeCredentials, silent = false) => {
     const credsToUse = creds || credentials;
     if (!credsToUse) return;
 
@@ -521,6 +303,249 @@ export default function DashboardPage() {
         setLoadingPositions(false);
       }
     }
+  }, [credentials]);
+
+  const fetchOkoActions = useCallback(async (silent = false) => {
+    if (!silent) setLoadingOko(true);
+    
+    try {
+      const response = await fetch(`/api/bot/oko-actions?hours=${okoTimeRange}&limit=50`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setOkoActions(data.actions);
+        setOkoStats(data.stats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch Oko actions:', error);
+    } finally {
+      if (!silent) setLoadingOko(false);
+    }
+  }, [okoTimeRange]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("exchange_credentials");
+    if (stored) {
+      const creds = JSON.parse(stored);
+      
+      setCredentials(creds);
+      
+      // ✅ FIXED: Only sync once per session
+      if (creds.passphrase && !credentialsSynced) {
+        syncCredentialsToDatabase(creds);
+        setCredentialsSynced(true);
+      }
+      
+      fetchBalance(creds);
+      fetchPositions(creds);
+      fetchBotPositions();
+      fetchBotStatus();
+      fetchSymbolLocks();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ✅ FIXED: Added dependencies
+  useEffect(() => {
+    if (!credentials) return;
+
+    const interval = setInterval(() => {
+      fetchBotPositions(true);
+      fetchBotStatus(true);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [credentials, fetchBotPositions]);
+
+  // ✅ FIXED: Added dependencies
+  useEffect(() => {
+    if (!credentials) return;
+
+    const autoFixInterval = setInterval(async () => {
+      try {
+        console.log("🔍 [Background] Running position monitor...");
+        const response = await fetch("/api/bot/monitor-positions", {
+          method: "POST",
+        });
+        const data = await response.json();
+
+        if (data.success && data.result) {
+          const { tpHits, slAdjustments, slTpFixed } = data.result;
+          if (tpHits > 0 || slAdjustments > 0 || slTpFixed > 0) {
+            console.log(`✅ [Background] Monitor: TP hits ${tpHits}, SL adj ${slAdjustments}, Fixed ${slTpFixed}`);
+            fetchBotPositions(true);
+            fetchPositions(credentials, true);
+          }
+        }
+      } catch (error) {
+        console.error("❌ [Background] Monitor failed:", error);
+      }
+    }, 10000);
+
+    return () => clearInterval(autoFixInterval);
+  }, [credentials, fetchBotPositions, fetchPositions]);
+
+  useEffect(() => {
+    if (!credentials) return;
+
+    const interval = setInterval(() => {
+      fetchPositions(credentials, true);
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [credentials, fetchPositions]);
+
+  // ✅ FIXED: Added dependencies
+  useEffect(() => {
+    if (!credentials) return;
+    
+    fetchOkoActions(true);
+    
+    const interval = setInterval(() => {
+      fetchOkoActions(true);
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [credentials, fetchOkoActions]);
+
+  const fetchSymbolLocks = async () => {
+    setLoadingLocks(true);
+    try {
+      const response = await fetch("/api/bot/diagnostics/locks");
+      const data = await response.json();
+      if (data.success) {
+        // Filter only active locks
+        const activeLocks = data.locks.filter((lock: SymbolLock) => !lock.unlockedAt);
+        setSymbolLocks(activeLocks);
+      }
+    } catch (error) {
+      console.error("Failed to fetch symbol locks:", error);
+    } finally {
+      setLoadingLocks(false);
+    }
+  };
+
+  const syncCredentialsToDatabase = async (credsOverride?: ExchangeCredentials) => {
+    const credsToUse = credsOverride || credentials;
+    if (!credsToUse) {
+      toast.error("Brak credentials do synchronizacji");
+      return;
+    }
+
+    setSyncingCredentials(true);
+    try {
+      console.log("🔄 Syncing credentials to database:", {
+        exchange: credsToUse.exchange,
+        environment: credsToUse.environment,
+        apiKeyPreview: credsToUse.apiKey.substring(0, 8) + "...",
+        hasPassphrase: !!credsToUse.passphrase
+      });
+
+      const response = await fetch("/api/bot/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: credsToUse.apiKey,
+          apiSecret: credsToUse.apiSecret,
+          passphrase: credsToUse.passphrase,
+          exchange: credsToUse.exchange,
+          environment: credsToUse.environment
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`✅ Credentials ${credsToUse.exchange.toUpperCase()} zapisane do bazy danych!`);
+        console.log("✅ Database sync successful");
+      } else {
+        toast.error(`❌ Błąd zapisu: ${data.error}`);
+        console.error("❌ Database sync failed:", data);
+      }
+    } catch (error) {
+      toast.error(`❌ Błąd połączenia: ${error instanceof Error ? error.message : "Nieznany błąd"}`);
+      console.error("❌ Sync error:", error);
+    } finally {
+      setSyncingCredentials(false);
+    }
+  };
+
+  const clearLocalStorageAndReconfigure = () => {
+    localStorage.removeItem("exchange_credentials");
+    toast.success("✅ localStorage wyczyszczony! Przekierowuję do konfiguracji...");
+    setTimeout(() => {
+      router.push("/exchange-test");
+    }, 1000);
+  };
+
+  const fetchBotStatus = async (silent = false) => {
+    try {
+      const response = await fetch("/api/bot/settings");
+      const data = await response.json();
+      
+      if (data.success && data.settings) {
+        setBotEnabled(data.settings.botEnabled);
+      }
+    } catch (err) {
+      if (!silent) {
+        console.error("Failed to fetch bot status:", err);
+      }
+    }
+  };
+
+  const signBybitRequest = async (apiKey: string, apiSecret: string, timestamp: number, params: Record<string, any>) => {
+    const queryString = Object.keys(params)
+      .sort()
+      .map(key => `${key}=${params[key]}`)
+      .join("&");
+    
+    const signString = timestamp + apiKey + 5000 + queryString;
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiSecret);
+    const messageData = encoder.encode(signString);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+    const hashArray = Array.from(new Uint8Array(signature));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    
+    return hashHex;
+  };
+
+  const signOkxRequest = async (
+    timestamp: string,
+    method: string,
+    requestPath: string,
+    queryString: string,
+    body: string,
+    apiSecret: string
+  ) => {
+    const message = timestamp + method + requestPath + queryString + body;
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiSecret);
+    const messageData = encoder.encode(message);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+    const hashArray = Array.from(new Uint8Array(signature));
+    const base64Signature = btoa(String.fromCharCode(...hashArray));
+    
+    return base64Signature;
   };
 
   const fetchBalance = async (creds?: ExchangeCredentials) => {
@@ -634,37 +659,6 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
-
-  const fetchOkoActions = async (silent = false) => {
-    if (!silent) setLoadingOko(true);
-    
-    try {
-      const response = await fetch(`/api/bot/oko-actions?hours=${okoTimeRange}&limit=50`);
-      const data = await response.json();
-      
-      if (data.success) {
-        setOkoActions(data.actions);
-        setOkoStats(data.stats);
-      }
-    } catch (error) {
-      console.error('Failed to fetch Oko actions:', error);
-    } finally {
-      if (!silent) setLoadingOko(false);
-    }
-  };
-
-  // Auto-refresh Oko actions
-  useEffect(() => {
-    if (!credentials) return;
-    
-    fetchOkoActions(true);
-    
-    const interval = setInterval(() => {
-      fetchOkoActions(true);
-    }, 10000); // Every 10 seconds
-    
-    return () => clearInterval(interval);
-  }, [credentials, okoTimeRange]);
 
   const handleSyncPositions = async () => {
     setLoadingSync(true);
@@ -822,6 +816,50 @@ export default function DashboardPage() {
     } finally {
       setLoadingClosePosition(false);
     }
+  };
+
+  // ✅ NEW: Helper component for TP badges
+  const TPBadge = ({ 
+    label, 
+    price, 
+    livePrice, 
+    isHit 
+  }: { 
+    label: string; 
+    price: number | null; 
+    livePrice: number | null; 
+    isHit: boolean;
+  }) => {
+    if (!livePrice && !price) return null;
+    
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge 
+            variant={isHit ? "default" : "outline"} 
+            className={
+              isHit 
+                ? "bg-green-600 text-white" 
+                : livePrice
+                  ? "border-green-700 text-green-300"
+                  : "border-yellow-700 text-yellow-300"
+            }
+          >
+            {label}: {(livePrice || price)?.toFixed(4)} 
+            {isHit ? " ✓" : livePrice ? " 🟢" : " 🟡"}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="text-gray-200">
+            {isHit 
+              ? `✓ ${label} osiągnięty` 
+              : livePrice 
+                ? "🟢 Aktywny na giełdzie (live)" 
+                : "🟡 Planowany (cache) - może nie być ustawiony!"}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    );
   };
 
   // Calculate stats
@@ -1473,6 +1511,7 @@ export default function DashboardPage() {
                       const pnlPercent = initialMargin !== 0 ? (pnl / initialMargin) * 100 : 0;
                       const isProfitable = pnl >= 0;
                       
+                      // ✅ FIXED: Now actually used
                       const isBotPosition = botPositions.some(bp => 
                         bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "BUY" : "SELL")
                       );
@@ -1500,7 +1539,10 @@ export default function DashboardPage() {
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="font-bold text-xl text-white">{position.symbol}</span>
-                                  <Badge variant="default" className="text-xs bg-blue-600 text-white">BOT</Badge>
+                                  {/* ✅ FIXED: Only show BOT badge for bot positions */}
+                                  {isBotPosition && (
+                                    <Badge variant="default" className="text-xs bg-blue-600 text-white">BOT</Badge>
+                                  )}
                                   {botPositionData && (
                                     <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
                                       {botPositionData.tier}
@@ -1563,7 +1605,7 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
-                          {/* ✅ ALWAYS show SL/TP section */}
+                          {/* ✅ FIXED: Simplified TP badges using component */}
                           <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2 text-xs">
@@ -1599,79 +1641,24 @@ export default function DashboardPage() {
                               <span className="text-gray-300 font-semibold">Take Profit:</span>
                               {(botPositionData?.liveTp1Price || botPositionData?.tp1Price) ? (
                                 <>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant={botPositionData.tp1Hit ? "default" : "outline"} className={
-                                        botPositionData.tp1Hit 
-                                          ? "bg-green-600 text-white" 
-                                          : botPositionData.liveTp1Price
-                                            ? "border-green-700 text-green-300"
-                                            : "border-yellow-700 text-yellow-300"
-                                      }>
-                                        TP1: {(botPositionData.liveTp1Price || botPositionData.tp1Price)?.toFixed(4)} 
-                                        {botPositionData.tp1Hit ? " ✓" : botPositionData.liveTp1Price ? " 🟢" : " 🟡"}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-gray-200">
-                                        {botPositionData.tp1Hit 
-                                          ? "✓ TP1 osiągnięty" 
-                                          : botPositionData.liveTp1Price 
-                                            ? "🟢 Aktywny na giełdzie (live)" 
-                                            : "🟡 Planowany (cache) - może nie być ustawiony!"}
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  {(botPositionData.liveTp2Price || botPositionData.tp2Price) && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Badge variant={botPositionData.tp2Hit ? "default" : "outline"} className={
-                                          botPositionData.tp2Hit 
-                                            ? "bg-green-600 text-white" 
-                                            : botPositionData.liveTp2Price
-                                              ? "border-green-700 text-green-300"
-                                              : "border-yellow-700 text-yellow-300"
-                                        }>
-                                          TP2: {(botPositionData.liveTp2Price || botPositionData.tp2Price)?.toFixed(4)} 
-                                          {botPositionData.tp2Hit ? " ✓" : botPositionData.liveTp2Price ? " 🟢" : " 🟡"}
-                                        </Badge>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-gray-200">
-                                          {botPositionData.tp2Hit 
-                                            ? "✓ TP2 osiągnięty" 
-                                            : botPositionData.liveTp2Price 
-                                              ? "🟢 Aktywny na giełdzie (live)" 
-                                              : "🟡 Planowany (cache) - może nie być ustawiony!"}
-                                        </p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {(botPositionData.liveTp3Price || botPositionData.tp3Price) && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Badge variant={botPositionData.tp3Hit ? "default" : "outline"} className={
-                                          botPositionData.tp3Hit 
-                                            ? "bg-green-600 text-white" 
-                                            : botPositionData.liveTp3Price
-                                              ? "border-green-700 text-green-300"
-                                              : "border-yellow-700 text-yellow-300"
-                                        }>
-                                          TP3: {(botPositionData.liveTp3Price || botPositionData.tp3Price)?.toFixed(4)} 
-                                          {botPositionData.tp3Hit ? " ✓" : botPositionData.liveTp3Price ? " 🟢" : " 🟡"}
-                                        </Badge>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-gray-200">
-                                          {botPositionData.tp3Hit 
-                                            ? "✓ TP3 osiągnięty" 
-                                            : botPositionData.liveTp3Price 
-                                              ? "🟢 Aktywny na giełdzie (live)" 
-                                              : "🟡 Planowany (cache) - może nie być ustawiony!"}
-                                        </p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
+                                  <TPBadge 
+                                    label="TP1"
+                                    price={botPositionData.tp1Price}
+                                    livePrice={botPositionData.liveTp1Price}
+                                    isHit={botPositionData.tp1Hit}
+                                  />
+                                  <TPBadge 
+                                    label="TP2"
+                                    price={botPositionData.tp2Price}
+                                    livePrice={botPositionData.liveTp2Price}
+                                    isHit={botPositionData.tp2Hit}
+                                  />
+                                  <TPBadge 
+                                    label="TP3"
+                                    price={botPositionData.tp3Price}
+                                    livePrice={botPositionData.liveTp3Price}
+                                    isHit={botPositionData.tp3Hit}
+                                  />
                                 </>
                               ) : (
                                 <Badge variant="destructive" className="text-xs">
