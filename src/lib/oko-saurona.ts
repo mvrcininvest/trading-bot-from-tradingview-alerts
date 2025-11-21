@@ -558,6 +558,76 @@ export async function checkTimeBasedExit(
 }
 
 // ============================================
+// 🆕 FAZA 3 - CHECK 8: GHOST POSITION CLEANUP
+// ============================================
+
+export async function checkGhostPosition(
+  position: PositionData,
+  okxPositions: any[]
+): Promise<OkoCheckResult> {
+  try {
+    console.log(`   🔍 [OKO] Ghost Position Check...`);
+
+    // Check if position exists on OKX
+    const symbol = position.symbol.includes('-') 
+      ? position.symbol 
+      : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
+    
+    const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+    
+    if (!okxPos || parseFloat(okxPos.pos) === 0) {
+      // Position doesn't exist on exchange but exists in DB = GHOST
+      return {
+        shouldClose: false,
+        shouldFix: true,
+        action: 'ghost_position_cleanup',
+        reason: 'Position exists in DB but not on exchange',
+        checkCount: 1, // Instant cleanup
+        metadata: {
+          symbol: position.symbol,
+          dbId: position.id,
+          foundOnExchange: false,
+        }
+      };
+    }
+
+    // Verify position direction matches
+    const okxSide = parseFloat(okxPos.pos) > 0 ? 'BUY' : 'SELL';
+    if (okxSide !== position.side) {
+      return {
+        shouldClose: false,
+        shouldFix: true,
+        action: 'ghost_position_direction_mismatch',
+        reason: `DB shows ${position.side}, exchange shows ${okxSide}`,
+        checkCount: 1,
+        metadata: {
+          symbol: position.symbol,
+          dbSide: position.side,
+          okxSide,
+        }
+      };
+    }
+
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'none',
+      reason: 'Position exists on exchange',
+      checkCount: 0,
+    };
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to check ghost position:`, error.message);
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'error',
+      reason: error.message,
+      checkCount: 0,
+    };
+  }
+}
+
+// ============================================
 // 🔄 CONFIRMATION SYSTEM
 // ============================================
 
@@ -778,13 +848,14 @@ export async function isSymbolBanned(symbol: string): Promise<boolean> {
 }
 
 // ============================================
-// 🎯 MAIN OKO GUARD FUNCTION (WITH FAZA 2)
+// 🎯 MAIN OKO GUARD FUNCTION (WITH FAZA 2 + 3)
 // ============================================
 
 export async function runOkoGuard(
   position: PositionData,
   allPositions: PositionData[],
-  credentials?: OkxCredentials
+  credentials?: OkxCredentials,
+  okxPositions?: any[]
 ): Promise<OkoCheckResult> {
   try {
     console.log(`\n👁️ [OKO] Scanning position ${position.symbol}...`);
@@ -813,6 +884,28 @@ export async function runOkoGuard(
         reason: 'Symbol banned by capitulation',
         checkCount: 0,
       };
+    }
+
+    // ============================================
+    // 🆕 FAZA 3 - PRIORITY 0: GHOST POSITION CHECK (FIRST!)
+    // ============================================
+    
+    if (okxPositions) {
+      const ghostResult = await checkGhostPosition(position, okxPositions);
+      if (ghostResult.shouldFix && ghostResult.action === 'ghost_position_cleanup') {
+        console.log(`   👻 [OKO] GHOST POSITION DETECTED - cleanup needed`);
+        
+        await logOkoAction(
+          position.id,
+          position.symbol,
+          'ghost_position_cleanup',
+          ghostResult.reason,
+          1,
+          ghostResult.metadata
+        );
+
+        return ghostResult;
+      }
     }
 
     // ============================================

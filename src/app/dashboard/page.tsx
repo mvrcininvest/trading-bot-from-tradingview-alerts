@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle, Wrench, XCircle } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, ArrowUpRight, ArrowDownRight, Bell, Bot, History, BarChart3, FileText, Zap, DollarSign, Power, AlertTriangle, Wrench, XCircle, Eye, Shield } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,30 @@ interface SymbolLock {
   unlockedAt: string | null;
 }
 
+interface OkoAction {
+  id: number;
+  positionId: number | null;
+  actionType: string;
+  reason: string;
+  checkCount: number;
+  createdAt: string;
+  metadata: any;
+  position: {
+    symbol: string;
+    side: string;
+    tier: string;
+    entryPrice: number;
+    unrealisedPnl: number;
+  } | null;
+}
+
+interface OkoStats {
+  total: number;
+  closures: number;
+  repairs: number;
+  byType: Record<string, number>;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
@@ -107,6 +131,10 @@ export default function DashboardPage() {
   const [positionToClose, setPositionToClose] = useState<Position | null>(null);
   const [loadingClosePosition, setLoadingClosePosition] = useState(false);
   const [balanceCollapsed, setBalanceCollapsed] = useState(false);
+  const [okoActions, setOkoActions] = useState<OkoAction[]>([]);
+  const [okoStats, setOkoStats] = useState<OkoStats | null>(null);
+  const [loadingOko, setLoadingOko] = useState(false);
+  const [okoTimeRange, setOkoTimeRange] = useState<24 | 48 | 168>(24); // 24h, 48h, 7 days
 
   useEffect(() => {
     // Load credentials from localStorage
@@ -607,6 +635,37 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchOkoActions = async (silent = false) => {
+    if (!silent) setLoadingOko(true);
+    
+    try {
+      const response = await fetch(`/api/bot/oko-actions?hours=${okoTimeRange}&limit=50`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setOkoActions(data.actions);
+        setOkoStats(data.stats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch Oko actions:', error);
+    } finally {
+      if (!silent) setLoadingOko(false);
+    }
+  };
+
+  // Auto-refresh Oko actions
+  useEffect(() => {
+    if (!credentials) return;
+    
+    fetchOkoActions(true);
+    
+    const interval = setInterval(() => {
+      fetchOkoActions(true);
+    }, 10000); // Every 10 seconds
+    
+    return () => clearInterval(interval);
+  }, [credentials, okoTimeRange]);
+
   const handleSyncPositions = async () => {
     setLoadingSync(true);
     try {
@@ -910,6 +969,42 @@ export default function DashboardPage() {
           </Alert>
         )}
 
+        {/* ✅ NEW: Oko Saurona Activity Summary */}
+        {okoStats && okoStats.total > 0 && (
+          <Alert className="border-2 border-purple-600/50 bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-sm">
+            <Eye className="h-5 w-5 text-purple-400" />
+            <AlertDescription className="text-sm text-purple-200">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <strong className="text-purple-100 text-base">👁️ Oko Saurona: {okoStats.total} akcji w ostatnich {okoTimeRange}h</strong>
+                  <div className="mt-2 flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive" className="bg-red-600/30 text-red-200 border-red-500/50">
+                        <XCircle className="mr-1 h-3 w-3" />
+                        {okoStats.closures} zamknięć
+                      </Badge>
+                      <Badge variant="secondary" className="bg-blue-600/30 text-blue-200 border-blue-500/50">
+                        <Wrench className="mr-1 h-3 w-3" />
+                        {okoStats.repairs} napraw
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    const okoTab = document.querySelector('[value="oko"]') as HTMLElement;
+                    okoTab?.click();
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Zobacz Szczegóły
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header with Quick Stats */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -1061,7 +1156,7 @@ export default function DashboardPage() {
 
         {/* Main Content with Tabs - Dark Theme */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+          <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
             <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <BarChart3 className="mr-2 h-4 w-4" />
               Przegląd
@@ -1069,6 +1164,15 @@ export default function DashboardPage() {
             <TabsTrigger value="positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Activity className="mr-2 h-4 w-4" />
               Otwarte Pozycje
+            </TabsTrigger>
+            <TabsTrigger value="oko" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
+              <Eye className="mr-2 h-4 w-4" />
+              Oko Saurona
+              {okoStats && okoStats.total > 0 && (
+                <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                  {okoStats.total}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Settings className="mr-2 h-4 w-4" />
@@ -1583,6 +1687,194 @@ export default function DashboardPage() {
                               <span>{new Date(botPositionData.openedAt).toLocaleString("pl-PL")}</span>
                             </div>
                           )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ✅ NEW: Oko Saurona Tab */}
+          <TabsContent value="oko" className="space-y-6">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <Eye className="h-5 w-5 text-purple-400" />
+                      Oko Saurona - Activity Monitor
+                    </CardTitle>
+                    <CardDescription className="text-gray-300">
+                      System ochrony pozycji w czasie rzeczywistym
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={okoTimeRange}
+                      onChange={(e) => setOkoTimeRange(Number(e.target.value) as 24 | 48 | 168)}
+                      className="px-3 py-2 rounded-lg bg-gray-800 text-gray-200 border border-gray-700 text-sm"
+                    >
+                      <option value={24}>Ostatnie 24h</option>
+                      <option value={48}>Ostatnie 48h</option>
+                      <option value={168}>Ostatnie 7 dni</option>
+                    </select>
+                    <Button
+                      onClick={() => fetchOkoActions()}
+                      disabled={loadingOko}
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      <RefreshCw className={`mr-2 h-4 w-4 ${loadingOko ? "animate-spin" : ""}`} />
+                      Odśwież
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {/* Statistics Cards */}
+                {okoStats && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <Card className="border-purple-700/30 bg-gradient-to-br from-purple-600/20 to-gray-900/80">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-purple-300 mb-1">Wszystkie Akcje</p>
+                            <p className="text-3xl font-bold text-white">{okoStats.total}</p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
+                            <Eye className="h-6 w-6 text-purple-400" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-red-700/30 bg-gradient-to-br from-red-600/20 to-gray-900/80">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-red-300 mb-1">Zamknięcia Awaryjne</p>
+                            <p className="text-3xl font-bold text-white">{okoStats.closures}</p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30">
+                            <XCircle className="h-6 w-6 text-red-400" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-blue-700/30 bg-gradient-to-br from-blue-600/20 to-gray-900/80">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-blue-300 mb-1">Naprawy</p>
+                            <p className="text-3xl font-bold text-white">{okoStats.repairs}</p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
+                            <Wrench className="h-6 w-6 text-blue-400" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Actions List */}
+                {loadingOko && okoActions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
+                    <p className="text-sm text-gray-300">Ładowanie akcji Oka...</p>
+                  </div>
+                ) : okoActions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Shield className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
+                    <p className="text-gray-300">Brak akcji Oka w wybranym okresie</p>
+                    <p className="text-sm text-gray-400 mt-2">System działa prawidłowo i nie wykrył żadnych zagrożeń</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {okoActions.map((action) => {
+                      const isClosureAction = action.actionType.includes('emergency') || 
+                                            action.actionType.includes('sl_breach') ||
+                                            action.actionType.includes('pnl_emergency') ||
+                                            action.actionType.includes('multi_position_correlation') ||
+                                            action.actionType.includes('time_based_exit') ||
+                                            action.actionType.includes('account_drawdown');
+                      
+                      const isRepairAction = action.actionType.includes('missing_sl_tp') ||
+                                           action.actionType.includes('tp1_quantity_fix') ||
+                                           action.actionType.includes('ghost_position_cleanup');
+                      
+                      return (
+                        <div
+                          key={action.id}
+                          className={`p-4 rounded-xl border-2 ${
+                            isClosureAction 
+                              ? 'border-red-700/30 bg-gradient-to-r from-red-900/20 to-gray-900/80' 
+                              : isRepairAction
+                              ? 'border-blue-700/30 bg-gradient-to-r from-blue-900/20 to-gray-900/80'
+                              : 'border-gray-700/30 bg-gray-900/60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start gap-3 flex-1">
+                              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                                isClosureAction 
+                                  ? 'bg-red-500/30 border border-red-500/40' 
+                                  : 'bg-blue-500/30 border border-blue-500/40'
+                              }`}>
+                                {isClosureAction ? (
+                                  <XCircle className="h-5 w-5 text-red-400" />
+                                ) : (
+                                  <Wrench className="h-5 w-5 text-blue-400" />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-bold text-white">
+                                    {action.actionType.replace(/_/g, ' ').toUpperCase()}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
+                                    {action.checkCount === 1 ? 'Instant' : `${action.checkCount} checks`}
+                                  </Badge>
+                                  {action.position && (
+                                    <>
+                                      <Badge variant="default" className="text-xs bg-gray-700 text-gray-200">
+                                        {action.position.symbol}
+                                      </Badge>
+                                      <Badge variant={action.position.side === 'BUY' ? 'default' : 'destructive'} className="text-xs">
+                                        {action.position.side}
+                                      </Badge>
+                                    </>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-300 mb-2">{action.reason}</p>
+                                {action.metadata && (
+                                  <div className="text-xs text-gray-400 space-y-1">
+                                    {action.metadata.pnl !== undefined && (
+                                      <div>PnL: <span className={action.metadata.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{action.metadata.pnl >= 0 ? '+' : ''}{action.metadata.pnl.toFixed(2)} USDT</span></div>
+                                    )}
+                                    {action.metadata.currentPrice && (
+                                      <div>Cena: <span className="text-white">{action.metadata.currentPrice.toFixed(4)}</span></div>
+                                    )}
+                                    {action.metadata.breachPercent && (
+                                      <div>Naruszenie SL: <span className="text-red-400">{action.metadata.breachPercent}%</span></div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right text-xs text-gray-400">
+                              {new Date(action.createdAt).toLocaleString('pl-PL', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                              })}
+                            </div>
+                          </div>
                         </div>
                       );
                     })}

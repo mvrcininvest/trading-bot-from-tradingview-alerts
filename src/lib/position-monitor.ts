@@ -802,7 +802,7 @@ export async function monitorAndManagePositions(silent = true) {
       console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}, PnL: ${livePnl.toFixed(2)} USDT`);
 
       // ============================================
-      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS (WITH FAZA 2)
+      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS (WITH FAZA 2 + 3)
       // ============================================
       
       const positionData = {
@@ -820,8 +820,44 @@ export async function monitorAndManagePositions(silent = true) {
         tp1Hit: dbPos.tp1Hit || false,
       };
 
-      // 🆕 FAZA 2: Pass credentials to Oko
-      const okoResult = await runOkoGuard(positionData, validPositionData, credentials);
+      // 🆕 FAZA 2 + 3: Pass credentials AND okxPositions to Oko
+      const okoResult = await runOkoGuard(positionData, validPositionData, credentials, okxPositions);
+      
+      // ============================================
+      // 🆕 FAZA 3: HANDLE GHOST POSITION CLEANUP
+      // ============================================
+      
+      if (okoResult.shouldFix && okoResult.action === 'ghost_position_cleanup') {
+        console.log(`👻 [OKO] Ghost position detected - marking as closed in DB`);
+        
+        try {
+          await db.update(botPositions)
+            .set({
+              status: "closed",
+              closeReason: "ghost_position_cleanup",
+              closedAt: new Date().toISOString(),
+            })
+            .where(eq(botPositions.id, dbPos.id));
+          
+          slTpFixed++;
+          okoActions++;
+          
+          details.push({
+            symbol,
+            side,
+            action: "ghost_position_cleanup",
+            reason: okoResult.reason
+          });
+          
+          console.log(`   ✅ Ghost position cleaned up from database`);
+          continue;
+          
+        } catch (error: any) {
+          const errMsg = `Failed to cleanup ghost position ${symbol}: ${error.message}`;
+          console.error(`   ❌ ${errMsg}`);
+          errors.push(errMsg);
+        }
+      }
       
       // ============================================
       // 🆕 FAZA 2: HANDLE REPAIR ACTIONS (shouldFix)
