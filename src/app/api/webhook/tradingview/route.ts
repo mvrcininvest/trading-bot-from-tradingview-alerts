@@ -2191,7 +2191,7 @@ export async function POST(request: Request) {
             
             // Check if "other issues" are just small entry price differences
             const onlyMinorEntryDiff = otherIssues.every(d => 
-              d.field === 'entryPrice' && (d.diff as number / planned.entryPrice) < 0.025  // Less than 2.5%
+              d.field === 'entryPrice' && (d.diff as number / entryPrice) < 0.025  // Less than 2.5%
             );
             
             const onlySlTpMissing = slTpMissing.length > 0 && (otherIssues.length === 0 || onlyMinorEntryDiff);
