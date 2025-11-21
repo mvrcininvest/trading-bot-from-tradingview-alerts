@@ -755,6 +755,81 @@ async function openOkxPosition(
       const isBuy = side.toUpperCase() === "BUY";
       const algoSide = isBuy ? 'sell' : 'buy';
       
+      // ============================================
+      // ✅ CRITICAL FIX: FINAL VALIDATION BEFORE SETTING SL/TP
+      // ============================================
+      console.log(`\n✅ FINAL VALIDATION before setting SL/TP...`);
+      console.log(`   Side: ${side.toUpperCase()}, Actual Entry: ${actualEntryPrice}`);
+      console.log(`   BEFORE validation - SL: ${slPrice?.toFixed(4)}, TP: ${tpPrice?.toFixed(4)}`);
+      
+      if (slPrice && tpPrice) {
+        if (isBuy) {
+          // ========================================
+          // LONG: SL MUST be BELOW entry, TP MUST be ABOVE entry
+          // ========================================
+          if (slPrice >= actualEntryPrice) {
+            const correctedSl = actualEntryPrice * 0.985; // 1.5% below entry
+            console.error(`   ❌ CRITICAL ERROR: LONG SL ${slPrice.toFixed(4)} is ABOVE/EQUAL entry ${actualEntryPrice}!`);
+            console.error(`   → Correcting to ${correctedSl.toFixed(4)} (1.5% below entry)`);
+            await logToBot('error', 'sl_corrected_long', `LONG: SL was ${slPrice.toFixed(4)} >= entry ${actualEntryPrice}, corrected to ${correctedSl.toFixed(4)}`, {
+              side,
+              actualEntry: actualEntryPrice,
+              wrongSl: slPrice,
+              correctedSl
+            }, alertId);
+            slPrice = correctedSl;
+          }
+          
+          if (tpPrice <= actualEntryPrice) {
+            const correctedTp = actualEntryPrice * 1.015; // 1.5% above entry
+            console.error(`   ❌ CRITICAL ERROR: LONG TP ${tpPrice.toFixed(4)} is BELOW/EQUAL entry ${actualEntryPrice}!`);
+            console.error(`   → Correcting to ${correctedTp.toFixed(4)} (1.5% above entry)`);
+            await logToBot('error', 'tp_corrected_long', `LONG: TP was ${tpPrice.toFixed(4)} <= entry ${actualEntryPrice}, corrected to ${correctedTp.toFixed(4)}`, {
+              side,
+              actualEntry: actualEntryPrice,
+              wrongTp: tpPrice,
+              correctedTp
+            }, alertId);
+            tpPrice = correctedTp;
+          }
+          
+          console.log(`   ✅ LONG validated - SL: ${slPrice.toFixed(4)} (below entry), TP: ${tpPrice.toFixed(4)} (above entry)`);
+        } else {
+          // ========================================
+          // ✅ CRITICAL FIX: SHORT - SL MUST be ABOVE entry, TP MUST be BELOW entry
+          // ========================================
+          if (slPrice <= actualEntryPrice) {
+            const correctedSl = actualEntryPrice * 1.015; // 1.5% above entry
+            console.error(`   ❌ CRITICAL ERROR: SHORT SL ${slPrice.toFixed(4)} is BELOW/EQUAL entry ${actualEntryPrice}!`);
+            console.error(`   → Correcting to ${correctedSl.toFixed(4)} (1.5% above entry)`);
+            await logToBot('error', 'sl_corrected_short', `SHORT: SL was ${slPrice.toFixed(4)} <= entry ${actualEntryPrice}, corrected to ${correctedSl.toFixed(4)}`, {
+              side,
+              actualEntry: actualEntryPrice,
+              wrongSl: slPrice,
+              correctedSl
+            }, alertId);
+            slPrice = correctedSl;
+          }
+          
+          if (tpPrice >= actualEntryPrice) {
+            const correctedTp = actualEntryPrice * 0.985; // 1.5% below entry
+            console.error(`   ❌ CRITICAL ERROR: SHORT TP ${tpPrice.toFixed(4)} is ABOVE/EQUAL entry ${actualEntryPrice}!`);
+            console.error(`   → Correcting to ${correctedTp.toFixed(4)} (1.5% below entry)`);
+            await logToBot('error', 'tp_corrected_short', `SHORT: TP was ${tpPrice.toFixed(4)} >= entry ${actualEntryPrice}, corrected to ${correctedTp.toFixed(4)}`, {
+              side,
+              actualEntry: actualEntryPrice,
+              wrongTp: tpPrice,
+              correctedTp
+            }, alertId);
+            tpPrice = correctedTp;
+          }
+          
+          console.log(`   ✅ SHORT validated - SL: ${slPrice.toFixed(4)} (above entry), TP: ${tpPrice.toFixed(4)} (below entry)`);
+        }
+        
+        console.log(`   AFTER validation - SL: ${slPrice.toFixed(4)}, TP: ${tpPrice.toFixed(4)}`);
+      }
+      
       // ✅ CRITICAL FIX #1: Set SL as SEPARATE request
       if (slPrice) {
         console.log(`\n🛑 Setting SL @ ${formatPrice(slPrice)} (SEPARATE request)...`);
