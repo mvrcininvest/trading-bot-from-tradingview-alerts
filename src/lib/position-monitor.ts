@@ -619,6 +619,14 @@ export async function monitorAndManagePositions(silent = true) {
     const passphrase = config.passphrase!;
     const demo = config.environment === "demo";
 
+    // 🆕 FAZA 2: Prepare credentials for Oko
+    const credentials = {
+      apiKey,
+      apiSecret,
+      passphrase,
+      demo,
+    };
+
     // Get bot positions from DB
     const dbPositions = await db.select()
       .from(botPositions)
@@ -794,7 +802,7 @@ export async function monitorAndManagePositions(silent = true) {
       console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}, PnL: ${livePnl.toFixed(2)} USDT`);
 
       // ============================================
-      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS
+      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS (WITH FAZA 2)
       // ============================================
       
       const positionData = {
@@ -812,10 +820,56 @@ export async function monitorAndManagePositions(silent = true) {
         tp1Hit: dbPos.tp1Hit || false,
       };
 
-      const okoResult = await runOkoGuard(positionData, validPositionData);
+      // 🆕 FAZA 2: Pass credentials to Oko
+      const okoResult = await runOkoGuard(positionData, validPositionData, credentials);
+      
+      // ============================================
+      // 🆕 FAZA 2: HANDLE REPAIR ACTIONS (shouldFix)
+      // ============================================
+      
+      if (okoResult.shouldFix) {
+        console.log(`🔧 [OKO] Repair action required: ${okoResult.action}`);
+        console.log(`   Reason: ${okoResult.reason}`);
+        
+        if (okoResult.action === 'missing_sl_tp') {
+          // Missing SL/TP detected - let existing repair logic handle it
+          console.log(`   ℹ️ [OKO] Missing SL/TP will be handled by existing repair logic below`);
+          // Don't skip - continue to repair section
+        } else if (okoResult.action === 'tp1_quantity_fix') {
+          // TP1 Quantity mismatch - update DB
+          const realQuantity = okoResult.metadata.realQuantity;
+          
+          try {
+            await db.update(botPositions)
+              .set({
+                quantity: realQuantity,
+                lastUpdated: new Date().toISOString(),
+              })
+              .where(eq(botPositions.id, dbPos.id));
+            
+            console.log(`   ✅ [OKO] Updated quantity in DB: ${dbPos.quantity} → ${realQuantity}`);
+            slTpFixed++;
+            
+            details.push({
+              symbol,
+              side,
+              action: "tp1_quantity_fixed",
+              reason: `Updated quantity from ${dbPos.quantity} to ${realQuantity}`
+            });
+          } catch (error: any) {
+            const errMsg = `Failed to fix TP1 quantity for ${symbol}: ${error.message}`;
+            console.error(`   ❌ ${errMsg}`);
+            errors.push(errMsg);
+          }
+        }
+      }
+      
+      // ============================================
+      // 🆕 FAZA 2: HANDLE CLOSE ACTIONS (shouldClose)
+      // ============================================
       
       if (okoResult.shouldClose) {
-        console.log(`🚨 [OKO] Action required: ${okoResult.action}`);
+        console.log(`🚨 [OKO] Close action required: ${okoResult.action}`);
         console.log(`   Reason: ${okoResult.reason}`);
         
         try {

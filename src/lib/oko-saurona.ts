@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { botSettings, botPositions, positionGuardActions, positionGuardLogs, symbolLocks } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { makeOkxRequestWithRetry } from './okx-helpers';
 
 // ============================================
 // 🔐 OKO SAURONA - POSITION GUARD SYSTEM
@@ -50,6 +51,25 @@ interface ConfirmationState {
   lastCheckData: any;
 }
 
+// ============================================
+// 🆕 FAZA 2: NEW INTERFACES
+// ============================================
+
+interface AlgoOrderData {
+  algoId: string;
+  instId: string;
+  slTriggerPx?: string;
+  tpTriggerPx?: string;
+  sz: string;
+}
+
+interface OkxCredentials {
+  apiKey: string;
+  apiSecret: string;
+  passphrase: string;
+  demo: boolean;
+}
+
 // In-memory confirmation tracking (persists across checks within same monitoring cycle)
 const confirmationTracking = new Map<string, ConfirmationState>();
 
@@ -74,6 +94,285 @@ async function getOkoSettings(): Promise<OkoSettings | null> {
     bannedSymbols: config.okoBannedSymbols || null,
     slMarginRiskPercent: config.slMarginRiskPercent || 2.0,
   };
+}
+
+// ============================================
+// 🆕 FAZA 2: GET ALGO ORDERS FROM OKX
+// ============================================
+
+async function getAlgoOrdersFromOkx(
+  credentials: OkxCredentials
+): Promise<AlgoOrderData[]> {
+  try {
+    const data = await makeOkxRequestWithRetry(
+      'GET',
+      '/api/v5/trade/orders-algo-pending?ordType=conditional',
+      credentials.apiKey,
+      credentials.apiSecret,
+      credentials.passphrase,
+      credentials.demo,
+      undefined,
+      2
+    );
+
+    if (data.code !== '0') {
+      console.error(`❌ Failed to get algo orders: ${data.msg}`);
+      return [];
+    }
+
+    return data.data || [];
+  } catch (error: any) {
+    console.error(`❌ Failed to fetch algo orders:`, error.message);
+    return [];
+  }
+}
+
+// ============================================
+// 🆕 FAZA 2: GET OKX POSITIONS
+// ============================================
+
+async function getOkxPositions(
+  credentials: OkxCredentials
+): Promise<any[]> {
+  try {
+    const data = await makeOkxRequestWithRetry(
+      'GET',
+      '/api/v5/account/positions?instType=SWAP',
+      credentials.apiKey,
+      credentials.apiSecret,
+      credentials.passphrase,
+      credentials.demo,
+      undefined,
+      2
+    );
+
+    if (data.code !== '0') {
+      console.error(`❌ Failed to get positions: ${data.msg}`);
+      return [];
+    }
+
+    return (data.data || []).filter((p: any) => parseFloat(p.pos) !== 0);
+  } catch (error: any) {
+    console.error(`❌ Failed to fetch positions:`, error.message);
+    return [];
+  }
+}
+
+// ============================================
+// 🆕 FAZA 2 - CHECK 5: MISSING SL/TP (SYNCHRONIZED WITH OKX)
+// ============================================
+
+export async function checkMissingSlTp(
+  position: PositionData,
+  credentials: OkxCredentials
+): Promise<OkoCheckResult> {
+  try {
+    console.log(`   🔍 [OKO] Missing SL/TP Check (synchronized with OKX)...`);
+
+    // Get real algo orders from OKX
+    const algoOrders = await getAlgoOrdersFromOkx(credentials);
+    const symbol = position.symbol.includes('-') 
+      ? position.symbol 
+      : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
+    
+    const positionAlgos = algoOrders.filter((a: AlgoOrderData) => a.instId === symbol);
+    
+    // Check for REAL SL/TP on exchange
+    const hasRealSL = positionAlgos.some((a: AlgoOrderData) => a.slTriggerPx);
+    const hasRealTP = positionAlgos.some((a: AlgoOrderData) => a.tpTriggerPx);
+
+    console.log(`   📊 OKX Sync: SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
+
+    if (!hasRealSL || !hasRealTP) {
+      const missing = [];
+      if (!hasRealSL) missing.push('SL');
+      if (!hasRealTP) missing.push('TP');
+
+      return {
+        shouldClose: false,
+        shouldFix: true,
+        action: 'missing_sl_tp',
+        reason: `Missing ${missing.join(' and ')} on OKX exchange`,
+        checkCount: 1, // Instant fix attempt
+        metadata: {
+          missingSL: !hasRealSL,
+          missingTP: !hasRealTP,
+          currentAlgoCount: positionAlgos.length,
+        }
+      };
+    }
+
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'none',
+      reason: 'SL/TP present on OKX',
+      checkCount: 0,
+    };
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to check SL/TP:`, error.message);
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'error',
+      reason: error.message,
+      checkCount: 0,
+    };
+  }
+}
+
+// ============================================
+// 🆕 FAZA 2 - CHECK 6: TP1 QUANTITY FIX
+// ============================================
+
+export async function checkTp1QuantityMismatch(
+  position: PositionData,
+  credentials: OkxCredentials
+): Promise<OkoCheckResult> {
+  try {
+    // Only check if TP1 was hit
+    if (!position.tp1Hit) {
+      return {
+        shouldClose: false,
+        shouldFix: false,
+        action: 'none',
+        reason: 'TP1 not hit yet',
+        checkCount: 0,
+      };
+    }
+
+    console.log(`   🔍 [OKO] TP1 Quantity Check...`);
+
+    // Get real position from OKX
+    const okxPositions = await getOkxPositions(credentials);
+    const symbol = position.symbol.includes('-') 
+      ? position.symbol 
+      : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
+    
+    const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+    
+    if (!okxPos) {
+      return {
+        shouldClose: false,
+        shouldFix: false,
+        action: 'none',
+        reason: 'Position not found on OKX',
+        checkCount: 0,
+      };
+    }
+
+    const realQuantity = Math.abs(parseFloat(okxPos.pos));
+    const dbQuantity = position.quantity;
+    
+    // Allow 0.1% tolerance for rounding
+    const tolerance = dbQuantity * 0.001;
+    const mismatch = Math.abs(realQuantity - dbQuantity) > tolerance;
+
+    console.log(`   📊 Quantity: DB=${dbQuantity}, OKX=${realQuantity}, Mismatch=${mismatch}`);
+
+    if (mismatch) {
+      return {
+        shouldClose: false,
+        shouldFix: true,
+        action: 'tp1_quantity_fix',
+        reason: `Quantity mismatch: DB shows ${dbQuantity}, OKX shows ${realQuantity}`,
+        checkCount: 1, // Instant fix
+        metadata: {
+          dbQuantity,
+          realQuantity,
+          difference: realQuantity - dbQuantity,
+        }
+      };
+    }
+
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'none',
+      reason: 'Quantity matches',
+      checkCount: 0,
+    };
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to check TP1 quantity:`, error.message);
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'error',
+      reason: error.message,
+      checkCount: 0,
+    };
+  }
+}
+
+// ============================================
+// 🆕 FAZA 2 - CHECK 7: MULTI-POSITION CORRELATION
+// ============================================
+
+export async function checkMultiPositionCorrelation(
+  position: PositionData,
+  allPositions: PositionData[]
+): Promise<OkoCheckResult> {
+  try {
+    console.log(`   🔍 [OKO] Multi-Position Correlation Check...`);
+
+    // Find all positions on the same symbol
+    const sameSymbolPositions = allPositions.filter(p => p.symbol === position.symbol);
+    
+    if (sameSymbolPositions.length <= 1) {
+      return {
+        shouldClose: false,
+        shouldFix: false,
+        action: 'none',
+        reason: 'Single position on symbol',
+        checkCount: 0,
+      };
+    }
+
+    console.log(`   📊 Found ${sameSymbolPositions.length} positions on ${position.symbol}`);
+
+    // Check how many are on minus
+    const positionsOnMinus = sameSymbolPositions.filter(p => p.unrealisedPnl < 0);
+    const percentOnMinus = (positionsOnMinus.length / sameSymbolPositions.length) * 100;
+
+    console.log(`   📉 Positions on minus: ${positionsOnMinus.length}/${sameSymbolPositions.length} (${percentOnMinus.toFixed(0)}%)`);
+
+    // If >50% of positions on same symbol are losing, it's a bad symbol
+    if (percentOnMinus > 50 && positionsOnMinus.length >= 2) {
+      const totalLoss = positionsOnMinus.reduce((sum, p) => sum + p.unrealisedPnl, 0);
+
+      return {
+        shouldClose: true,
+        shouldFix: false,
+        action: 'multi_position_correlation',
+        reason: `${positionsOnMinus.length}/${sameSymbolPositions.length} positions on ${position.symbol} are losing (total: ${totalLoss.toFixed(2)} USDT)`,
+        checkCount: 3, // Requires confirmation
+        metadata: {
+          symbol: position.symbol,
+          totalPositions: sameSymbolPositions.length,
+          losingPositions: positionsOnMinus.length,
+          totalLoss,
+          percentOnMinus: percentOnMinus.toFixed(0),
+        }
+      };
+    }
+
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'none',
+      reason: 'Multi-position correlation OK',
+      checkCount: 0,
+    };
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to check correlation:`, error.message);
+    return {
+      shouldClose: false,
+      shouldFix: false,
+      action: 'error',
+      reason: error.message,
+      checkCount: 0,
+    };
+  }
 }
 
 // ============================================
@@ -479,12 +778,13 @@ export async function isSymbolBanned(symbol: string): Promise<boolean> {
 }
 
 // ============================================
-// 🎯 MAIN OKO GUARD FUNCTION
+// 🎯 MAIN OKO GUARD FUNCTION (WITH FAZA 2)
 // ============================================
 
 export async function runOkoGuard(
   position: PositionData,
-  allPositions: PositionData[]
+  allPositions: PositionData[],
+  credentials?: OkxCredentials
 ): Promise<OkoCheckResult> {
   try {
     console.log(`\n👁️ [OKO] Scanning position ${position.symbol}...`);
@@ -576,7 +876,36 @@ export async function runOkoGuard(
     }
 
     // ============================================
-    // PRIORITY 3: TIME-BASED EXIT (3 checks, optional)
+    // 🆕 FAZA 2 - PRIORITY 3: MULTI-POSITION CORRELATION (3 checks)
+    // ============================================
+    
+    const correlationResult = await checkMultiPositionCorrelation(position, allPositions);
+    if (correlationResult.shouldClose) {
+      console.log(`   🚨 [OKO] MULTI-POSITION CORRELATION DETECTED`);
+      
+      const confirmed = await requireConfirmation(
+        position.id,
+        'multi_position_correlation',
+        correlationResult.metadata,
+        3
+      );
+
+      if (confirmed) {
+        await logOkoAction(
+          position.id,
+          position.symbol,
+          'multi_position_correlation',
+          correlationResult.reason,
+          3,
+          correlationResult.metadata
+        );
+
+        return correlationResult;
+      }
+    }
+
+    // ============================================
+    // PRIORITY 4: TIME-BASED EXIT (3 checks, optional)
     // ============================================
     
     const timeBasedResult = await checkTimeBasedExit(position, settings);
@@ -601,6 +930,46 @@ export async function runOkoGuard(
         );
 
         return timeBasedResult;
+      }
+    }
+
+    // ============================================
+    // 🆕 FAZA 2 - CHECK REPAIRS (Missing SL/TP, TP1 Quantity)
+    // ============================================
+    
+    if (credentials) {
+      // Check Missing SL/TP (synchronized with OKX)
+      const missingSlTpResult = await checkMissingSlTp(position, credentials);
+      if (missingSlTpResult.shouldFix) {
+        console.log(`   🔧 [OKO] Missing SL/TP detected - needs repair`);
+        
+        await logOkoAction(
+          position.id,
+          position.symbol,
+          'missing_sl_tp',
+          missingSlTpResult.reason,
+          1,
+          missingSlTpResult.metadata
+        );
+
+        return missingSlTpResult;
+      }
+
+      // Check TP1 Quantity Mismatch
+      const tp1QuantityResult = await checkTp1QuantityMismatch(position, credentials);
+      if (tp1QuantityResult.shouldFix) {
+        console.log(`   🔧 [OKO] TP1 Quantity mismatch detected - needs fix`);
+        
+        await logOkoAction(
+          position.id,
+          position.symbol,
+          'tp1_quantity_fix',
+          tp1QuantityResult.reason,
+          1,
+          tp1QuantityResult.metadata
+        );
+
+        return tp1QuantityResult;
       }
     }
 
