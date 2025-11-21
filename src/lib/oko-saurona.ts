@@ -628,6 +628,92 @@ export async function checkGhostPosition(
 }
 
 // ============================================
+// 🆕 FAZA 4 - CHECK 9: GHOST ORDERS CLEANUP
+// ============================================
+
+export async function checkAndCleanupGhostOrders(
+  credentials: OkxCredentials,
+  openPositions: PositionData[]
+): Promise<{
+  cleaned: number;
+  details: Array<{ symbol: string; orderType: string; orderId: string }>;
+}> {
+  try {
+    console.log(`   🔍 [OKO] Ghost Orders Cleanup Check...`);
+
+    // Get all algo orders from OKX
+    const algoOrders = await getAlgoOrdersFromOkx(credentials);
+    
+    if (algoOrders.length === 0) {
+      console.log(`   ✅ [OKO] No algo orders found`);
+      return { cleaned: 0, details: [] };
+    }
+
+    // Get list of symbols with open positions
+    const openSymbols = new Set(
+      openPositions.map(p => 
+        p.symbol.includes('-') ? p.symbol : `${p.symbol.replace('USDT', '')}-USDT-SWAP`
+      )
+    );
+
+    console.log(`   📊 Open positions: ${Array.from(openSymbols).join(', ')}`);
+    console.log(`   📊 Total algo orders: ${algoOrders.length}`);
+
+    // Find ghost orders (orders for symbols without positions)
+    const ghostOrders = algoOrders.filter((order: AlgoOrderData) => 
+      !openSymbols.has(order.instId)
+    );
+
+    console.log(`   👻 Ghost orders found: ${ghostOrders.length}`);
+
+    if (ghostOrders.length === 0) {
+      return { cleaned: 0, details: [] };
+    }
+
+    // Cancel ghost orders
+    const cleaned: Array<{ symbol: string; orderType: string; orderId: string }> = [];
+    
+    for (const order of ghostOrders) {
+      try {
+        console.log(`   🗑️ Cancelling ghost order: ${order.instId} (${order.algoId})`);
+        
+        const cancelData = await makeOkxRequestWithRetry(
+          'POST',
+          '/api/v5/trade/cancel-algos',
+          credentials.apiKey,
+          credentials.apiSecret,
+          credentials.passphrase,
+          credentials.demo,
+          JSON.stringify([{
+            algoId: order.algoId,
+            instId: order.instId,
+          }]),
+          2
+        );
+
+        if (cancelData.code === '0') {
+          console.log(`   ✅ Cancelled: ${order.instId}`);
+          cleaned.push({
+            symbol: order.instId,
+            orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
+            orderId: order.algoId,
+          });
+        } else {
+          console.error(`   ❌ Failed to cancel ${order.instId}: ${cancelData.msg}`);
+        }
+      } catch (error: any) {
+        console.error(`   ❌ Error cancelling order:`, error.message);
+      }
+    }
+
+    return { cleaned: cleaned.length, details: cleaned };
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to cleanup ghost orders:`, error.message);
+    return { cleaned: 0, details: [] };
+  }
+}
+
+// ============================================
 // 🔄 CONFIRMATION SYSTEM
 // ============================================
 
@@ -689,6 +775,217 @@ export async function requireConfirmation(
   }
 
   return false;
+}
+
+// ============================================
+// 📝 LOG OKO ACTION
+// ============================================
+
+export async function logOkoAction(
+  positionId: number | null,
+  symbol: string,
+  action: string,
+  reason: string,
+  checkCount: number,
+  metadata?: any
+): Promise<void> {
+  try {
+    // Log to position_guard_actions
+    await db.insert(positionGuardActions).values({
+      positionId,
+      actionType: action,
+      reason,
+      checkCount,
+      createdAt: new Date().toISOString(),
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    });
+
+    // Log to position_guard_logs (more detailed)
+    if (positionId) {
+      await db.insert(positionGuardLogs).values({
+        positionId,
+        symbol,
+        action,
+        reason,
+        confirmationCount: checkCount,
+        pnlAtAction: metadata?.pnl || null,
+        priceAtAction: metadata?.currentPrice || null,
+        closePrice: metadata?.closePrice || null,
+        settingsSnapshot: metadata?.settings ? JSON.stringify(metadata.settings) : null,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    console.log(`   📝 [OKO] Logged action: ${action} for ${symbol}`);
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to log action:`, error.message);
+  }
+}
+
+// ============================================
+// 🚫 INCREMENT CAPITULATION COUNTER
+// ============================================
+
+export async function incrementCapitulationCounter(): Promise<number> {
+  try {
+    const settings = await db.select().from(botSettings).limit(1);
+    if (settings.length === 0) return 0;
+
+    const currentCounter = settings[0].okoCapitulationCounter || 0;
+    const newCounter = currentCounter + 1;
+
+    await db.update(botSettings)
+      .set({
+        okoCapitulationCounter: newCounter,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(botSettings.id, settings[0].id));
+
+    console.log(`   📈 [OKO] Capitulation counter: ${currentCounter} → ${newCounter}`);
+    return newCounter;
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to increment counter:`, error.message);
+    return 0;
+  }
+}
+
+// ============================================
+// 🚫 BAN SYMBOL (CAPITULATION)
+// ============================================
+
+export async function banSymbol(
+  symbol: string,
+  reason: string,
+  durationHours: number
+): Promise<void> {
+  try {
+    const settings = await db.select().from(botSettings).limit(1);
+    if (settings.length === 0) return;
+
+    // Parse existing banned symbols
+    let bannedSymbols: Array<{ symbol: string; bannedAt: string; expiresAt: string; reason: string }> = [];
+    
+    if (settings[0].okoBannedSymbols) {
+      try {
+        bannedSymbols = JSON.parse(settings[0].okoBannedSymbols);
+      } catch (e) {
+        bannedSymbols = [];
+      }
+    }
+
+    // Add new ban
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
+    
+    bannedSymbols.push({
+      symbol,
+      bannedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      reason,
+    });
+
+    // Update settings
+    await db.update(botSettings)
+      .set({
+        okoBannedSymbols: JSON.stringify(bannedSymbols),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(botSettings.id, settings[0].id));
+
+    // Also add to symbol_locks table for visibility
+    await db.insert(symbolLocks).values({
+      symbol,
+      lockReason: `oko_capitulation: ${reason}`,
+      lockedAt: now.toISOString(),
+      failureCount: 0,
+      lastError: reason,
+      isPermanent: false,
+      createdAt: now.toISOString(),
+    });
+
+    console.log(`   🚫 [OKO] Symbol ${symbol} BANNED until ${expiresAt.toISOString()}`);
+  } catch (error: any) {
+    console.error(`   ❌ [OKO] Failed to ban symbol:`, error.message);
+  }
+}
+
+// ============================================
+// 🆕 REPAIR ATTEMPT LIMITER
+// ============================================
+
+interface RepairAttempt {
+  positionId: number;
+  action: string;
+  attemptCount: number;
+  firstAttemptTime: number;
+  lastAttemptTime: number;
+}
+
+const repairAttempts = new Map<string, RepairAttempt>();
+
+export function shouldAttemptRepair(
+  positionId: number,
+  action: string,
+  maxAttempts: number = 5,
+  cooldownMinutes: number = 10
+): boolean {
+  const key = `${positionId}-${action}`;
+  const now = Date.now();
+  const existing = repairAttempts.get(key);
+
+  if (!existing) {
+    // First attempt
+    repairAttempts.set(key, {
+      positionId,
+      action,
+      attemptCount: 1,
+      firstAttemptTime: now,
+      lastAttemptTime: now,
+    });
+    console.log(`   🔧 [OKO] Repair attempt 1/${maxAttempts} for ${action}`);
+    return true;
+  }
+
+  // Check if cooldown period has passed since first attempt
+  const timeSinceFirst = now - existing.firstAttemptTime;
+  const cooldownMs = cooldownMinutes * 60 * 1000;
+
+  if (timeSinceFirst > cooldownMs) {
+    // Reset after cooldown
+    console.log(`   🔄 [OKO] Cooldown period passed, resetting repair attempts for ${action}`);
+    repairAttempts.set(key, {
+      positionId,
+      action,
+      attemptCount: 1,
+      firstAttemptTime: now,
+      lastAttemptTime: now,
+    });
+    return true;
+  }
+
+  // Check if max attempts reached
+  if (existing.attemptCount >= maxAttempts) {
+    console.log(`   ⛔ [OKO] Max repair attempts (${maxAttempts}) reached for ${action}. Wait ${cooldownMinutes} min.`);
+    return false;
+  }
+
+  // Increment attempt count
+  existing.attemptCount++;
+  existing.lastAttemptTime = now;
+  repairAttempts.set(key, existing);
+
+  console.log(`   🔧 [OKO] Repair attempt ${existing.attemptCount}/${maxAttempts} for ${action}`);
+  return true;
+}
+
+// ============================================
+// 🆕 CLEAR REPAIR ATTEMPTS (after successful repair)
+// ============================================
+
+export function clearRepairAttempts(positionId: number, action: string): void {
+  const key = `${positionId}-${action}`;
+  repairAttempts.delete(key);
+  console.log(`   ✅ [OKO] Cleared repair attempts for ${action}`);
 }
 
 // ============================================

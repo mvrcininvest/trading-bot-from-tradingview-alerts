@@ -11,7 +11,10 @@ import {
   incrementCapitulationCounter,
   banSymbol,
   logOkoAction,
-  clearOldConfirmations
+  clearOldConfirmations,
+  checkAndCleanupGhostOrders,
+  shouldAttemptRepair,
+  clearRepairAttempts
 } from './oko-saurona';
 
 // ============================================
@@ -634,10 +637,6 @@ export async function monitorAndManagePositions(silent = true) {
 
     console.log(`📊 [MONITOR] Found ${dbPositions.length} open positions in database`);
 
-    if (dbPositions.length === 0) {
-      return { success: true, checked: 0, tpHits: 0, slAdjustments: 0, slTpFixed: 0, emergencyClosed: 0, okoActions: 0 };
-    }
-
     // Get OKX positions
     const okxPositions = await getOkxPositions(apiKey, apiSecret, passphrase, demo);
     
@@ -645,6 +644,61 @@ export async function monitorAndManagePositions(silent = true) {
     const algoOrders = await getAlgoOrders(apiKey, apiSecret, passphrase, demo);
     
     console.log(`📊 [MONITOR] OKX Positions: ${okxPositions.length}, Algo Orders: ${algoOrders.length}`);
+
+    // ============================================
+    // 🆕 FAZA 4: GHOST ORDERS CLEANUP (FIRST!)
+    // ============================================
+    
+    console.log(`\n👻 [MONITOR] Checking for ghost orders...`);
+    const ghostCleanupResult = await checkAndCleanupGhostOrders(
+      credentials,
+      dbPositions.map(p => ({
+        id: p.id,
+        symbol: p.symbol,
+        side: p.side,
+        entryPrice: p.entryPrice,
+        currentPrice: 0,
+        quantity: p.quantity,
+        stopLoss: p.stopLoss,
+        currentSl: p.currentSl,
+        unrealisedPnl: p.unrealisedPnl,
+        initialMargin: p.initialMargin,
+        openedAt: p.openedAt,
+        tp1Hit: p.tp1Hit || false,
+      }))
+    );
+
+    if (ghostCleanupResult.cleaned > 0) {
+      console.log(`✅ [MONITOR] Cleaned up ${ghostCleanupResult.cleaned} ghost orders:`);
+      ghostCleanupResult.details.forEach(detail => {
+        console.log(`   - ${detail.symbol}: ${detail.orderType} (${detail.orderId})`);
+      });
+
+      // Log to Oko actions
+      await logOkoAction(
+        null,
+        'GHOST_ORDERS',
+        'ghost_orders_cleanup',
+        `Cleaned up ${ghostCleanupResult.cleaned} orphaned orders`,
+        1,
+        { cleaned: ghostCleanupResult.cleaned, details: ghostCleanupResult.details }
+      );
+    } else {
+      console.log(`✅ [MONITOR] No ghost orders found`);
+    }
+
+    if (dbPositions.length === 0) {
+      return { 
+        success: true, 
+        checked: 0, 
+        tpHits: 0, 
+        slAdjustments: 0, 
+        slTpFixed: 0, 
+        emergencyClosed: 0, 
+        okoActions: 0,
+        ghostOrdersCleaned: ghostCleanupResult.cleaned
+      };
+    }
 
     // Check for symbol locks
     const activeLocks = await db.select()
@@ -740,6 +794,7 @@ export async function monitorAndManagePositions(silent = true) {
         emergencyClosed: closedCount,
         okoActions: closedCount,
         accountDrawdownTriggered: true,
+        ghostOrdersCleaned: ghostCleanupResult.cleaned
       };
     }
 
@@ -802,7 +857,7 @@ export async function monitorAndManagePositions(silent = true) {
       console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}, PnL: ${livePnl.toFixed(2)} USDT`);
 
       // ============================================
-      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS (WITH FAZA 2 + 3)
+      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS (WITH FAZA 2 + 3 + 4)
       // ============================================
       
       const positionData = {
@@ -868,8 +923,8 @@ export async function monitorAndManagePositions(silent = true) {
         console.log(`   Reason: ${okoResult.reason}`);
         
         if (okoResult.action === 'missing_sl_tp') {
-          // Missing SL/TP detected - let existing repair logic handle it
-          console.log(`   ℹ️ [OKO] Missing SL/TP will be handled by existing repair logic below`);
+          // Missing SL/TP detected - let existing repair logic handle it with limiter
+          console.log(`   ℹ️ [OKO] Missing SL/TP will be handled by existing repair logic with attempt limiter`);
           // Don't skip - continue to repair section
         } else if (okoResult.action === 'tp1_quantity_fix') {
           // TP1 Quantity mismatch - update DB
@@ -885,6 +940,7 @@ export async function monitorAndManagePositions(silent = true) {
             
             console.log(`   ✅ [OKO] Updated quantity in DB: ${dbPos.quantity} → ${realQuantity}`);
             slTpFixed++;
+            okoActions++;
             
             details.push({
               symbol,
@@ -1256,7 +1312,7 @@ export async function monitorAndManagePositions(silent = true) {
       }
 
       // ============================================
-      // 🛡️ CRITICAL FIX: CHECK AND FIX MISSING SL/TP **BEFORE** CHECKING SYMBOL LOCK
+      // 🛡️ CRITICAL FIX: CHECK AND FIX MISSING SL/TP WITH LIMITER
       // ============================================
 
       const positionAlgos = algoOrders.filter((a: any) => a.instId === symbol);
@@ -1272,7 +1328,25 @@ export async function monitorAndManagePositions(silent = true) {
       console.log(`   ⏱️ Position age: ${positionAgeSeconds.toFixed(0)}s`);
 
       if (!hasSL || !hasTP) {
-        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - attempting repair...`);
+        console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
+        
+        // 🆕 FAZA 4: Check if we should attempt repair (with limiter)
+        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
+        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
+        
+        if (!shouldAttemptSlRepair && !hasSL) {
+          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached - skipping repair`);
+        }
+        
+        if (!shouldAttemptTpRepair && !hasTP) {
+          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached - skipping repair`);
+        }
+        
+        // If both limiters say no, skip this position
+        if (!shouldAttemptSlRepair && !shouldAttemptTpRepair) {
+          console.log(`   ⏭️ Skipping position - waiting for cooldown period`);
+          continue;
+        }
         
         // ✅ NEW: Count previous repair attempts from tpslRetryAttempts table
         const retryAttempts = await db.select()
@@ -1283,77 +1357,6 @@ export async function monitorAndManagePositions(silent = true) {
         const tpAttempts = retryAttempts.filter(r => r.orderType === 'tp1' && !r.success).length;
         
         console.log(`   📊 Repair attempts so far: SL=${slAttempts}, TP=${tpAttempts}`);
-        
-        // ✅ CRITICAL FIX: Increased timeout from 30s to 120s and max retries from 3 to 10
-        if (positionAgeSeconds > 120 && (slAttempts >= 10 || tpAttempts >= 10)) {
-          console.error(`   🚨 EMERGENCY: Position > 120s old with ${Math.max(slAttempts, tpAttempts)} failed repair attempts!`);
-          console.error(`   → CLOSING POSITION AND LOCKING SYMBOL`);
-          
-          try {
-            const closeOrderId = await closePositionPartial(symbol, side, dbPos.quantity, apiKey, apiSecret, passphrase, demo);
-            
-            await db.update(botPositions)
-              .set({
-                status: "closed",
-                closeReason: "emergency_tpsl_failure_120s",
-                closedAt: new Date().toISOString(),
-              })
-              .where(eq(botPositions.id, dbPos.id));
-
-            // Log to diagnostic failures
-            await db.insert(diagnosticFailures).values({
-              positionId: dbPos.id,
-              failureType: 'emergency_close_120s',
-              reason: `Position > 120s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`,
-              attemptCount: Math.max(slAttempts, tpAttempts),
-              errorDetails: JSON.stringify({ 
-                positionAgeSeconds: positionAgeSeconds.toFixed(0),
-                slAttempts, 
-                tpAttempts,
-                hasSL,
-                hasTP
-              }),
-              createdAt: new Date().toISOString(),
-            });
-
-            // Lock symbol permanently
-            await db.insert(symbolLocks).values({
-              symbol,
-              lockReason: 'tpsl_failures_120s_timeout',
-              lockedAt: new Date().toISOString(),
-              failureCount: Math.max(slAttempts, tpAttempts),
-              lastError: `Failed to set SL/TP after ${Math.max(slAttempts, tpAttempts)} attempts over 120+ seconds`,
-              isPermanent: false,
-              createdAt: new Date().toISOString(),
-            });
-
-            console.log(`🚫 Symbol ${symbol} LOCKED due to 120s TP/SL timeout`);
-            
-            emergencyClosed++;
-            details.push({
-              symbol,
-              side,
-              action: "emergency_closed_120s",
-              reason: `Position > 120s without SL/TP after ${Math.max(slAttempts, tpAttempts)} repair attempts`
-            });
-
-            // ✅ Cleanup orphaned orders
-            await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
-            
-            continue;
-            
-          } catch (closeError: any) {
-            console.error(`   ❌ Emergency close failed:`, closeError.message);
-            errors.push(`Emergency close failed for ${symbol}: ${closeError.message}`);
-            continue;
-          }
-        }
-        
-        // ✅ CRITICAL FIX: If position < 120s old, give it more time
-        if (positionAgeSeconds < 120) {
-          console.log(`   ⏳ Position < 120s old - giving more time for SL/TP to propagate...`);
-          // Don't skip - continue to check symbol lock below
-        }
         
         const slRR = config.defaultSlRR || 1.0;
         const nextTpRR = !dbPos.tp1Hit ? (config.tp1RR || 1.0) 
@@ -1454,9 +1457,9 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // ✅ CRITICAL FIX: Use setAlgoOrderWithRetry (but only if < 10 previous attempts)
-        if (!hasSL && !slAlreadyHit && slAttempts < 10) {
-          console.log(`   🔧 Attempting to fix SL (attempt ${slAttempts + 1}/10)...`);
+        // ✅ CRITICAL FIX: Use setAlgoOrderWithRetry with limiter check
+        if (!hasSL && !slAlreadyHit && shouldAttemptSlRepair) {
+          console.log(`   🔧 Attempting to fix SL (attempt ${slAttempts + 1}/5)...`);
           
           const slAlgoId = await setAlgoOrderWithRetry(
             symbol,
@@ -1475,14 +1478,17 @@ export async function monitorAndManagePositions(silent = true) {
           if (slAlgoId) {
             console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)}`);
             slTpFixed++;
+            
+            // 🆕 FAZA 4: Clear repair attempts after success
+            clearRepairAttempts(dbPos.id, 'missing_sl_tp');
           } else {
             console.error(`   ⚠️ Failed to set SL - will retry on next monitor cycle`);
           }
         }
         
         // Similar for TP
-        if (!hasTP && !tpAlreadyHit && tpAttempts < 10) {
-          console.log(`   🔧 Attempting to fix TP (attempt ${tpAttempts + 1}/10)...`);
+        if (!hasTP && !tpAlreadyHit && shouldAttemptTpRepair) {
+          console.log(`   🔧 Attempting to fix TP (attempt ${tpAttempts + 1}/5)...`);
           
           const tpAlgoId = await setAlgoOrderWithRetry(
             symbol,
@@ -1501,12 +1507,18 @@ export async function monitorAndManagePositions(silent = true) {
           if (tpAlgoId) {
             console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)}`);
             slTpFixed++;
+            
+            // 🆕 FAZA 4: Clear repair attempts after success
+            clearRepairAttempts(dbPos.id, 'missing_sl_tp');
           } else {
             console.error(`   ⚠️ Failed to set TP - will retry on next monitor cycle`);
           }
         }
       } else {
         console.log(`   ✅ Position has both SL and TP - OK`);
+        
+        // 🆕 FAZA 4: Clear repair attempts if position is now OK
+        clearRepairAttempts(dbPos.id, 'missing_sl_tp');
       }
 
       // ============================================
@@ -1522,7 +1534,7 @@ export async function monitorAndManagePositions(silent = true) {
     // Clear old Oko confirmations
     clearOldConfirmations();
 
-    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}, Emergency Closed: ${emergencyClosed}, Oko Actions: ${okoActions}`);
+    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}, Emergency Closed: ${emergencyClosed}, Oko Actions: ${okoActions}, Ghost Orders: ${ghostCleanupResult.cleaned}`);
     if (errors.length > 0) {
       console.error(`⚠️ [MONITOR] Errors encountered: ${errors.length}`);
     }
@@ -1535,6 +1547,7 @@ export async function monitorAndManagePositions(silent = true) {
       slTpFixed,
       emergencyClosed,
       okoActions,
+      ghostOrdersCleaned: ghostCleanupResult.cleaned,
       errors,
       details,
     };
