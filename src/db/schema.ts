@@ -75,6 +75,18 @@ export const botSettings = sqliteTable('bot_settings', {
   adaptiveStrengthThreshold: real('adaptive_strength_threshold').notNull().default(0.5),
   slAsMarginPercent: integer('sl_as_margin_percent', { mode: 'boolean' }).notNull().default(false),
   slMarginRiskPercent: real('sl_margin_risk_percent').notNull().default(2.0),
+  
+  // Oko Saurona Settings
+  okoEnabled: integer('oko_enabled', { mode: 'boolean' }).notNull().default(true),
+  okoCheckFrequencySeconds: integer('oko_check_frequency_seconds').notNull().default(5),
+  okoAccountDrawdownPercent: real('oko_account_drawdown_percent').notNull().default(50.0),
+  okoAccountDrawdownCloseAll: integer('oko_account_drawdown_close_all', { mode: 'boolean' }).notNull().default(true),
+  okoAccountDrawdownChecks: integer('oko_account_drawdown_checks').notNull().default(3),
+  okoTimeBasedExitEnabled: integer('oko_time_based_exit_enabled', { mode: 'boolean' }).notNull().default(false),
+  okoTimeBasedExitHours: integer('oko_time_based_exit_hours').notNull().default(24),
+  okoCapitulationBanDurationHours: integer('oko_capitulation_ban_duration_hours').notNull().default(6),
+  okoCapitulationChecks: integer('oko_capitulation_checks').notNull().default(1),
+  
   apiKey: text('api_key'),
   apiSecret: text('api_secret'),
   passphrase: text('passphrase'),
@@ -290,3 +302,29 @@ export const botDetailedLogs = sqliteTable('bot_detailed_logs', {
   alertIdx: index('idx_bot_detailed_logs_alert').on(table.alertId),
   discrepancyIdx: index('idx_bot_detailed_logs_discrepancy').on(table.hasDiscrepancy),
 }));
+
+export const positionGuardLogs = sqliteTable('position_guard_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  positionId: integer('position_id').references(() => botPositions.id),
+  symbol: text('symbol').notNull(),
+  action: text('action').notNull(), // 'pnl_emergency', 'sl_breach', 'fix_sltp', 'tp1_quantity_fix', 'trailing_sl', 'breakeven', 'capitulation', 'account_drawdown'
+  reason: text('reason').notNull(),
+  confirmationCount: integer('confirmation_count').notNull(),
+  pnlAtAction: real('pnl_at_action'),
+  priceAtAction: real('price_at_action'),
+  closePrice: real('close_price'),
+  settingsSnapshot: text('settings_snapshot'), // JSON snapshot of relevant oko settings
+  createdAt: text('created_at').notNull(),
+}, (table) => ({
+  positionIdx: index('idx_position_guard_logs_position').on(table.positionId),
+  symbolIdx: index('idx_position_guard_logs_symbol').on(table.symbol),
+  actionIdx: index('idx_position_guard_logs_action').on(table.action),
+}));
+
+export const capitulationCounter = sqliteTable('capitulation_counter', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  closureCount: integer('closure_count').notNull().default(0),
+  lastResetAt: text('last_reset_at').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

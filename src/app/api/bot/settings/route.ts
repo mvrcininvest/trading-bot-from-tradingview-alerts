@@ -322,6 +322,73 @@ async function updateSettings(request: NextRequest) {
       }
     }
 
+    // Validate Oko Saurona fields
+    if (body.okoCheckFrequencySeconds !== undefined) {
+      const freq = parseInt(body.okoCheckFrequencySeconds);
+      if (isNaN(freq) || freq < 1 || freq > 60) {
+        return NextResponse.json({
+          error: 'okoCheckFrequencySeconds must be between 1 and 60',
+          code: 'INVALID_OKO_CHECK_FREQUENCY',
+          field: 'okoCheckFrequencySeconds'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.okoAccountDrawdownPercent !== undefined) {
+      const drawdown = parseFloat(body.okoAccountDrawdownPercent);
+      if (isNaN(drawdown) || drawdown <= 0 || drawdown > 100) {
+        return NextResponse.json({
+          error: 'okoAccountDrawdownPercent must be between 0 and 100',
+          code: 'INVALID_OKO_DRAWDOWN_PERCENT',
+          field: 'okoAccountDrawdownPercent'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.okoAccountDrawdownChecks !== undefined) {
+      const checks = parseInt(body.okoAccountDrawdownChecks);
+      if (isNaN(checks) || ![1, 3].includes(checks)) {
+        return NextResponse.json({
+          error: 'okoAccountDrawdownChecks must be 1 or 3',
+          code: 'INVALID_OKO_DRAWDOWN_CHECKS',
+          field: 'okoAccountDrawdownChecks'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.okoTimeBasedExitHours !== undefined) {
+      const hours = parseInt(body.okoTimeBasedExitHours);
+      if (isNaN(hours) || hours < 1 || hours > 168) {
+        return NextResponse.json({
+          error: 'okoTimeBasedExitHours must be between 1 and 168',
+          code: 'INVALID_OKO_TIME_EXIT_HOURS',
+          field: 'okoTimeBasedExitHours'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.okoCapitulationBanDurationHours !== undefined) {
+      const hours = parseInt(body.okoCapitulationBanDurationHours);
+      if (isNaN(hours) || hours < 1 || hours > 168) {
+        return NextResponse.json({
+          error: 'okoCapitulationBanDurationHours must be between 1 and 168',
+          code: 'INVALID_OKO_BAN_DURATION',
+          field: 'okoCapitulationBanDurationHours'
+        }, { status: 400 });
+      }
+    }
+
+    if (body.okoCapitulationChecks !== undefined) {
+      const checks = parseInt(body.okoCapitulationChecks);
+      if (isNaN(checks) || ![1, 3].includes(checks)) {
+        return NextResponse.json({
+          error: 'okoCapitulationChecks must be 1 or 3',
+          code: 'INVALID_OKO_CAPITULATION_CHECKS',
+          field: 'okoCapitulationChecks'
+        }, { status: 400 });
+      }
+    }
+
     // Build update object with only provided fields
     const updates: any = {
       updatedAt: new Date().toISOString()
@@ -342,6 +409,17 @@ async function updateSettings(request: NextRequest) {
     }
     if (body.slAsMarginPercent !== undefined) {
       updates.slAsMarginPercent = body.slAsMarginPercent;
+    }
+
+    // Oko Saurona boolean fields
+    if (body.okoEnabled !== undefined) {
+      updates.okoEnabled = body.okoEnabled;
+    }
+    if (body.okoAccountDrawdownCloseAll !== undefined) {
+      updates.okoAccountDrawdownCloseAll = body.okoAccountDrawdownCloseAll;
+    }
+    if (body.okoTimeBasedExitEnabled !== undefined) {
+      updates.okoTimeBasedExitEnabled = body.okoTimeBasedExitEnabled;
     }
 
     // Map other fields
@@ -383,6 +461,14 @@ async function updateSettings(request: NextRequest) {
 
     // ✅ NEW: SL as margin fields
     if (body.slMarginRiskPercent !== undefined) updates.slMarginRiskPercent = parseFloat(body.slMarginRiskPercent);
+
+    // Oko Saurona settings
+    if (body.okoCheckFrequencySeconds !== undefined) updates.okoCheckFrequencySeconds = parseInt(body.okoCheckFrequencySeconds);
+    if (body.okoAccountDrawdownPercent !== undefined) updates.okoAccountDrawdownPercent = parseFloat(body.okoAccountDrawdownPercent);
+    if (body.okoAccountDrawdownChecks !== undefined) updates.okoAccountDrawdownChecks = parseInt(body.okoAccountDrawdownChecks);
+    if (body.okoTimeBasedExitHours !== undefined) updates.okoTimeBasedExitHours = parseInt(body.okoTimeBasedExitHours);
+    if (body.okoCapitulationBanDurationHours !== undefined) updates.okoCapitulationBanDurationHours = parseInt(body.okoCapitulationBanDurationHours);
+    if (body.okoCapitulationChecks !== undefined) updates.okoCapitulationChecks = parseInt(body.okoCapitulationChecks);
 
     const settingsId = existingSettings[0].id;
     const updated = await db.update(botSettings)

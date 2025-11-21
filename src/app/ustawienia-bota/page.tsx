@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
-import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent, Zap, DollarSign } from "lucide-react"
+import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent, Zap, DollarSign, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
@@ -18,6 +18,7 @@ export default function BotSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(true)
+  const [resettingCapitulation, setResettingCapitulation] = useState(false)
 
   // Bot settings state
   const [botEnabled, setBotEnabled] = useState(false)
@@ -40,7 +41,6 @@ export default function BotSettingsPage() {
   const [useDefaultSlTp, setUseDefaultSlTp] = useState(false)
   const [defaultSlRR, setDefaultSlRR] = useState(1.0)
 
-  // ✅ NEW: TP Mode selection
   const [tpMode, setTpMode] = useState<"percent" | "rr">("percent")
 
   // Enhanced TP Strategy state
@@ -62,6 +62,17 @@ export default function BotSettingsPage() {
   // SL as % margin state
   const [slAsMarginPercent, setSlAsMarginPercent] = useState(false)
   const [slMarginRiskPercent, setSlMarginRiskPercent] = useState(2.0)
+
+  // Oko Saurona settings state
+  const [okoEnabled, setOkoEnabled] = useState(true)
+  const [okoCheckFrequencySeconds, setOkoCheckFrequencySeconds] = useState(5)
+  const [okoAccountDrawdownPercent, setOkoAccountDrawdownPercent] = useState(50.0)
+  const [okoAccountDrawdownCloseAll, setOkoAccountDrawdownCloseAll] = useState(true)
+  const [okoAccountDrawdownChecks, setOkoAccountDrawdownChecks] = useState(3)
+  const [okoTimeBasedExitEnabled, setOkoTimeBasedExitEnabled] = useState(false)
+  const [okoTimeBasedExitHours, setOkoTimeBasedExitHours] = useState(24)
+  const [okoCapitulationBanDurationHours, setOkoCapitulationBanDurationHours] = useState(6)
+  const [okoCapitulationChecks, setOkoCapitulationChecks] = useState(1)
 
   useEffect(() => {
     fetchSettings()
@@ -113,8 +124,18 @@ export default function BotSettingsPage() {
         setSlAsMarginPercent(s.slAsMarginPercent || false)
         setSlMarginRiskPercent(s.slMarginRiskPercent || 2.0)
 
-        // ✅ NEW: Load TP mode
         setTpMode(s.tpMode || "percent")
+
+        // Load Oko Saurona settings
+        setOkoEnabled(s.okoEnabled !== undefined ? s.okoEnabled : true)
+        setOkoCheckFrequencySeconds(s.okoCheckFrequencySeconds || 5)
+        setOkoAccountDrawdownPercent(s.okoAccountDrawdownPercent || 50.0)
+        setOkoAccountDrawdownCloseAll(s.okoAccountDrawdownCloseAll !== undefined ? s.okoAccountDrawdownCloseAll : true)
+        setOkoAccountDrawdownChecks(s.okoAccountDrawdownChecks || 3)
+        setOkoTimeBasedExitEnabled(s.okoTimeBasedExitEnabled || false)
+        setOkoTimeBasedExitHours(s.okoTimeBasedExitHours || 24)
+        setOkoCapitulationBanDurationHours(s.okoCapitulationBanDurationHours || 6)
+        setOkoCapitulationChecks(s.okoCapitulationChecks || 1)
       }
     } catch (error) {
       toast.error("Błąd ładowania ustawień")
@@ -149,6 +170,32 @@ export default function BotSettingsPage() {
     }
 
     return warnings
+  }
+
+  const handleResetCapitulation = async () => {
+    if (!confirm("Czy na pewno chcesz zresetować licznik kapitulacji? To wyczyści historię zamknięć przez Oko Saurona.")) {
+      return
+    }
+
+    setResettingCapitulation(true)
+    try {
+      const response = await fetch("/api/bot/capitulation/reset", {
+        method: "POST",
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success("Licznik kapitulacji został zresetowany!")
+      } else {
+        toast.error(data.error || "Błąd resetowania licznika")
+      }
+    } catch (error) {
+      toast.error("Błąd połączenia z serwerem")
+      console.error(error)
+    } finally {
+      setResettingCapitulation(false)
+    }
   }
 
   const handleSave = async () => {
@@ -199,6 +246,16 @@ export default function BotSettingsPage() {
           // SL as % margin
           slAsMarginPercent,
           slMarginRiskPercent,
+          // Oko Saurona
+          okoEnabled,
+          okoCheckFrequencySeconds,
+          okoAccountDrawdownPercent,
+          okoAccountDrawdownCloseAll,
+          okoAccountDrawdownChecks,
+          okoTimeBasedExitEnabled,
+          okoTimeBasedExitHours,
+          okoCapitulationBanDurationHours,
+          okoCapitulationChecks,
         })
       })
 
@@ -573,6 +630,227 @@ export default function BotSettingsPage() {
               </div>
             )}
           </div>
+        </Card>
+
+        {/* NEW: Oko Saurona Configuration */}
+        <Card className="p-6 space-y-6 border-red-700/40 bg-gradient-to-br from-red-900/20 via-orange-900/10 to-gray-900/80 backdrop-blur-sm shadow-red-500/10 shadow-xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-red-500/20 border-2 border-red-500/40 shadow-lg shadow-red-500/20">
+                <Eye className="h-8 w-8 text-red-400 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                  👁️ Oko Saurona
+                  <Badge variant="destructive" className="text-xs">OCHRONA</Badge>
+                </h3>
+                <p className="text-sm text-gray-200">Zaawansowany system monitorowania i ochrony pozycji</p>
+              </div>
+            </div>
+            <Switch 
+              checked={okoEnabled} 
+              onCheckedChange={setOkoEnabled}
+              className="scale-125"
+            />
+          </div>
+
+          {okoEnabled && (
+            <>
+              <Separator className="bg-gray-700/50" />
+              
+              <Alert className="border-orange-700 bg-orange-900/20">
+                <AlertTriangle className="h-4 w-4 text-orange-400" />
+                <AlertDescription className="text-sm text-orange-200">
+                  <strong>Uwaga:</strong> Oko Saurona to system ochronny który automatycznie zamyka pozycje w sytuacjach kryzysowych. 
+                  Upewnij się że rozumiesz działanie każdej opcji przed włączeniem.
+                </AlertDescription>
+              </Alert>
+
+              {/* Basic Configuration */}
+              <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
+                <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-blue-400" />
+                  Podstawowa Konfiguracja
+                </h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Częstotliwość sprawdzania (sekundy)</Label>
+                    <Input 
+                      type="number" 
+                      value={okoCheckFrequencySeconds} 
+                      onChange={(e) => setOkoCheckFrequencySeconds(parseInt(e.target.value))}
+                      min="1"
+                      max="60"
+                      className="text-gray-200 bg-gray-900/60 border-gray-700"
+                    />
+                    <p className="text-xs text-gray-300">Jak często Oko sprawdza pozycje (domyślnie: 5s)</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Account Drawdown Protection */}
+              <div className="space-y-4 p-4 rounded-lg bg-red-900/20 border-2 border-red-700/50">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Shield className="h-5 w-5 text-red-400" />
+                    Ochrona przed Drawdown Konta
+                  </h4>
+                  <Switch 
+                    checked={okoAccountDrawdownCloseAll} 
+                    onCheckedChange={setOkoAccountDrawdownCloseAll}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Próg drawdown (%)</Label>
+                    <Input 
+                      type="number" 
+                      value={okoAccountDrawdownPercent} 
+                      onChange={(e) => setOkoAccountDrawdownPercent(parseFloat(e.target.value))}
+                      step="1"
+                      min="1"
+                      max="100"
+                      className="text-gray-200 bg-gray-900/60 border-gray-700"
+                    />
+                    <p className="text-xs text-gray-300">Gdy całkowity PnL spadnie poniżej tego progu (domyślnie: 50%)</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Liczba potwierdzeń</Label>
+                    <Select 
+                      value={okoAccountDrawdownChecks.toString()} 
+                      onValueChange={(v) => setOkoAccountDrawdownChecks(parseInt(v))}
+                    >
+                      <SelectTrigger className="text-gray-200 bg-gray-900/60 border-gray-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 check (instant - natychmiastowe zamknięcie)</SelectItem>
+                        <SelectItem value="3">3 checks (15s - potwierdzone zamknięcie)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-300">Ile sprawdzeń przed zamknięciem wszystkich pozycji</p>
+                  </div>
+                </div>
+
+                <div className="bg-red-900/30 border border-red-700/50 rounded-lg p-3">
+                  <p className="text-sm text-red-200">
+                    <strong>⚠️ UWAGA:</strong> Gdy drawdown przekroczy {okoAccountDrawdownPercent}%, 
+                    Oko {okoAccountDrawdownChecks === 1 ? "natychmiast zamknie" : `zamknie po ${okoAccountDrawdownChecks} potwierdzeniach (${okoAccountDrawdownChecks * okoCheckFrequencySeconds}s)`} WSZYSTKIE otwarte pozycje market order!
+                  </p>
+                </div>
+              </div>
+
+              {/* Time-Based Exit */}
+              <div className="space-y-4 p-4 rounded-lg bg-yellow-900/20 border-2 border-yellow-700/50">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Target className="h-5 w-5 text-yellow-400" />
+                    Automatyczne Zamykanie Czasowe
+                  </h4>
+                  <Switch 
+                    checked={okoTimeBasedExitEnabled} 
+                    onCheckedChange={setOkoTimeBasedExitEnabled}
+                  />
+                </div>
+
+                {okoTimeBasedExitEnabled && (
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Zamknij pozycje na minusie po (godziny)</Label>
+                    <Input 
+                      type="number" 
+                      value={okoTimeBasedExitHours} 
+                      onChange={(e) => setOkoTimeBasedExitHours(parseInt(e.target.value))}
+                      min="1"
+                      max="168"
+                      className="text-gray-200 bg-gray-900/60 border-gray-700"
+                    />
+                    <p className="text-xs text-gray-300">
+                      Pozycje na minusie otwarte dłużej niż {okoTimeBasedExitHours}h będą automatycznie zamknięte
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Capitulation System */}
+              <div className="space-y-4 p-4 rounded-lg bg-purple-900/20 border-2 border-purple-700/50">
+                <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-purple-400" />
+                  System Kapitulacji
+                </h4>
+
+                <div className="bg-purple-900/30 border border-purple-700/50 rounded-lg p-3">
+                  <p className="text-sm text-purple-200 mb-2">
+                    <strong>Zasada:</strong> Po zamknięciu 3 pozycji przez Oko (np. z powodu PnL Emergency), 
+                    symbole tych pozycji zostaną zbanowane na określony czas.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Czas banu symbolu (godziny)</Label>
+                    <Input 
+                      type="number" 
+                      value={okoCapitulationBanDurationHours} 
+                      onChange={(e) => setOkoCapitulationBanDurationHours(parseInt(e.target.value))}
+                      min="1"
+                      max="168"
+                      className="text-gray-200 bg-gray-900/60 border-gray-700"
+                    />
+                    <p className="text-xs text-gray-300">Jak długo symbol będzie zbanowany po kapitulacji</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Potwierdzenia przed banem</Label>
+                    <Select 
+                      value={okoCapitulationChecks.toString()} 
+                      onValueChange={(v) => setOkoCapitulationChecks(parseInt(v))}
+                    >
+                      <SelectTrigger className="text-gray-200 bg-gray-900/60 border-gray-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 check (instant ban - natychmiastowy ban)</SelectItem>
+                        <SelectItem value="3">3 checks (ban po potwierdzeniu)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-300">Ile sprawdzeń przed zabanowan</p>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleResetCapitulation}
+                  disabled={resettingCapitulation}
+                  variant="outline"
+                  className="w-full border-purple-600 text-purple-300 hover:bg-purple-600/20"
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${resettingCapitulation ? "animate-spin" : ""}`} />
+                  {resettingCapitulation ? "Resetowanie..." : "Zresetuj Licznik Kapitulacji"}
+                </Button>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/30 rounded-lg p-4">
+                <h5 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-blue-400" />
+                  Jak działa Oko Saurona?
+                </h5>
+                <div className="space-y-2 text-xs text-gray-200">
+                  <p>• <strong>PnL Emergency:</strong> Zamyka pozycje gdy PnL {"<"} -{slMarginRiskPercent}% margin (z ustawień SL)</p>
+                  <p>• <strong>SL Breach:</strong> Wykrywa gdy cena przeszła daleko poza SL (1 check = instant)</p>
+                  <p>• <strong>Missing SL/TP:</strong> Naprawia lub zamyka pozycje bez zabezpieczeń</p>
+                  <p>• <strong>TP1 Quantity Fix:</strong> Dopilnowuje poprawnej ilości po TP1</p>
+                  <p>• <strong>Trailing SL & Break-even:</strong> Automatyczne zarządzanie SL po TP1</p>
+                  <p>• <strong>Kapitulacja:</strong> Ban symboli po 3 awaryjnych zamknięciach</p>
+                  <p className="pt-2 text-blue-200">
+                    📊 <strong>Wszystkie działania Oka są logowane w zakładce Diagnostyka</strong>
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </Card>
 
         {/* Position Size */}
