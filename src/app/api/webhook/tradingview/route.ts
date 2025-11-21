@@ -1056,12 +1056,13 @@ async function verifyPositionOpening(
   
   console.log(`   ⚙️ Tolerances: Price ${(PRICE_TOLERANCE * 100).toFixed(1)}%, Quantity ${(QUANTITY_TOLERANCE * 100).toFixed(1)}%`);
   
-  // ✅ CRITICAL FIX: Much longer wait times for PRODUCTION
-  const MAX_RETRIES = demo ? 5 : 20; // Prod: 20 tries (was 7)
-  const WAIT_TIME = demo ? 3000 : 2000; // Keep 2s intervals
+  // ✅ CRITICAL FIX: DEMO needs MORE time due to higher delays!
+  const MAX_RETRIES = demo ? 40 : 20; // Demo: 40 tries (was 5!), Prod: 20 tries
+  const WAIT_TIME = demo ? 3000 : 2000; // Demo: 3s intervals, Prod: 2s intervals
   
   console.log(`   Retry config: MAX_RETRIES=${MAX_RETRIES}, WAIT_TIME=${WAIT_TIME}ms`);
   console.log(`   Total max wait: ${(MAX_RETRIES + 1) * WAIT_TIME / 1000}s`);
+  console.log(`   ${demo ? '⚠️ DEMO environment - using extended wait times for OKX propagation' : '✅ Production environment'}`);
   
   try {
     // ============================================
