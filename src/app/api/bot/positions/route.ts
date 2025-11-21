@@ -130,6 +130,70 @@ async function getOkxAlgoOrders(
   return data.data || [];
 }
 
+// ============================================
+// 🎯 HELPER: MAP ALGO ORDERS TO POSITIONS
+// ============================================
+
+function mapAlgoOrdersToPositions(
+  okxAlgoOrders: any[],
+  positions: any[]
+): Map<number, {
+  liveSlPrice: number | null;
+  liveTp1Price: number | null;
+  liveTp2Price: number | null;
+  liveTp3Price: number | null;
+}> {
+  const positionOrdersMap = new Map();
+
+  for (const pos of positions) {
+    const okxSymbol = convertSymbolToOkx(pos.symbol);
+    const positionSide = pos.side === 'BUY' ? 'long' : 'short';
+    
+    // Filter orders for this symbol and side
+    const relevantOrders = okxAlgoOrders.filter((order: any) => {
+      return order.instId === okxSymbol && order.posSide === positionSide;
+    });
+
+    let liveSlPrice: number | null = null;
+    const tpPrices: number[] = [];
+
+    // Extract SL and TP prices
+    for (const order of relevantOrders) {
+      // Stop Loss
+      if (order.slTriggerPx && parseFloat(order.slTriggerPx) > 0) {
+        liveSlPrice = parseFloat(order.slTriggerPx);
+      }
+      
+      // Take Profit
+      if (order.tpTriggerPx && parseFloat(order.tpTriggerPx) > 0) {
+        tpPrices.push(parseFloat(order.tpTriggerPx));
+      }
+    }
+
+    // Sort TP prices (closest to entry price = TP1, farthest = TP3)
+    // For BUY (long): TP1 < TP2 < TP3 (ascending)
+    // For SELL (short): TP1 > TP2 > TP3 (descending)
+    const entryPrice = pos.entryPrice;
+    
+    if (pos.side === 'BUY') {
+      // Long: TP prices above entry, sort ascending
+      tpPrices.sort((a, b) => a - b);
+    } else {
+      // Short: TP prices below entry, sort descending
+      tpPrices.sort((a, b) => b - a);
+    }
+
+    positionOrdersMap.set(pos.id, {
+      liveSlPrice,
+      liveTp1Price: tpPrices[0] || null,
+      liveTp2Price: tpPrices[1] || null,
+      liveTp3Price: tpPrices[2] || null,
+    });
+  }
+
+  return positionOrdersMap;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -206,6 +270,8 @@ export async function GET(request: NextRequest) {
             getOkxAlgoOrders(apiKey, apiSecret, passphrase, demo)
           ]);
           
+          console.log(`📊 [API /positions] Fetched ${okxAlgoOrders.length} algo orders from OKX`);
+          
           // Create map for quick lookup: "SYMBOL_SIDE" -> OKX position
           const okxPositionsMap = new Map(
             okxPositions.map((p: any) => {
@@ -215,54 +281,15 @@ export async function GET(request: NextRequest) {
             })
           );
           
-          // Create map for algo orders: "SYMBOL" -> { sl, tp1, tp2, tp3 }
-          const algoOrdersMap = new Map<string, { 
-            liveSlPrice: number | null;
-            liveTp1Price: number | null;
-            liveTp2Price: number | null;
-            liveTp3Price: number | null;
-          }>();
-          
-          // Group algo orders by symbol
-          for (const order of okxAlgoOrders) {
-            const symbol = order.instId;
-            
-            if (!algoOrdersMap.has(symbol)) {
-              algoOrdersMap.set(symbol, {
-                liveSlPrice: null,
-                liveTp1Price: null,
-                liveTp2Price: null,
-                liveTp3Price: null
-              });
-            }
-            
-            const orderData = algoOrdersMap.get(symbol)!;
-            
-            // Check if it's SL or TP order
-            if (order.slTriggerPx && parseFloat(order.slTriggerPx) > 0) {
-              orderData.liveSlPrice = parseFloat(order.slTriggerPx);
-            }
-            
-            if (order.tpTriggerPx && parseFloat(order.tpTriggerPx) > 0) {
-              const tpPrice = parseFloat(order.tpTriggerPx);
-              
-              // Assign to TP1, TP2, or TP3 based on availability
-              if (orderData.liveTp1Price === null) {
-                orderData.liveTp1Price = tpPrice;
-              } else if (orderData.liveTp2Price === null) {
-                orderData.liveTp2Price = tpPrice;
-              } else if (orderData.liveTp3Price === null) {
-                orderData.liveTp3Price = tpPrice;
-              }
-            }
-          }
+          // ✅ IMPROVED: Map algo orders to positions with correct side filtering and sorting
+          const positionOrdersMap = mapAlgoOrdersToPositions(okxAlgoOrders, positions);
           
           // Update each position with live PnL and SL/TP from OKX
           const updatedPositions = positions.map(pos => {
             const okxSymbol = convertSymbolToOkx(pos.symbol);
             const posKey = `${okxSymbol}_${pos.side}`;
             const okxPos = okxPositionsMap.get(posKey) as any;
-            const algoOrders = algoOrdersMap.get(okxSymbol);
+            const algoOrders = positionOrdersMap.get(pos.id);
             
             let updatedPos = { ...pos };
             
@@ -274,6 +301,8 @@ export async function GET(request: NextRequest) {
             
             // Update live SL/TP
             if (algoOrders) {
+              console.log(`✅ [${pos.symbol} ${pos.side}] Mapped orders: SL=${algoOrders.liveSlPrice}, TP1=${algoOrders.liveTp1Price}, TP2=${algoOrders.liveTp2Price}, TP3=${algoOrders.liveTp3Price}`);
+              
               return {
                 ...updatedPos,
                 liveSlPrice: algoOrders.liveSlPrice,
@@ -281,6 +310,8 @@ export async function GET(request: NextRequest) {
                 liveTp2Price: algoOrders.liveTp2Price,
                 liveTp3Price: algoOrders.liveTp3Price,
               };
+            } else {
+              console.log(`⚠️ [${pos.symbol} ${pos.side}] No algo orders found`);
             }
             
             return updatedPos;
