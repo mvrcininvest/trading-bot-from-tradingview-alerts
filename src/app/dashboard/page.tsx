@@ -135,6 +135,7 @@ export default function DashboardPage() {
   const [loadingOko, setLoadingOko] = useState(false);
   const [okoTimeRange, setOkoTimeRange] = useState<24 | 48 | 168>(24);
   const [syncingCredentials, setSyncingCredentials] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) {
@@ -1020,10 +1021,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <Button
-                  onClick={() => {
-                    const okoTab = document.querySelector('[value="oko"]') as HTMLElement;
-                    okoTab?.click();
-                  }}
+                  onClick={() => setActiveTab('oko')}
                   className="bg-purple-600 hover:bg-purple-700 text-white"
                 >
                   <Eye className="mr-2 h-4 w-4" />
@@ -1184,7 +1182,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Content with Tabs - Dark Theme */}
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
             <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <BarChart3 className="mr-2 h-4 w-4" />
