@@ -819,7 +819,7 @@ export default function DashboardPage() {
   }: { 
     label: string; 
     price: number | null; 
-    livePrice: number | null; 
+    livePrice: number | null | undefined; 
     isHit: boolean;
   }) => {
     if (!livePrice && !price) return null;
