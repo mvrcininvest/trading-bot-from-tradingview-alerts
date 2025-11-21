@@ -5,6 +5,14 @@ import crypto from 'crypto';
 import { okxRateLimiter } from './rate-limiter';
 import { classifyOkxError } from './error-classifier';
 import { cleanupOrphanedOrders, getRealizedPnlFromOkx } from './okx-helpers';
+import {
+  runOkoGuard,
+  runAccountOkoGuard,
+  incrementCapitulationCounter,
+  banSymbol,
+  logOkoAction,
+  clearOldConfirmations
+} from './oko-saurona';
 
 // ============================================
 // 🔐 OKX SIGNATURE HELPER
@@ -591,7 +599,7 @@ async function getOkxPositions(
 }
 
 // ============================================
-// 🤖 MAIN MONITOR FUNCTION (UPDATED)
+// 🤖 MAIN MONITOR FUNCTION (WITH OKO INTEGRATION)
 // ============================================
 
 export async function monitorAndManagePositions(silent = true) {
@@ -619,7 +627,7 @@ export async function monitorAndManagePositions(silent = true) {
     console.log(`📊 [MONITOR] Found ${dbPositions.length} open positions in database`);
 
     if (dbPositions.length === 0) {
-      return { success: true, checked: 0, tpHits: 0, slAdjustments: 0, slTpFixed: 0, emergencyClosed: 0 };
+      return { success: true, checked: 0, tpHits: 0, slAdjustments: 0, slTpFixed: 0, emergencyClosed: 0, okoActions: 0 };
     }
 
     // Get OKX positions
@@ -642,10 +650,96 @@ export async function monitorAndManagePositions(silent = true) {
       });
     }
 
+    // ============================================
+    // 👁️ OKO SAURONA: ACCOUNT-LEVEL CHECK FIRST
+    // ============================================
+    
+    // Prepare position data for Oko
+    const allPositionData = await Promise.all(dbPositions.map(async (dbPos) => {
+      const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
+      const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+      
+      if (!okxPos) return null;
+      
+      const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
+      
+      return {
+        id: dbPos.id,
+        symbol: dbPos.symbol,
+        side: dbPos.side,
+        entryPrice: dbPos.entryPrice,
+        currentPrice,
+        quantity: Math.abs(parseFloat(okxPos.pos)),
+        stopLoss: dbPos.stopLoss,
+        currentSl: dbPos.currentSl,
+        unrealisedPnl: parseFloat(okxPos.upl || "0"),
+        initialMargin: dbPos.initialMargin,
+        openedAt: dbPos.openedAt,
+        tp1Hit: dbPos.tp1Hit || false,
+      };
+    }));
+
+    const validPositionData = allPositionData.filter(p => p !== null) as any[];
+
+    // Run account-level Oko guard
+    const accountOkoResult = await runAccountOkoGuard(validPositionData);
+    
+    if (accountOkoResult.shouldCloseAll) {
+      console.log(`🚨 [OKO] ACCOUNT DRAWDOWN - CLOSING ALL POSITIONS!`);
+      console.log(`   Reason: ${accountOkoResult.reason}`);
+      
+      // Close all positions immediately
+      let closedCount = 0;
+      for (const dbPos of dbPositions) {
+        const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
+        
+        try {
+          const closeOrderId = await closePositionPartial(
+            symbol,
+            dbPos.side,
+            dbPos.quantity,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo
+          );
+          
+          await db.update(botPositions)
+            .set({
+              status: "closed",
+              closeReason: "oko_account_drawdown",
+              closedAt: new Date().toISOString(),
+            })
+            .where(eq(botPositions.id, dbPos.id));
+
+          const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
+          await savePositionToHistory(dbPos, currentPrice, 'oko_account_drawdown', closeOrderId, apiKey, apiSecret, passphrase, demo);
+          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+          
+          closedCount++;
+          console.log(`   ✅ Closed ${symbol}`);
+        } catch (error: any) {
+          console.error(`   ❌ Failed to close ${symbol}:`, error.message);
+        }
+      }
+      
+      return {
+        success: true,
+        checked: dbPositions.length,
+        tpHits: 0,
+        slAdjustments: 0,
+        slTpFixed: 0,
+        emergencyClosed: closedCount,
+        okoActions: closedCount,
+        accountDrawdownTriggered: true,
+      };
+    }
+
     let tpHits = 0;
     let slAdjustments = 0;
     let slTpFixed = 0;
     let emergencyClosed = 0;
+    let okoActions = 0;
     const errors: string[] = [];
     const details: any[] = [];
 
@@ -684,7 +778,7 @@ export async function monitorAndManagePositions(silent = true) {
       const side = dbPos.side;
       const entryPrice = dbPos.entryPrice;
       
-      // ✅ CRITICAL FIX #9: Update DB with live PnL from OKX
+      // ✅ Update DB with live PnL from OKX
       const livePnl = parseFloat(okxPos.upl || "0");
       if (Math.abs(livePnl - dbPos.unrealisedPnl) > 0.01) {
         await db.update(botPositions)
@@ -698,6 +792,117 @@ export async function monitorAndManagePositions(silent = true) {
       }
       
       console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}, PnL: ${livePnl.toFixed(2)} USDT`);
+
+      // ============================================
+      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS
+      // ============================================
+      
+      const positionData = {
+        id: dbPos.id,
+        symbol: dbPos.symbol,
+        side: dbPos.side,
+        entryPrice: dbPos.entryPrice,
+        currentPrice,
+        quantity,
+        stopLoss: dbPos.stopLoss,
+        currentSl: dbPos.currentSl,
+        unrealisedPnl: livePnl,
+        initialMargin: dbPos.initialMargin,
+        openedAt: dbPos.openedAt,
+        tp1Hit: dbPos.tp1Hit || false,
+      };
+
+      const okoResult = await runOkoGuard(positionData, validPositionData);
+      
+      if (okoResult.shouldClose) {
+        console.log(`🚨 [OKO] Action required: ${okoResult.action}`);
+        console.log(`   Reason: ${okoResult.reason}`);
+        
+        try {
+          const closeOrderId = await closePositionPartial(
+            symbol,
+            side,
+            quantity,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo
+          );
+          
+          await db.update(botPositions)
+            .set({
+              status: "closed",
+              closeReason: `oko_${okoResult.action}`,
+              closedAt: new Date().toISOString(),
+            })
+            .where(eq(botPositions.id, dbPos.id));
+
+          await savePositionToHistory(
+            dbPos,
+            currentPrice,
+            `oko_${okoResult.action}`,
+            closeOrderId,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo
+          );
+
+          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+          
+          emergencyClosed++;
+          okoActions++;
+          
+          details.push({
+            symbol,
+            side,
+            action: `oko_${okoResult.action}`,
+            reason: okoResult.reason
+          });
+
+          // ============================================
+          // 🚫 CAPITULATION LOGIC
+          // ============================================
+          
+          // Increment capitulation counter
+          const newCounter = await incrementCapitulationCounter();
+          
+          // Check if capitulation threshold reached
+          const okoSettings = config;
+          const capitulationThreshold = okoSettings.okoCapitulationThreshold || 3;
+          
+          if (newCounter >= capitulationThreshold) {
+            console.log(`🚨 [OKO] CAPITULATION THRESHOLD REACHED (${newCounter}/${capitulationThreshold})`);
+            
+            // Ban the symbol
+            const banDuration = okoSettings.okoBanDurationHours || 24;
+            await banSymbol(
+              dbPos.symbol,
+              `Capitulation after ${newCounter} Oko emergency closures`,
+              banDuration
+            );
+            
+            // Reset counter after ban
+            await db.update(botSettings)
+              .set({
+                okoCapitulationCounter: 0,
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(botSettings.id, okoSettings.id));
+            
+            console.log(`   🚫 Symbol ${dbPos.symbol} BANNED for ${banDuration}h`);
+            console.log(`   🔄 Capitulation counter reset to 0`);
+          }
+          
+          console.log(`   ✅ Position closed by Oko Saurona`);
+          continue;
+          
+        } catch (error: any) {
+          const errMsg = `Failed to execute Oko action for ${symbol}: ${error.message}`;
+          console.error(`   ❌ ${errMsg}`);
+          errors.push(errMsg);
+        }
+      }
 
       // ============================================
       // 🎯 CHECK TP LEVELS AND PARTIAL CLOSE
@@ -1224,7 +1429,10 @@ export async function monitorAndManagePositions(silent = true) {
       }
     }
 
-    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}, Emergency Closed: ${emergencyClosed}`);
+    // Clear old Oko confirmations
+    clearOldConfirmations();
+
+    console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}, Emergency Closed: ${emergencyClosed}, Oko Actions: ${okoActions}`);
     if (errors.length > 0) {
       console.error(`⚠️ [MONITOR] Errors encountered: ${errors.length}`);
     }
@@ -1236,6 +1444,7 @@ export async function monitorAndManagePositions(silent = true) {
       slAdjustments,
       slTpFixed,
       emergencyClosed,
+      okoActions,
       errors,
       details,
     };

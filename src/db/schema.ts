@@ -77,15 +77,14 @@ export const botSettings = sqliteTable('bot_settings', {
   slMarginRiskPercent: real('sl_margin_risk_percent').notNull().default(2.0),
   
   // Oko Saurona Settings
-  okoEnabled: integer('oko_enabled', { mode: 'boolean' }).notNull().default(true),
-  okoCheckFrequencySeconds: integer('oko_check_frequency_seconds').notNull().default(5),
-  okoAccountDrawdownPercent: real('oko_account_drawdown_percent').notNull().default(50.0),
-  okoAccountDrawdownCloseAll: integer('oko_account_drawdown_close_all', { mode: 'boolean' }).notNull().default(true),
-  okoAccountDrawdownChecks: integer('oko_account_drawdown_checks').notNull().default(3),
-  okoTimeBasedExitEnabled: integer('oko_time_based_exit_enabled', { mode: 'boolean' }).notNull().default(false),
+  okoEnabled: integer('oko_enabled', { mode: 'boolean' }).notNull().default(false),
+  okoAccountDrawdownThreshold: integer('oko_account_drawdown_threshold').notNull().default(50),
+  okoCapitulationThreshold: integer('oko_capitulation_threshold').notNull().default(3),
+  okoBanDurationHours: integer('oko_ban_duration_hours').notNull().default(24),
   okoTimeBasedExitHours: integer('oko_time_based_exit_hours').notNull().default(24),
-  okoCapitulationBanDurationHours: integer('oko_capitulation_ban_duration_hours').notNull().default(6),
-  okoCapitulationChecks: integer('oko_capitulation_checks').notNull().default(1),
+  okoTimeBasedExitEnabled: integer('oko_time_based_exit_enabled', { mode: 'boolean' }).notNull().default(false),
+  okoCapitulationCounter: integer('oko_capitulation_counter').notNull().default(0),
+  okoBannedSymbols: text('oko_banned_symbols'),
   
   apiKey: text('api_key'),
   apiSecret: text('api_secret'),
@@ -319,6 +318,19 @@ export const positionGuardLogs = sqliteTable('position_guard_logs', {
   positionIdx: index('idx_position_guard_logs_position').on(table.positionId),
   symbolIdx: index('idx_position_guard_logs_symbol').on(table.symbol),
   actionIdx: index('idx_position_guard_logs_action').on(table.action),
+}));
+
+export const positionGuardActions = sqliteTable('position_guard_actions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  positionId: integer('position_id').references(() => botPositions.id),
+  actionType: text('action_type').notNull(),
+  reason: text('reason').notNull(),
+  checkCount: integer('check_count').notNull(),
+  createdAt: text('created_at').notNull(),
+  metadata: text('metadata'),
+}, (table) => ({
+  positionIdx: index('idx_position_guard_actions_position').on(table.positionId),
+  actionTypeIdx: index('idx_position_guard_actions_type').on(table.actionType),
 }));
 
 export const capitulationCounter = sqliteTable('capitulation_counter', {
