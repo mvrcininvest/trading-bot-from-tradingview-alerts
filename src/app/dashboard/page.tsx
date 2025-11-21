@@ -999,7 +999,7 @@ export default function DashboardPage() {
           </Alert>
         )}
 
-        {/* ✅ NEW: Oko Saurona Activity Summary */}
+        {/* ✅ FIXED: Oko Saurona Activity Summary */}
         {okoStats && okoStats.total > 0 && (
           <Alert className="border-2 border-purple-600/50 bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-sm">
             <Eye className="h-5 w-5 text-purple-400" />
@@ -1007,7 +1007,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <strong className="text-purple-100 text-base">👁️ Oko Saurona: {okoStats.total} akcji w ostatnich {okoTimeRange}h</strong>
-                  <div className="mt-2 flex items-center gap-4">
+                  <div className="mt-2 flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
                       <Badge variant="destructive" className="bg-red-600/30 text-red-200 border-red-500/50">
                         <XCircle className="mr-1 h-3 w-3" />
@@ -1018,6 +1018,17 @@ export default function DashboardPage() {
                         {okoStats.repairs} napraw
                       </Badge>
                     </div>
+                    {/* ✅ NEW: Show breakdown by type */}
+                    {Object.keys(okoStats.byType).length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap text-xs text-purple-200">
+                        <span className="opacity-70">Typy:</span>
+                        {Object.entries(okoStats.byType).map(([type, count]) => (
+                          <Badge key={type} variant="outline" className="text-xs border-purple-500/30 text-purple-200">
+                            {type}: {count}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <Button
@@ -1408,7 +1419,7 @@ export default function DashboardPage() {
             </div>
           </TabsContent>
 
-          {/* NEW: Single Positions Tab (merged) */}
+          {/* Positions Tab */}
           <TabsContent value="positions" className="space-y-6">
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
               <CardHeader>
@@ -1594,66 +1605,91 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
-                          {/* ✅ FIXED: Simplified TP badges using component */}
+                          {/* ✅ IMPROVED: SL/TP Display with better logic */}
                           <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2 text-xs">
                                 <span className="text-gray-300 font-semibold">Stop Loss:</span>
-                                {botPositionData?.liveSlPrice || botPositionData?.currentSl ? (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant="outline" className={
-                                        botPositionData.liveSlPrice 
-                                          ? "border-green-700 text-green-300" 
-                                          : "border-yellow-700 text-yellow-300"
-                                      }>
-                                        {(botPositionData.liveSlPrice || botPositionData.currentSl).toFixed(4)} 
-                                        {botPositionData.liveSlPrice ? " 🟢" : " 🟡"}
+                                {(() => {
+                                  // Priority: liveSlPrice (from exchange) > currentSl (from DB) > stopLoss (original)
+                                  const slPrice = botPositionData?.liveSlPrice || botPositionData?.currentSl || parseFloat(position.stopLoss);
+                                  const isLive = !!botPositionData?.liveSlPrice;
+                                  const hasAnySl = slPrice > 0;
+                                  
+                                  if (!hasAnySl) {
+                                    return (
+                                      <Badge variant="destructive" className="text-xs">
+                                        ⚠️ BRAK SL
                                       </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-gray-200">
-                                        {botPositionData.liveSlPrice 
-                                          ? "🟢 Aktywny na giełdzie (live)" 
-                                          : "🟡 Planowany (cache) - może nie być ustawiony!"}
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : (
-                                  <Badge variant="destructive" className="text-xs">
-                                    ⚠️ BRAK SL
-                                  </Badge>
-                                )}
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant="outline" className={
+                                          isLive 
+                                            ? "border-green-700 text-green-300" 
+                                            : "border-yellow-700 text-yellow-300"
+                                        }>
+                                          {slPrice.toFixed(4)} 
+                                          {isLive ? " 🟢" : " 🟡"}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="text-gray-200">
+                                          {isLive 
+                                            ? "🟢 Aktywny na giełdzie (live)" 
+                                            : "🟡 Z bazy danych - weryfikuj na giełdzie"}
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                })()}
                               </div>
                             </div>
                             <div className="flex items-center gap-2 text-xs flex-wrap">
                               <span className="text-gray-300 font-semibold">Take Profit:</span>
-                              {(botPositionData?.liveTp1Price || botPositionData?.tp1Price) ? (
-                                <>
-                                  <TPBadge 
-                                    label="TP1"
-                                    price={botPositionData.tp1Price}
-                                    livePrice={botPositionData.liveTp1Price}
-                                    isHit={botPositionData.tp1Hit}
-                                  />
-                                  <TPBadge 
-                                    label="TP2"
-                                    price={botPositionData.tp2Price}
-                                    livePrice={botPositionData.liveTp2Price}
-                                    isHit={botPositionData.tp2Hit}
-                                  />
-                                  <TPBadge 
-                                    label="TP3"
-                                    price={botPositionData.tp3Price}
-                                    livePrice={botPositionData.liveTp3Price}
-                                    isHit={botPositionData.tp3Hit}
-                                  />
-                                </>
-                              ) : (
-                                <Badge variant="destructive" className="text-xs">
-                                  ⚠️ BRAK TP
-                                </Badge>
-                              )}
+                              {(() => {
+                                // Check if we have ANY TP data
+                                const hasAnyTp = botPositionData?.liveTp1Price || 
+                                               botPositionData?.liveTp2Price || 
+                                               botPositionData?.liveTp3Price ||
+                                               botPositionData?.tp1Price ||
+                                               botPositionData?.tp2Price ||
+                                               botPositionData?.tp3Price;
+                                
+                                if (!hasAnyTp) {
+                                  return (
+                                    <Badge variant="destructive" className="text-xs">
+                                      ⚠️ BRAK TP
+                                    </Badge>
+                                  );
+                                }
+                                
+                                return (
+                                  <>
+                                    <TPBadge 
+                                      label="TP1"
+                                      price={botPositionData?.tp1Price || null}
+                                      livePrice={botPositionData?.liveTp1Price}
+                                      isHit={botPositionData?.tp1Hit || false}
+                                    />
+                                    <TPBadge 
+                                      label="TP2"
+                                      price={botPositionData?.tp2Price || null}
+                                      livePrice={botPositionData?.liveTp2Price}
+                                      isHit={botPositionData?.tp2Hit || false}
+                                    />
+                                    <TPBadge 
+                                      label="TP3"
+                                      price={botPositionData?.tp3Price || null}
+                                      livePrice={botPositionData?.liveTp3Price}
+                                      isHit={botPositionData?.tp3Hit || false}
+                                    />
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
