@@ -121,7 +121,7 @@ export default function DashboardPage() {
   const [botPositionsError, setBotPositionsError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
-  const [credentialsSynced, setCredentialsSynced] = useState(false); // ✅ NEW: Track if synced
+  const [credentialsSynced, setCredentialsSynced] = useState(false);
   const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
   const [loadingLocks, setLoadingLocks] = useState(false);
   const [closeAllDialogOpen, setCloseAllDialogOpen] = useState(false);
@@ -133,9 +133,9 @@ export default function DashboardPage() {
   const [okoActions, setOkoActions] = useState<OkoAction[]>([]);
   const [okoStats, setOkoStats] = useState<OkoStats | null>(null);
   const [loadingOko, setLoadingOko] = useState(false);
-  const [okoTimeRange, setOkoTimeRange] = useState<24 | 48 | 168>(24); // 24h, 48h, 7 days
+  const [okoTimeRange, setOkoTimeRange] = useState<24 | 48 | 168>(24);
+  const [syncingCredentials, setSyncingCredentials] = useState(false);
 
-  // ✅ FIXED: useCallback for functions used in useEffect
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) {
       setLoadingBotPositions(true);
@@ -227,7 +227,6 @@ export default function DashboardPage() {
             }));
           
           setPositions(openPositions);
-          setLastPositionsUpdate(new Date().toLocaleString("pl-PL"));
           setPositionsError(null);
         } else {
           setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
@@ -288,7 +287,6 @@ export default function DashboardPage() {
             }));
           
           setPositions(openPositions);
-          setLastPositionsUpdate(new Date().toLocaleString("pl-PL"));
           setPositionsError(null);
         } else {
           setPositionsError(`OKX API error: ${data.msg || "Nieznany błąd"}`);
@@ -330,7 +328,6 @@ export default function DashboardPage() {
       
       setCredentials(creds);
       
-      // ✅ FIXED: Only sync once per session
       if (creds.passphrase && !credentialsSynced) {
         syncCredentialsToDatabase(creds);
         setCredentialsSynced(true);
@@ -344,7 +341,6 @@ export default function DashboardPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ✅ FIXED: Added dependencies
   useEffect(() => {
     if (!credentials) return;
 
@@ -356,7 +352,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [credentials, fetchBotPositions]);
 
-  // ✅ FIXED: Added dependencies
   useEffect(() => {
     if (!credentials) return;
 
@@ -394,7 +389,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [credentials, fetchPositions]);
 
-  // ✅ FIXED: Added dependencies
   useEffect(() => {
     if (!credentials) return;
     
@@ -608,7 +602,6 @@ export default function DashboardPage() {
               }));
             
             setBalances(filteredBalances);
-            setLastUpdate(new Date().toLocaleString("pl-PL"));
             setError(null);
           } else {
             setError("Brak danych o saldzie w odpowiedzi API");
@@ -647,7 +640,6 @@ export default function DashboardPage() {
             }));
           
           setBalances(filteredBalances);
-          setLastUpdate(new Date().toLocaleString("pl-PL"));
           setError(null);
         } else {
           setError(data.message || "Nie udało się pobrać salda");
@@ -818,7 +810,6 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ NEW: Helper component for TP badges
   const TPBadge = ({ 
     label, 
     price, 
