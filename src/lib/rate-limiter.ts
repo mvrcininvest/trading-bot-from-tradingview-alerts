@@ -96,6 +96,3 @@ export class RateLimiter {
  * Singleton instance dla Bybit API
  */
 export const bybitRateLimiter = new RateLimiter(5, 100); // 5 concurrent, 100ms interval
-
-// Legacy export for backwards compatibility
-export const okxRateLimiter = bybitRateLimiter;

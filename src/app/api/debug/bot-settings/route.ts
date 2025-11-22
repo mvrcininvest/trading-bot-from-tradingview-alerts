@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
         environment: record.environment,
         apiKeyPreview: record.apiKey ? `${record.apiKey.substring(0, 8)}...${record.apiKey.slice(-4)}` : 'NOT SET',
         apiSecretSet: !!record.apiSecret,
-        passphraseSet: !!record.passphrase,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt
       }

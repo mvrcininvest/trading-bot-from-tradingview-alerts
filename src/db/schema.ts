@@ -90,7 +90,7 @@ export const botSettings = sqliteTable('bot_settings', {
   apiSecret: text('api_secret'),
   passphrase: text('passphrase'),
   exchange: text('exchange').notNull().default('bybit'),
-  environment: text('environment').notNull().default('demo'),
+  environment: text('environment').notNull().default('mainnet'),
   migrationDate: text('migration_date'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

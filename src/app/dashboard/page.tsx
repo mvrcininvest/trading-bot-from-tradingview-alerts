@@ -606,7 +606,6 @@ export default function DashboardPage() {
           exchange: credentials.exchange,
           apiKey: credentials.apiKey,
           apiSecret: credentials.apiSecret,
-          passphrase: credentials.passphrase,
           environment: credentials.environment
         })
       });
@@ -646,7 +645,6 @@ export default function DashboardPage() {
           exchange: credentials.exchange,
           apiKey: credentials.apiKey,
           apiSecret: credentials.apiSecret,
-          passphrase: credentials.passphrase,
           environment: credentials.environment,
           symbol: position.symbol,
           cancelOrders: true
@@ -1817,7 +1815,7 @@ export default function DashboardPage() {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="text-gray-200">Zarządzaj kluczami API giełdy - testuj połączenie, zmieniaj środowisko (demo/testnet/produkcja)</p>
+                      <p className="text-gray-200">Zarządzaj kluczami API giełdy - testuj połączenie, konfiguruj Bybit Mainnet</p>
                     </TooltipContent>
                   </Tooltip>
                   

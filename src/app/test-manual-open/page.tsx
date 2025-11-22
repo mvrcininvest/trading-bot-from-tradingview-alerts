@@ -74,13 +74,9 @@ export default function TestManualOpenPage() {
     setResult(null);
 
     try {
-      const baseUrl = credentials.environment === "demo" 
-        ? "https://api-demo.bybit.com"
-        : credentials.environment === "testnet"
-        ? "https://api-testnet.bybit.com"
-        : "https://api.bybit.com";
+      const baseUrl = "https://api.bybit.com"; // Only mainnet supported
 
-      console.log("🔧 Environment:", credentials.environment);
+      console.log("🔧 Environment: mainnet");
       console.log("🔧 Base URL:", baseUrl);
 
       // Step 1: Set Leverage (optional, non-critical)
