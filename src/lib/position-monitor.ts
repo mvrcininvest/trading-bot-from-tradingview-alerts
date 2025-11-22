@@ -1411,18 +1411,18 @@ export async function monitorAndManagePositions(silent = true) {
       if (!hasSL || !hasTP) {
         console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
         
-        // 🆕 FAZA 4: Check if we should attempt repair (with limiter)
-        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 20, 10);
-        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 20, 10);
+        // 🔧 COFNIĘTY LIMIT: 20 → 3 (jak prosił użytkownik)
+        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
+        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
         
         if (!shouldAttemptSlRepair && !hasSL) {
-          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached - skipping repair`);
+          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached (3/3) - skipping repair`);
         }
         
         if (!shouldAttemptTpRepair && !hasTP) {
-          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached - skipping repair`);
+          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached (3/3) - skipping repair`);
         }
-        
+
         // If both limiters say no, skip this position
         if (!shouldAttemptSlRepair && !shouldAttemptTpRepair) {
           console.log(`   ⏭️ Skipping position - waiting for cooldown period`);
