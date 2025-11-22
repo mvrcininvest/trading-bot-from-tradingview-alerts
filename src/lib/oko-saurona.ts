@@ -969,7 +969,7 @@ const repairAttempts = new Map<string, RepairAttempt>();
 export function shouldAttemptRepair(
   positionId: number,
   action: string,
-  maxAttempts: number = 5,
+  maxAttempts: number = 20,
   cooldownMinutes: number = 10
 ): boolean {
   const key = `${positionId}-${action}`;

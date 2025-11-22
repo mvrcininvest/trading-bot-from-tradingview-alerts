@@ -1337,8 +1337,8 @@ export async function monitorAndManagePositions(silent = true) {
       // ============================================
 
       const positionAlgos = algoOrders.filter((a: any) => a.instId === symbol);
-      const hasSL = positionAlgos.some((a: any) => a.slTriggerPx);
-      const hasTP = positionAlgos.some((a: any) => a.tpTriggerPx);
+      const hasSL = positionAlgos.some((a: any) => a.slTriggerPx && a.slTriggerPx !== '' && parseFloat(a.slTriggerPx) > 0);
+      const hasTP = positionAlgos.some((a: any) => a.tpTriggerPx && a.tpTriggerPx !== '' && parseFloat(a.tpTriggerPx) > 0);
 
       console.log(`   🔍 Algo Orders: SL=${hasSL}, TP=${hasTP} (Total: ${positionAlgos.length})`);
 
@@ -1348,12 +1348,72 @@ export async function monitorAndManagePositions(silent = true) {
       
       console.log(`   ⏱️ Position age: ${positionAgeSeconds.toFixed(0)}s`);
 
+      // ✅ CRITICAL FIX: If demo environment AND position > 60s old AND missing SL/TP
+      // Then FORCE CLOSE because demo can't set algo orders
+      if (demo && positionAgeSeconds > 60 && (!hasSL || !hasTP)) {
+        console.error(`\n🚨 CRITICAL: Demo environment can't set SL/TP - FORCE CLOSING position!`);
+        console.error(`   Position: ${symbol} ${dbPos.side}`);
+        console.error(`   Age: ${positionAgeSeconds.toFixed(0)}s`);
+        console.error(`   Missing: ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''}`);
+        
+        await logToBot('error', 'demo_sl_tp_impossible', `Demo environment cannot set SL/TP - closing position ${symbol}`, {
+          symbol,
+          side: dbPos.side,
+          positionAge: positionAgeSeconds,
+          missingSL: !hasSL,
+          missingTP: !hasTP,
+          reason: 'demo_environment_limitation'
+        }, undefined, dbPos.id);
+        
+        try {
+          const closeOrderId = await closePositionPartial(
+            symbol,
+            dbPos.side,
+            dbPos.quantity,
+            apiKey,
+            apiSecret,
+            passphrase,
+            demo
+          );
+          
+          await db.update(botPositions)
+            .set({
+              status: "closed",
+              closeReason: "demo_sl_tp_impossible",
+              closedAt: new Date().toISOString(),
+            })
+            .where(eq(botPositions.id, dbPos.id));
+          
+          const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
+          await savePositionToHistory(dbPos, currentPrice, 'demo_sl_tp_impossible', closeOrderId, apiKey, apiSecret, passphrase, demo);
+          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+          
+          emergencyClosed++;
+          okoActions++;
+          
+          details.push({
+            symbol,
+            side: dbPos.side,
+            action: "demo_force_close",
+            reason: "Demo environment cannot set SL/TP"
+          });
+          
+          console.log(`   ✅ Position force closed due to demo SL/TP limitation`);
+          
+          continue;
+        } catch (error: any) {
+          const errMsg = `Failed to force close ${symbol}: ${error.message}`;
+          console.error(`   ❌ ${errMsg}`);
+          errors.push(errMsg);
+        }
+      }
+
       if (!hasSL || !hasTP) {
         console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
         
         // 🆕 FAZA 4: Check if we should attempt repair (with limiter)
-        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
-        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
+        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 20, 10);
+        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 20, 10);
         
         if (!shouldAttemptSlRepair && !hasSL) {
           console.log(`   ⛔ [LIMITER] Max SL repair attempts reached - skipping repair`);
