@@ -26,9 +26,10 @@ function createBybitSignature(
   timestamp: string,
   apiKey: string,
   apiSecret: string,
+  recvWindow: string,
   params: string
 ): string {
-  const message = timestamp + apiKey + params;
+  const message = timestamp + apiKey + recvWindow + params;
   return crypto.createHmac('sha256', apiSecret).update(message).digest('hex');
 }
 
@@ -42,14 +43,16 @@ async function getCurrentPrice(
   apiSecret: string
 ): Promise<number> {
   const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   const params = `category=linear&symbol=${symbol}`;
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, params);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, params);
   
   const headers: Record<string, string> = {
     "X-BAPI-API-KEY": apiKey,
     "X-BAPI-SIGN": signature,
     "X-BAPI-TIMESTAMP": timestamp,
     "X-BAPI-SIGN-TYPE": "2",
+    "X-BAPI-RECV-WINDOW": recvWindow,
     "Content-Type": "application/json",
   };
   
@@ -76,14 +79,16 @@ async function getAlgoOrders(
   apiSecret: string
 ): Promise<any[]> {
   const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   const params = `category=linear`;
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, params);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, params);
   
   const headers: Record<string, string> = {
     "X-BAPI-API-KEY": apiKey,
     "X-BAPI-SIGN": signature,
     "X-BAPI-TIMESTAMP": timestamp,
     "X-BAPI-SIGN-TYPE": "2",
+    "X-BAPI-RECV-WINDOW": recvWindow,
     "Content-Type": "application/json",
   };
   
@@ -114,6 +119,7 @@ async function closePositionPartial(
   apiSecret: string
 ): Promise<string> {
   const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   
   const payload = {
     category: 'linear',
@@ -126,13 +132,14 @@ async function closePositionPartial(
   };
 
   const bodyString = JSON.stringify(payload);
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, bodyString);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, bodyString);
 
   const headers: Record<string, string> = {
     "X-BAPI-API-KEY": apiKey,
     "X-BAPI-SIGN": signature,
     "X-BAPI-TIMESTAMP": timestamp,
     "X-BAPI-SIGN-TYPE": "2",
+    "X-BAPI-RECV-WINDOW": recvWindow,
     "Content-Type": "application/json",
   };
 
@@ -162,6 +169,7 @@ async function cancelAlgoOrder(
   apiSecret: string
 ): Promise<boolean> {
   const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   
   const payload = {
     category: 'linear',
@@ -170,13 +178,14 @@ async function cancelAlgoOrder(
   };
 
   const bodyString = JSON.stringify(payload);
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, bodyString);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, bodyString);
 
   const headers: Record<string, string> = {
     "X-BAPI-API-KEY": apiKey,
     "X-BAPI-SIGN": signature,
     "X-BAPI-TIMESTAMP": timestamp,
     "X-BAPI-SIGN-TYPE": "2",
+    "X-BAPI-RECV-WINDOW": recvWindow,
     "Content-Type": "application/json",
   };
 
@@ -233,6 +242,7 @@ async function setAlgoOrder(
   apiSecret: string
 ): Promise<string | null> {
   const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   
   const payload: any = {
     category: 'linear',
@@ -251,13 +261,14 @@ async function setAlgoOrder(
   }
 
   const bodyString = JSON.stringify(payload);
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, bodyString);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, bodyString);
 
   const headers: Record<string, string> = {
     "X-BAPI-API-KEY": apiKey,
     "X-BAPI-SIGN": signature,
     "X-BAPI-TIMESTAMP": timestamp,
     "X-BAPI-SIGN-TYPE": "2",
+    "X-BAPI-RECV-WINDOW": recvWindow,
     "Content-Type": "application/json",
   };
 
@@ -507,14 +518,16 @@ async function getBybitPositions(
   apiSecret: string
 ) {
   const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   const params = `category=linear&settleCoin=USDT`;
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, params);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, params);
   
   const headers: Record<string, string> = {
     "X-BAPI-API-KEY": apiKey,
     "X-BAPI-SIGN": signature,
     "X-BAPI-TIMESTAMP": timestamp,
     "X-BAPI-SIGN-TYPE": "2",
+    "X-BAPI-RECV-WINDOW": recvWindow,
     "Content-Type": "application/json",
   };
   

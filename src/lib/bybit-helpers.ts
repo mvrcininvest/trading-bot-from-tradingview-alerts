@@ -3,21 +3,22 @@ import crypto from 'crypto';
 const BYBIT_MAINNET_URL = 'https://api.bybit.com';
 
 // ============================================
-// 🔐 BYBIT SIGNATURE HELPER
+// 🔐 BYBIT SIGNATURE HELPER (FIXED)
 // ============================================
 
 export function createBybitSignature(
+  timestamp: string,
   apiKey: string,
   apiSecret: string,
-  timestamp: number,
-  params: Record<string, any>
+  recvWindow: string,
+  params: string
 ): string {
-  const paramString = timestamp + apiKey + '5000' + JSON.stringify(params);
-  return crypto.createHmac('sha256', apiSecret).update(paramString).digest('hex');
+  const message = timestamp + apiKey + recvWindow + params;
+  return crypto.createHmac('sha256', apiSecret).update(message).digest('hex');
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER
+// 🔄 BYBIT API REQUEST HELPER (FIXED)
 // ============================================
 
 export async function makeBybitRequest(
@@ -25,25 +26,34 @@ export async function makeBybitRequest(
   endpoint: string,
   apiKey: string,
   apiSecret: string,
-  params?: Record<string, any>,
+  queryParams?: Record<string, any>,
   body?: any
 ) {
-  const timestamp = Date.now();
-  const signature = createBybitSignature(apiKey, apiSecret, timestamp, params || {});
+  const timestamp = Date.now().toString();
+  const recvWindow = '5000';
   
   const baseUrl = BYBIT_MAINNET_URL;
   let url = `${baseUrl}${endpoint}`;
+  let paramsString = '';
   
-  if (params && Object.keys(params).length > 0) {
-    const queryString = new URLSearchParams(params as any).toString();
+  if (method === 'GET' && queryParams && Object.keys(queryParams).length > 0) {
+    // For GET requests: use query string
+    const queryString = new URLSearchParams(queryParams as any).toString();
+    paramsString = queryString;
     url += `?${queryString}`;
+  } else if ((method === 'POST' || method === 'PUT') && body) {
+    // For POST/PUT requests: use body JSON
+    paramsString = JSON.stringify(body);
   }
+  
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
 
   const headers: Record<string, string> = {
     'X-BAPI-API-KEY': apiKey,
-    'X-BAPI-TIMESTAMP': timestamp.toString(),
+    'X-BAPI-TIMESTAMP': timestamp,
     'X-BAPI-SIGN': signature,
-    'X-BAPI-RECV-WINDOW': '5000',
+    'X-BAPI-RECV-WINDOW': recvWindow,
+    'X-BAPI-SIGN-TYPE': '2',
     'Content-Type': 'application/json',
   };
 

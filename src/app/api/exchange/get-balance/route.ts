@@ -4,13 +4,14 @@ import crypto from "crypto";
 const BYBIT_MAINNET_URL = "https://api.bybit.com";
 
 function createBybitSignature(
+  timestamp: string,
   apiKey: string,
   apiSecret: string,
-  timestamp: number,
-  params: Record<string, any>
+  recvWindow: string,
+  params: string
 ): string {
-  const paramString = timestamp + apiKey + "5000" + JSON.stringify(params);
-  return crypto.createHmac("sha256", apiSecret).update(paramString).digest("hex");
+  const message = timestamp + apiKey + recvWindow + params;
+  return crypto.createHmac("sha256", apiSecret).update(message).digest("hex");
 }
 
 async function getBybitBalance(
@@ -18,24 +19,24 @@ async function getBybitBalance(
   apiSecret: string
 ) {
   const baseUrl = BYBIT_MAINNET_URL;
-  const timestamp = Date.now();
-  const params = {
-    accountType: "UNIFIED",
-  };
-
-  const signature = createBybitSignature(apiKey, apiSecret, timestamp, params);
+  const timestamp = Date.now().toString();
+  const recvWindow = "5000";
   const queryParams = new URLSearchParams({
     accountType: "UNIFIED",
   });
 
+  const paramsString = queryParams.toString();
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
+
   const response = await fetch(
-    `${baseUrl}/v5/account/wallet-balance?${queryParams.toString()}`,
+    `${baseUrl}/v5/account/wallet-balance?${paramsString}`,
     {
       headers: {
         "X-BAPI-API-KEY": apiKey,
-        "X-BAPI-TIMESTAMP": timestamp.toString(),
+        "X-BAPI-TIMESTAMP": timestamp,
         "X-BAPI-SIGN": signature,
-        "X-BAPI-RECV-WINDOW": "5000",
+        "X-BAPI-RECV-WINDOW": recvWindow,
+        "X-BAPI-SIGN-TYPE": "2",
         "Content-Type": "application/json",
       },
     }
