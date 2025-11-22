@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, Lock, XCircle, AlertCircle, CheckCircle, Clock, TrendingDown, Trash2, Trash } from "lucide-react";
+import { RefreshCw, AlertTriangle, Lock, XCircle, AlertCircle, CheckCircle, Clock, TrendingDown, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -126,7 +126,6 @@ export default function DiagnosticsPage() {
   const [loading, setLoading] = useState(false);
   const [unlocking, setUnlocking] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState<string | null>(null);
-  const [cleaningAll, setCleaningAll] = useState(false);
 
   useEffect(() => {
     fetchAllData();
@@ -220,76 +219,6 @@ export default function DiagnosticsPage() {
       }
     } catch (error) {
       console.error("Failed to fetch verifications:", error);
-    }
-  };
-
-  const handleCleanupAll = async () => {
-    const confirmed = confirm(
-      '🚨 OSTRZEŻENIE: CAŁKOWITE CZYSZCZENIE DANYCH! 🚨\n\n' +
-      'Ta operacja NIEODWRACALNIE usunie:\n\n' +
-      '❌ WSZYSTKIE alerty (cała historia)\n' +
-      '❌ WSZYSTKIE pozycje (otwarte i zamknięte)\n' +
-      '❌ Całą historię transakcji\n' +
-      '❌ Wszystkie logi bota\n' +
-      '❌ Całą diagnostykę (awarie, błędy, weryfikacje)\n' +
-      '❌ Wszystkie retry attempts\n' +
-      '❌ Tracking i conflict logs\n' +
-      '❌ Guard logs i akcje\n' +
-      '❌ Historię odblokowań symboli\n' +
-      '❌ Reset countera kapitulacji\n\n' +
-      '✅ ZACHOWANE zostaną:\n' +
-      '• Ustawienia bota\n' +
-      '• Aktywne blokady symboli\n\n' +
-      '⚠️ TA OPERACJA NIE MOŻE BYĆ COFNIĘTA!\n\n' +
-      'Czy NA PEWNO chcesz kontynuować?'
-    );
-
-    if (!confirmed) return;
-
-    // Podwójne potwierdzenie
-    const doubleConfirm = confirm(
-      '⚠️ OSTATNIE POTWIERDZENIE ⚠️\n\n' +
-      'Czy jesteś ABSOLUTNIE PEWNY?\n\n' +
-      'Wszystkie dane historyczne zostaną TRWALE USUNIĘTE.\n' +
-      'System zostanie zresetowany do czystego stanu.\n\n' +
-      'Wpisz mentalnie "TAK" i kliknij OK aby kontynuować.'
-    );
-
-    if (!doubleConfirm) return;
-
-    setCleaningAll(true);
-    try {
-      const response = await fetch('/api/bot/cleanup-all-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success(
-          `✅ ${data.message}\n\n` +
-          `🗑️ Usunięto łącznie: ${data.totalDeleted} rekordów\n\n` +
-          `📊 Szczegóły:\n` +
-          `• Alerty: ${data.details.alerts || 0}\n` +
-          `• Pozycje: ${data.details.botPositions || 0}\n` +
-          `• Historia: ${data.details.positionHistory || 0}\n` +
-          `• Logi: ${data.details.botLogs || 0}\n` +
-          `• Diagnostyka: ${data.details.diagnosticFailures || 0}\n\n` +
-          `🚀 System gotowy na dane z Bybit Mainnet!`,
-          { duration: 10000 }
-        );
-        
-        // Odśwież wszystkie dane
-        await fetchAllData();
-      } else {
-        toast.error(`❌ Błąd: ${data.error || 'Nieznany błąd'}`);
-      }
-    } catch (error) {
-      console.error('Cleanup all error:', error);
-      toast.error('❌ Błąd podczas czyszczenia wszystkich danych');
-    } finally {
-      setCleaningAll(false);
     }
   };
 
@@ -387,26 +316,8 @@ export default function DiagnosticsPage() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              onClick={handleCleanupAll}
-              disabled={cleaningAll || cleaning !== null || loading}
-              variant="destructive"
-              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 border-2 border-red-500"
-            >
-              {cleaningAll ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Czyszczenie...
-                </>
-              ) : (
-                <>
-                  <Trash className="mr-2 h-4 w-4" />
-                  WYCZYŚĆ WSZYSTKO
-                </>
-              )}
-            </Button>
-            <Button
               onClick={() => handleCleanup('all', '⚠️ CZY NA PEWNO? To usunie CAŁĄ historię diagnostyczną:\n\n• Wszystkie awarie\n• Wszystkie błędy alertów\n• Wszystkie nieudane weryfikacje\n• Wszystkie próby ponowne\n• Historię odblokowań\n\nAKTYWNE BLOKADY NIE ZOSTANĄ USUNIĘTE.\n\nCzy kontynuować?')}
-              disabled={cleaning !== null || loading || cleaningAll}
+              disabled={cleaning !== null || loading}
               variant="destructive"
               className="bg-red-600 hover:bg-red-700"
             >
@@ -424,7 +335,7 @@ export default function DiagnosticsPage() {
             </Button>
             <Button
               onClick={fetchAllData}
-              disabled={loading || cleaningAll}
+              disabled={loading}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -432,18 +343,6 @@ export default function DiagnosticsPage() {
             </Button>
           </div>
         </div>
-
-        {/* Info Alert o nowym czyszczeniu */}
-        <Alert className="border-2 border-blue-600/50 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 backdrop-blur-sm">
-          <AlertCircle className="h-5 w-5 text-blue-400" />
-          <AlertDescription className="text-sm text-blue-200">
-            <strong className="text-blue-100 text-base">🚀 Nowa funkcja: CAŁKOWITE CZYSZCZENIE</strong>
-            <p className="mt-2 text-gray-100">
-              Przycisk <strong>"WYCZYŚĆ WSZYSTKO"</strong> usuwa kompletną historię (alerty, pozycje, logi, diagnostykę) 
-              i przygotowuje system do zbierania danych z Bybit Mainnet. <strong>Zachowuje tylko ustawienia bota i aktywne blokady symboli.</strong>
-            </p>
-          </AlertDescription>
-        </Alert>
 
         {/* Active Locks Alert */}
         {activeLocks.length > 0 && (
