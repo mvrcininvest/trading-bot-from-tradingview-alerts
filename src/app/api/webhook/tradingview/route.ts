@@ -770,9 +770,40 @@ export async function POST(request: Request) {
       if (tpCount >= 2) console.log(`   TP2: ${tp2Price?.toFixed(4)}`);
       if (tpCount >= 3) console.log(`   TP3: ${tp3Price?.toFixed(4)}`);
     } else {
-      await db.update(alerts).set({ executionStatus: 'rejected', rejectionReason: 'no_sl_tp' }).where(eq(alerts.id, alert.id));
-      await logToBot('error', 'rejected', 'No SL/TP configured', { reason: 'no_sl_tp' }, alert.id);
-      return NextResponse.json({ success: true, alert_id: alert.id, message: "No SL/TP configured" });
+      // Use SL/TP from TradingView alert
+      console.log("🎯 Using SL/TP from TradingView alert");
+      
+      slPrice = data.sl ? parseFloat(data.sl) : null;
+      tp1Price = data.tp1 ? parseFloat(data.tp1) : null;
+      tp2Price = data.tp2 ? parseFloat(data.tp2) : null;
+      tp3Price = data.tp3 ? parseFloat(data.tp3) : null;
+      
+      // Validate that at least SL and TP1 exist
+      if (!slPrice || !tp1Price) {
+        await db.update(alerts).set({ 
+          executionStatus: 'rejected', 
+          rejectionReason: 'no_sl_tp_provided' 
+        }).where(eq(alerts.id, alert.id));
+        
+        await logToBot('error', 'rejected', 'Alert missing required SL/TP values', { 
+          reason: 'no_sl_tp_provided',
+          hasSL: !!slPrice,
+          hasTP1: !!tp1Price
+        }, alert.id);
+        
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id, 
+          message: "Alert rejected: Missing SL or TP1 in TradingView data" 
+        });
+      }
+      
+      console.log(`\n🛡️ TradingView SL/TP values:`);
+      console.log(`   Entry: ${entryPrice}`);
+      console.log(`   SL: ${slPrice?.toFixed(4)}`);
+      console.log(`   TP1: ${tp1Price?.toFixed(4)}`);
+      if (tp2Price) console.log(`   TP2: ${tp2Price?.toFixed(4)}`);
+      if (tp3Price) console.log(`   TP3: ${tp3Price?.toFixed(4)}`);
     }
 
     // Calculate position size
