@@ -873,6 +873,45 @@ async function openOkxPosition(
             msg: slData.msg,
             slPayload
           }, alertId);
+          
+          // ✅ CRITICAL FIX: EMERGENCY CLOSE IF SL SETTING FAILS!
+          console.error(`\n🚨 CRITICAL: SL setting failed - EMERGENCY CLOSING position!`);
+          console.error(`   This prevents positions without SL from staying open`);
+          
+          try {
+            const emergencyCloseId = await makeOkxRequest(
+              'POST',
+              '/api/v5/trade/order',
+              apiKey,
+              apiSecret,
+              passphrase,
+              demo,
+              {
+                instId: okxSymbol,
+                tdMode: 'cross',
+                side: algoSide,
+                ordType: 'market',
+                sz: actualPositionQty.toString(),
+              },
+              alertId
+            );
+            
+            if (emergencyCloseId.data.code === '0') {
+              console.error(`   ✅ Position emergency closed: ${emergencyCloseId.data.data?.[0]?.ordId}`);
+              await logToBot('error', 'emergency_close_no_sl', `Position closed - SL setting failed in ${demo ? 'demo' : 'production'}`, {
+                reason: 'sl_setting_failed',
+                slError: slData.msg,
+                demo
+              }, alertId);
+            } else {
+              console.error(`   ❌ Emergency close failed: ${emergencyCloseId.data.msg}`);
+            }
+          } catch (closeErr: any) {
+            console.error(`   ❌ Emergency close error:`, closeErr.message);
+          }
+          
+          // Return error - don't proceed to DB save
+          throw new Error(`SL setting failed (${slData.code}): ${slData.msg} - Position emergency closed`);
         }
         
         // Wait 2 seconds between requests
@@ -922,6 +961,45 @@ async function openOkxPosition(
             msg: tpData.msg,
             tpPayload
           }, alertId);
+          
+          // ✅ CRITICAL FIX: EMERGENCY CLOSE IF TP SETTING FAILS!
+          console.error(`\n🚨 CRITICAL: TP setting failed - EMERGENCY CLOSING position!`);
+          console.error(`   This prevents positions without TP from staying open`);
+          
+          try {
+            const emergencyCloseId = await makeOkxRequest(
+              'POST',
+              '/api/v5/trade/order',
+              apiKey,
+              apiSecret,
+              passphrase,
+              demo,
+              {
+                instId: okxSymbol,
+                tdMode: 'cross',
+                side: algoSide,
+                ordType: 'market',
+                sz: actualPositionQty.toString(),
+              },
+              alertId
+            );
+            
+            if (emergencyCloseId.data.code === '0') {
+              console.error(`   ✅ Position emergency closed: ${emergencyCloseId.data.data?.[0]?.ordId}`);
+              await logToBot('error', 'emergency_close_no_tp', `Position closed - TP setting failed in ${demo ? 'demo' : 'production'}`, {
+                reason: 'tp_setting_failed',
+                tpError: tpData.msg,
+                demo
+              }, alertId);
+            } else {
+              console.error(`   ❌ Emergency close failed: ${emergencyCloseId.data.msg}`);
+            }
+          } catch (closeErr: any) {
+            console.error(`   ❌ Emergency close error:`, closeErr.message);
+          }
+          
+          // Return error - don't proceed to DB save
+          throw new Error(`TP setting failed (${tpData.code}): ${tpData.msg} - Position emergency closed`);
         }
       }
       

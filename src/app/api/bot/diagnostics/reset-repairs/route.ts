@@ -1,0 +1,40 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/db';
+import { tpslRetryAttempts } from '@/db/schema';
+import { sql } from 'drizzle-orm';
+
+// POST /api/bot/diagnostics/reset-repairs - Reset all repair attempts
+export async function POST(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const positionId = searchParams.get('positionId');
+
+    if (positionId) {
+      // Reset for specific position
+      const result = await db.delete(tpslRetryAttempts)
+        .where(sql`${tpslRetryAttempts.positionId} = ${parseInt(positionId)}`);
+      
+      return NextResponse.json({
+        success: true,
+        message: `Reset repair attempts for position ${positionId}`,
+        deleted: result.rowCount || 0
+      });
+    } else {
+      // Reset ALL repair attempts
+      const result = await db.delete(tpslRetryAttempts)
+        .where(sql`1=1`);
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Reset ALL repair attempts',
+        deleted: result.rowCount || 0
+      });
+    }
+  } catch (error: any) {
+    console.error('Failed to reset repair attempts:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to reset repair attempts' },
+      { status: 500 }
+    );
+  }
+}
