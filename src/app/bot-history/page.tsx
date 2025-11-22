@@ -61,8 +61,8 @@ export default function BotHistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // Fetch position history with OKX history included
-      const positionsResponse = await fetch("/api/bot/history?includeOkxHistory=true");
+      // Fetch position history from Bybit
+      const positionsResponse = await fetch("/api/bot/history");
       const positionsData = await positionsResponse.json();
 
       if (positionsData.success && Array.isArray(positionsData.history)) {

@@ -1,10 +1,9 @@
 import { db } from '@/db';
 import { botSettings, botPositions, botLogs, positionHistory, symbolLocks, diagnosticFailures, tpslRetryAttempts } from '@/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import crypto from 'crypto';
-import { okxRateLimiter } from './rate-limiter';
-import { classifyOkxError } from './error-classifier';
-import { cleanupOrphanedOrders, getRealizedPnlFromOkx } from './okx-helpers';
+import { bybitRateLimiter } from './rate-limiter';
+import { classifyBybitError } from './error-classifier';
+import { cleanupOrphanedOrders, getRealizedPnlFromBybit } from './bybit-helpers';
 import {
   runOkoGuard,
   runAccountOkoGuard,
@@ -18,18 +17,19 @@ import {
 } from './oko-saurona';
 
 // ============================================
-// 🔐 OKX SIGNATURE HELPER
+// 🔐 BYBIT SIGNATURE HELPER
 // ============================================
 
-function createOkxSignature(
+import crypto from 'crypto';
+
+function createBybitSignature(
   timestamp: string,
-  method: string,
-  requestPath: string,
-  body: string,
-  apiSecret: string
+  apiKey: string,
+  apiSecret: string,
+  params: string
 ): string {
-  const message = timestamp + method + requestPath + body;
-  return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
+  const message = timestamp + apiKey + params;
+  return crypto.createHmac('sha256', apiSecret).update(message).digest('hex');
 }
 
 // ============================================
@@ -39,42 +39,32 @@ function createOkxSignature(
 async function getCurrentPrice(
   symbol: string,
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ): Promise<number> {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = `/api/v5/market/ticker`;
-  const queryString = `?instId=${symbol}`;
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  const timestamp = Date.now().toString();
+  const params = `category=linear&symbol=${symbol}`;
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, params);
   
   const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-TIMESTAMP": timestamp,
+    "X-BAPI-SIGN-TYPE": "2",
     "Content-Type": "application/json",
   };
   
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  const response = await fetch(`https://www.okx.com${requestPath}${queryString}`, {
+  const response = await fetch(`https://api.bybit.com/v5/market/tickers?${params}`, {
     method: "GET",
     headers,
   });
 
   const data = await response.json();
 
-  if (data.code !== "0" || !data.data || data.data.length === 0) {
+  if (data.retCode !== 0 || !data.result?.list || data.result.list.length === 0) {
     throw new Error(`Failed to get price for ${symbol}`);
   }
 
-  return parseFloat(data.data[0].last);
+  return parseFloat(data.result.list[0].lastPrice);
 }
 
 // ============================================
@@ -83,43 +73,33 @@ async function getCurrentPrice(
 
 async function getAlgoOrders(
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ): Promise<any[]> {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = "/api/v5/trade/orders-algo-pending";
-  const queryString = "?ordType=conditional";
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  const timestamp = Date.now().toString();
+  const params = `category=linear`;
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, params);
   
   const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-TIMESTAMP": timestamp,
+    "X-BAPI-SIGN-TYPE": "2",
     "Content-Type": "application/json",
   };
   
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  const response = await fetch(`https://www.okx.com${requestPath}${queryString}`, {
+  const response = await fetch(`https://api.bybit.com/v5/order/realtime?${params}`, {
     method: "GET",
     headers,
   });
 
   const data = await response.json();
 
-  if (data.code !== "0") {
-    console.error(`Failed to get algo orders: ${data.msg}`);
+  if (data.retCode !== 0) {
+    console.error(`Failed to get algo orders: ${data.retMsg}`);
     return [];
   }
 
-  return data.data || [];
+  return data.result?.list || [];
 }
 
 // ============================================
@@ -131,39 +111,32 @@ async function closePositionPartial(
   side: string,
   quantity: number,
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ): Promise<string> {
-  const timestamp = new Date().toISOString();
-  const method = "POST";
-  const requestPath = "/api/v5/trade/order";
+  const timestamp = Date.now().toString();
   
   const payload = {
-    instId: symbol,
-    tdMode: "cross",
-    side: side === "BUY" ? "sell" : "buy", // Opposite side to close
-    ordType: "market",
-    sz: quantity.toString(),
-    posSide: side === "BUY" ? "long" : "short",
+    category: 'linear',
+    symbol: symbol,
+    side: side === "BUY" ? "Sell" : "Buy",
+    orderType: 'Market',
+    qty: quantity.toString(),
+    positionIdx: 0,
+    timeInForce: 'GTC'
   };
 
   const bodyString = JSON.stringify(payload);
-  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, bodyString);
 
   const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-TIMESTAMP": timestamp,
+    "X-BAPI-SIGN-TYPE": "2",
     "Content-Type": "application/json",
   };
 
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-
-  const response = await fetch(`https://www.okx.com${requestPath}`, {
+  const response = await fetch(`https://api.bybit.com/v5/order/create`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -171,11 +144,11 @@ async function closePositionPartial(
 
   const data = await response.json();
 
-  if (data.code !== "0") {
-    throw new Error(`Failed to close position: ${data.msg} (code: ${data.code})`);
+  if (data.retCode !== 0) {
+    throw new Error(`Failed to close position: ${data.retMsg} (code: ${data.retCode})`);
   }
 
-  return data.data?.[0]?.ordId || "unknown";
+  return data.result?.orderId || "unknown";
 }
 
 // ============================================
@@ -186,35 +159,28 @@ async function cancelAlgoOrder(
   algoId: string,
   symbol: string,
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ): Promise<boolean> {
-  const timestamp = new Date().toISOString();
-  const method = "POST";
-  const requestPath = "/api/v5/trade/cancel-algos";
+  const timestamp = Date.now().toString();
   
-  const payload = [{
-    algoId,
-    instId: symbol,
-  }];
+  const payload = {
+    category: 'linear',
+    symbol: symbol,
+    orderId: algoId
+  };
 
   const bodyString = JSON.stringify(payload);
-  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, bodyString);
 
   const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-TIMESTAMP": timestamp,
+    "X-BAPI-SIGN-TYPE": "2",
     "Content-Type": "application/json",
   };
 
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-
-  const response = await fetch(`https://www.okx.com${requestPath}`, {
+  const response = await fetch(`https://api.bybit.com/v5/order/cancel`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -222,7 +188,7 @@ async function cancelAlgoOrder(
 
   const data = await response.json();
 
-  return data.code === "0";
+  return data.retCode === 0;
 }
 
 // ============================================
@@ -234,13 +200,11 @@ async function cancelAlgoOrderWithRetry(
   symbol: string,
   apiKey: string,
   apiSecret: string,
-  passphrase: string,
-  demo: boolean,
   maxRetries = 3
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const result = await cancelAlgoOrder(algoId, symbol, apiKey, apiSecret, passphrase, demo);
+      const result = await cancelAlgoOrder(algoId, symbol, apiKey, apiSecret);
       if (result) {
         console.log(`✅ Cancelled algo ${algoId} (attempt ${attempt})`);
         return true;
@@ -266,54 +230,41 @@ async function setAlgoOrder(
   triggerPrice: number,
   orderType: "sl" | "tp",
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ): Promise<string | null> {
-  const timestamp = new Date().toISOString();
-  const method = "POST";
-  const requestPath = "/api/v5/trade/order-algo";
+  const timestamp = Date.now().toString();
   
-  const algoSide = side === "BUY" ? "sell" : "buy";
-  
-  // ⚠️ CRITICAL: Do NOT use posSide in net mode (most OKX accounts)
-  // In net mode, OKX infers position direction from the order side
   const payload: any = {
-    instId: symbol,
-    tdMode: "cross",
-    side: algoSide,
-    ordType: "conditional",
-    sz: quantity.toString(),
+    category: 'linear',
+    symbol: symbol,
+    side: side === "BUY" ? "Sell" : "Buy",
+    orderType: 'Market',
+    qty: quantity.toString(),
+    positionIdx: 0,
+    timeInForce: 'GTC'
   };
 
   if (orderType === "sl") {
-    payload.slTriggerPx = triggerPrice.toString();
-    payload.slOrdPx = "-1"; // Market order when triggered
+    payload.stopLoss = triggerPrice.toString();
   } else {
-    payload.tpTriggerPx = triggerPrice.toString();
-    payload.tpOrdPx = "-1"; // Market order when triggered
+    payload.takeProfit = triggerPrice.toString();
   }
 
   const bodyString = JSON.stringify(payload);
-  const signature = createOkxSignature(timestamp, method, requestPath, bodyString, apiSecret);
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, bodyString);
 
   const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-TIMESTAMP": timestamp,
+    "X-BAPI-SIGN-TYPE": "2",
     "Content-Type": "application/json",
   };
 
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-
   console.error(`🔧 [SET_ALGO] Setting ${orderType.toUpperCase()} for ${symbol}`);
   console.error(`   Payload: ${JSON.stringify(payload, null, 2)}`);
-  console.error(`   Demo mode: ${demo}`);
 
-  const response = await fetch(`https://www.okx.com${requestPath}`, {
+  const response = await fetch(`https://api.bybit.com/v5/order/create`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -321,23 +272,23 @@ async function setAlgoOrder(
 
   const data = await response.json();
 
-  console.error(`📥 [SET_ALGO] OKX Response:`);
-  console.error(`   Code: ${data.code}`);
-  console.error(`   Message: ${data.msg}`);
+  console.error(`📥 [SET_ALGO] Bybit Response:`);
+  console.error(`   Code: ${data.retCode}`);
+  console.error(`   Message: ${data.retMsg}`);
   console.error(`   Full response: ${JSON.stringify(data, null, 2)}`);
 
-  if (data.code !== "0") {
-    console.error(`❌ [SET_ALGO] Failed to set ${orderType.toUpperCase()}: ${data.msg} (code: ${data.code})`);
+  if (data.retCode !== 0) {
+    console.error(`❌ [SET_ALGO] Failed to set ${orderType.toUpperCase()}: ${data.retMsg} (code: ${data.retCode})`);
     return null;
   }
 
-  const algoId = data.data?.[0]?.algoId || null;
+  const algoId = data.result?.orderId || null;
   
   if (!algoId) {
-    console.error(`❌ [SET_ALGO] Success code but no algoId returned!`);
-    console.error(`   Data array: ${JSON.stringify(data.data, null, 2)}`);
+    console.error(`❌ [SET_ALGO] Success code but no orderId returned!`);
+    console.error(`   Result object: ${JSON.stringify(data.result, null, 2)}`);
   } else {
-    console.error(`✅ [SET_ALGO] Successfully set ${orderType.toUpperCase()} - Algo ID: ${algoId}`);
+    console.error(`✅ [SET_ALGO] Successfully set ${orderType.toUpperCase()} - Order ID: ${algoId}`);
   }
 
   return algoId;
@@ -356,8 +307,6 @@ async function setAlgoOrderWithRetry(
   positionId: number,
   apiKey: string,
   apiSecret: string,
-  passphrase: string,
-  demo: boolean,
   maxRetries = 3
 ): Promise<string | null> {
   let lastError: any = null;
@@ -370,10 +319,10 @@ async function setAlgoOrderWithRetry(
       // This prevents duplicate TP/SL orders from accumulating
       if (attempt === 1) {
         console.log(`🧹 [CLEANUP] Cancelling all existing ${orderType.toUpperCase()} orders for ${symbol}...`);
-        const existingOrders = await getAlgoOrders(apiKey, apiSecret, passphrase, demo);
+        const existingOrders = await getAlgoOrders(apiKey, apiSecret);
         const ordersToCancel = existingOrders.filter((order: any) => {
-          const matchesSymbol = order.instId === symbol;
-          const matchesType = orderType === 'sl' ? !!order.slTriggerPx : !!order.tpTriggerPx;
+          const matchesSymbol = order.symbol === symbol;
+          const matchesType = orderType === 'sl' ? !!order.stopLoss : !!order.takeProfit;
           return matchesSymbol && matchesType;
         });
         
@@ -381,19 +330,17 @@ async function setAlgoOrderWithRetry(
         
         for (const order of ordersToCancel) {
           const cancelled = await cancelAlgoOrderWithRetry(
-            order.algoId,
+            order.orderId,
             symbol,
             apiKey,
             apiSecret,
-            passphrase,
-            demo,
-            2 // Quick retry
+            2
           );
           
           if (cancelled) {
-            console.log(`   ✅ Cancelled old ${orderType.toUpperCase()} order: ${order.algoId}`);
+            console.log(`   ✅ Cancelled old ${orderType.toUpperCase()} order: ${order.orderId}`);
           } else {
-            console.warn(`   ⚠️ Failed to cancel ${order.algoId}, continuing anyway...`);
+            console.warn(`   ⚠️ Failed to cancel ${order.orderId}, continuing anyway...`);
           }
         }
       }
@@ -405,9 +352,7 @@ async function setAlgoOrderWithRetry(
         triggerPrice,
         orderType,
         apiKey,
-        apiSecret,
-        passphrase,
-        demo
+        apiSecret
       );
 
       if (algoId) {
@@ -427,13 +372,13 @@ async function setAlgoOrderWithRetry(
         console.log(`✅ ${orderType.toUpperCase()} set successfully on attempt ${attempt}`);
         return algoId;
       } else {
-        throw new Error('API returned null algoId');
+        throw new Error('API returned null orderId');
       }
     } catch (error: any) {
       lastError = error;
       
       // Classify error
-      const classified = classifyOkxError(
+      const classified = classifyBybitError(
         error.code || 'unknown',
         error.message || String(error)
       );
@@ -483,9 +428,7 @@ async function savePositionToHistory(
   closeReason: string,
   closeOrderId: string | null,
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ): Promise<void> {
   try {
     console.log(`💾 Saving position ${dbPos.id} to history...`);
@@ -494,24 +437,22 @@ async function savePositionToHistory(
     const closedAt = new Date();
     const durationMinutes = Math.floor((closedAt.getTime() - openedAt.getTime()) / 60000);
 
-    // Try to get realized PnL from OKX
+    // Try to get realized PnL from Bybit
     let realizedPnl: number | null = null;
     let finalClosePrice = currentPrice;
 
     if (closeOrderId) {
-      const pnlData = await getRealizedPnlFromOkx(
+      const pnlData = await getRealizedPnlFromBybit(
         closeOrderId,
-        dbPos.symbol.includes('-') ? dbPos.symbol : `${dbPos.symbol.replace('USDT', '')}-USDT-SWAP`,
+        dbPos.symbol,
         apiKey,
-        apiSecret,
-        passphrase,
-        demo
+        apiSecret
       );
 
       if (pnlData) {
         realizedPnl = pnlData.realizedPnl;
         finalClosePrice = pnlData.fillPrice;
-        console.log(`✅ Got realized PnL from OKX: ${realizedPnl.toFixed(2)} USD`);
+        console.log(`✅ Got realized PnL from Bybit: ${realizedPnl.toFixed(2)} USD`);
       }
     }
 
@@ -523,7 +464,7 @@ async function savePositionToHistory(
         : (dbPos.entryPrice - finalClosePrice);
       
       realizedPnl = priceDiff * dbPos.quantity;
-      console.log(`⚠️ Using estimated PnL: ${realizedPnl.toFixed(2)} USD (no OKX data)`);
+      console.log(`⚠️ Using estimated PnL: ${realizedPnl.toFixed(2)} USD (no Bybit data)`);
     }
 
     const pnlPercent = (realizedPnl / dbPos.initialMargin) * 100;
@@ -558,47 +499,37 @@ async function savePositionToHistory(
 }
 
 // ============================================
-// 🏦 GET OPEN POSITIONS FROM OKX
+// 🏦 GET OPEN POSITIONS FROM BYBIT
 // ============================================
 
-async function getOkxPositions(
+async function getBybitPositions(
   apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
+  apiSecret: string
 ) {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = "/api/v5/account/positions";
-  const queryString = "?instType=SWAP";
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
+  const timestamp = Date.now().toString();
+  const params = `category=linear&settleCoin=USDT`;
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, params);
   
   const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-TIMESTAMP": timestamp,
+    "X-BAPI-SIGN-TYPE": "2",
     "Content-Type": "application/json",
   };
   
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  const response = await fetch(`https://www.okx.com${requestPath}${queryString}`, {
+  const response = await fetch(`https://api.bybit.com/v5/position/list?${params}`, {
     method: "GET",
     headers,
   });
 
   const data = await response.json();
 
-  if (data.code !== "0") {
+  if (data.retCode !== 0) {
     return [];
   }
 
-  return data.data?.filter((p: any) => parseFloat(p.pos) !== 0) || [];
+  return data.result?.list?.filter((p: any) => parseFloat(p.size) !== 0) || [];
 }
 
 // ============================================
@@ -619,15 +550,11 @@ export async function monitorAndManagePositions(silent = true) {
     const config = settings[0];
     const apiKey = config.apiKey!;
     const apiSecret = config.apiSecret!;
-    const passphrase = config.passphrase!;
-    const demo = config.environment === "demo";
 
     // 🆕 FAZA 2: Prepare credentials for Oko
     const credentials = {
       apiKey,
-      apiSecret,
-      passphrase,
-      demo,
+      apiSecret
     };
 
     // Get bot positions from DB
@@ -637,13 +564,13 @@ export async function monitorAndManagePositions(silent = true) {
 
     console.log(`📊 [MONITOR] Found ${dbPositions.length} open positions in database`);
 
-    // Get OKX positions
-    const okxPositions = await getOkxPositions(apiKey, apiSecret, passphrase, demo);
+    // Get Bybit positions
+    const bybitPositions = await getBybitPositions(apiKey, apiSecret);
     
     // Get existing algo orders
-    const algoOrders = await getAlgoOrders(apiKey, apiSecret, passphrase, demo);
+    const algoOrders = await getAlgoOrders(apiKey, apiSecret);
     
-    console.log(`📊 [MONITOR] OKX Positions: ${okxPositions.length}, Algo Orders: ${algoOrders.length}`);
+    console.log(`📊 [MONITOR] Bybit Positions: ${bybitPositions.length}, Algo Orders: ${algoOrders.length}`);
 
     // ============================================
     // 🆕 FAZA 4: GHOST ORDERS CLEANUP (FIRST!)
@@ -678,18 +605,6 @@ export async function monitorAndManagePositions(silent = true) {
           console.log(`   ❌ ${detail.symbol}: ${detail.orderType} (${detail.orderId}) - FAILED`);
         }
       });
-
-      if (ghostCleanupResult.failed > 0 && demo) {
-        console.error(`\n⚠️ ========================================`);
-        console.error(`⚠️ DEMO ENVIRONMENT LIMITATION DETECTED`);
-        console.error(`⚠️ ========================================`);
-        console.error(`OKX Demo API blocks some operations:`);
-        console.error(`  ❌ Cancel algo orders - BLOCKED`);
-        console.error(`  ❌ Close positions - BLOCKED`);
-        console.error(`  ✅ Create algo orders - WORKS`);
-        console.error(`\nRecommendation: Switch to TESTNET for full functionality`);
-        console.error(`========================================\n`);
-      }
 
       // Log to Oko actions
       await logOkoAction(
@@ -739,12 +654,12 @@ export async function monitorAndManagePositions(silent = true) {
     
     // Prepare position data for Oko
     const allPositionData = await Promise.all(dbPositions.map(async (dbPos) => {
-      const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
-      const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+      const symbol = dbPos.symbol;
+      const bybitPos = bybitPositions.find((p: any) => p.symbol === symbol);
       
-      if (!okxPos) return null;
+      if (!bybitPos) return null;
       
-      const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
+      const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret);
       
       return {
         id: dbPos.id,
@@ -752,10 +667,10 @@ export async function monitorAndManagePositions(silent = true) {
         side: dbPos.side,
         entryPrice: dbPos.entryPrice,
         currentPrice,
-        quantity: Math.abs(parseFloat(okxPos.pos)),
+        quantity: Math.abs(parseFloat(bybitPos.size)),
         stopLoss: dbPos.stopLoss,
         currentSl: dbPos.currentSl,
-        unrealisedPnl: parseFloat(okxPos.upl || "0"),
+        unrealisedPnl: parseFloat(bybitPos.unrealisedPnl || "0"),
         initialMargin: dbPos.initialMargin,
         openedAt: dbPos.openedAt,
         tp1Hit: dbPos.tp1Hit || false,
@@ -774,7 +689,7 @@ export async function monitorAndManagePositions(silent = true) {
       // Close all positions immediately
       let closedCount = 0;
       for (const dbPos of dbPositions) {
-        const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
+        const symbol = dbPos.symbol;
         
         try {
           const closeOrderId = await closePositionPartial(
@@ -782,9 +697,7 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.side,
             dbPos.quantity,
             apiKey,
-            apiSecret,
-            passphrase,
-            demo
+            apiSecret
           );
           
           await db.update(botPositions)
@@ -795,9 +708,9 @@ export async function monitorAndManagePositions(silent = true) {
             })
             .where(eq(botPositions.id, dbPos.id));
 
-          const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
-          await savePositionToHistory(dbPos, currentPrice, 'oko_account_drawdown', closeOrderId, apiKey, apiSecret, passphrase, demo);
-          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+          const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret);
+          await savePositionToHistory(dbPos, currentPrice, 'oko_account_drawdown', closeOrderId, apiKey, apiSecret);
+          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, 3);
           
           closedCount++;
           console.log(`   ✅ Closed ${symbol}`);
@@ -828,14 +741,14 @@ export async function monitorAndManagePositions(silent = true) {
     const details: any[] = [];
 
     for (const dbPos of dbPositions) {
-      const symbol = dbPos.symbol.includes("-") ? dbPos.symbol : `${dbPos.symbol.replace("USDT", "")}-USDT-SWAP`;
+      const symbol = dbPos.symbol;
       
       console.log(`\n🔍 [MONITOR] Checking ${symbol} (${dbPos.side})...`);
 
-      // Find matching OKX position
-      const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+      // Find matching Bybit position
+      const bybitPos = bybitPositions.find((p: any) => p.symbol === symbol);
       
-      if (!okxPos) {
+      if (!bybitPos) {
         console.log(`⚠️ [MONITOR] ${symbol} not found on exchange - marking as closed`);
         
         await db.update(botPositions)
@@ -857,13 +770,13 @@ export async function monitorAndManagePositions(silent = true) {
       }
 
       // Get current price
-      const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
-      const quantity = Math.abs(parseFloat(okxPos.pos));
+      const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret);
+      const quantity = Math.abs(parseFloat(bybitPos.size));
       const side = dbPos.side;
       const entryPrice = dbPos.entryPrice;
       
-      // ✅ Update DB with live PnL from OKX
-      const livePnl = parseFloat(okxPos.upl || "0");
+      // ✅ Update DB with live PnL from Bybit
+      const livePnl = parseFloat(bybitPos.unrealisedPnl || "0");
       if (Math.abs(livePnl - dbPos.unrealisedPnl) > 0.01) {
         await db.update(botPositions)
           .set({
@@ -878,7 +791,7 @@ export async function monitorAndManagePositions(silent = true) {
       console.log(`   Entry: ${entryPrice}, Current: ${currentPrice}, Qty: ${quantity}, PnL: ${livePnl.toFixed(2)} USDT`);
 
       // ============================================
-      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS (WITH FAZA 2 + 3 + 4)
+      // 👁️ OKO SAURONA: POSITION-LEVEL CHECKS
       // ============================================
       
       const positionData = {
@@ -896,8 +809,8 @@ export async function monitorAndManagePositions(silent = true) {
         tp1Hit: dbPos.tp1Hit || false,
       };
 
-      // 🆕 FAZA 2 + 3: Pass credentials AND okxPositions to Oko
-      const okoResult = await runOkoGuard(positionData, validPositionData, credentials, okxPositions);
+      // 🆕 FAZA 2 + 3: Pass credentials AND bybitPositions to Oko
+      const okoResult = await runOkoGuard(positionData, validPositionData, credentials, bybitPositions);
       
       // ============================================
       // 🆕 FAZA 3: HANDLE GHOST POSITION CLEANUP
@@ -944,11 +857,8 @@ export async function monitorAndManagePositions(silent = true) {
         console.log(`   Reason: ${okoResult.reason}`);
         
         if (okoResult.action === 'missing_sl_tp') {
-          // Missing SL/TP detected - let existing repair logic handle it with limiter
           console.log(`   ℹ️ [OKO] Missing SL/TP will be handled by existing repair logic with attempt limiter`);
-          // Don't skip - continue to repair section
         } else if (okoResult.action === 'tp1_quantity_fix') {
-          // TP1 Quantity mismatch - update DB
           const realQuantity = okoResult.metadata.realQuantity;
           
           try {
@@ -991,9 +901,7 @@ export async function monitorAndManagePositions(silent = true) {
             side,
             quantity,
             apiKey,
-            apiSecret,
-            passphrase,
-            demo
+            apiSecret
           );
           
           await db.update(botPositions)
@@ -1010,12 +918,10 @@ export async function monitorAndManagePositions(silent = true) {
             `oko_${okoResult.action}`,
             closeOrderId,
             apiKey,
-            apiSecret,
-            passphrase,
-            demo
+            apiSecret
           );
 
-          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, 3);
           
           emergencyClosed++;
           okoActions++;
@@ -1031,17 +937,13 @@ export async function monitorAndManagePositions(silent = true) {
           // 🚫 CAPITULATION LOGIC
           // ============================================
           
-          // Increment capitulation counter
           const newCounter = await incrementCapitulationCounter();
-          
-          // Check if capitulation threshold reached
           const okoSettings = config;
           const capitulationThreshold = okoSettings.okoCapitulationThreshold || 3;
           
           if (newCounter >= capitulationThreshold) {
             console.log(`🚨 [OKO] CAPITULATION THRESHOLD REACHED (${newCounter}/${capitulationThreshold})`);
             
-            // Ban the symbol
             const banDuration = okoSettings.okoBanDurationHours || 24;
             await banSymbol(
               dbPos.symbol,
@@ -1049,7 +951,6 @@ export async function monitorAndManagePositions(silent = true) {
               banDuration
             );
             
-            // Reset counter after ban
             await db.update(botSettings)
               .set({
                 okoCapitulationCounter: 0,
@@ -1095,9 +996,7 @@ export async function monitorAndManagePositions(silent = true) {
               side, 
               closeQty, 
               apiKey, 
-              apiSecret, 
-              passphrase, 
-              demo
+              apiSecret
             );
             
             console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
@@ -1123,11 +1022,11 @@ export async function monitorAndManagePositions(silent = true) {
               console.log(`   📈 Moving SL to breakeven @ ${entryPrice}`);
               
               const slAlgos = algoOrders.filter((a: any) => 
-                a.instId === symbol && a.slTriggerPx
+                a.symbol === symbol && a.stopLoss
               );
               
               for (const algo of slAlgos) {
-                await cancelAlgoOrder(algo.algoId, symbol, apiKey, apiSecret, passphrase, demo);
+                await cancelAlgoOrder(algo.orderId, symbol, apiKey, apiSecret);
               }
               
               await setAlgoOrder(
@@ -1137,9 +1036,7 @@ export async function monitorAndManagePositions(silent = true) {
                 entryPrice,
                 "sl",
                 apiKey,
-                apiSecret,
-                passphrase,
-                demo
+                apiSecret
               );
               
               await db.update(botPositions)
@@ -1156,11 +1053,11 @@ export async function monitorAndManagePositions(silent = true) {
               console.log(`   📈 Trailing SL to ${newSl.toFixed(4)}`);
               
               const slAlgos = algoOrders.filter((a: any) => 
-                a.instId === symbol && a.slTriggerPx
+                a.symbol === symbol && a.stopLoss
               );
               
               for (const algo of slAlgos) {
-                await cancelAlgoOrder(algo.algoId, symbol, apiKey, apiSecret, passphrase, demo);
+                await cancelAlgoOrder(algo.orderId, symbol, apiKey, apiSecret);
               }
               
               await setAlgoOrder(
@@ -1170,9 +1067,7 @@ export async function monitorAndManagePositions(silent = true) {
                 newSl,
                 "sl",
                 apiKey,
-                apiSecret,
-                passphrase,
-                demo
+                apiSecret
               );
               
               await db.update(botPositions)
@@ -1209,9 +1104,7 @@ export async function monitorAndManagePositions(silent = true) {
               side, 
               closeQty, 
               apiKey, 
-              apiSecret, 
-              passphrase, 
-              demo
+              apiSecret
             );
             
             console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
@@ -1258,9 +1151,7 @@ export async function monitorAndManagePositions(silent = true) {
               side, 
               currentQty, 
               apiKey, 
-              apiSecret, 
-              passphrase, 
-              demo
+              apiSecret
             );
             
             console.log(`   ✅ Closed remaining ${currentQty} @ market - Order: ${closeOrderId}`);
@@ -1282,33 +1173,26 @@ export async function monitorAndManagePositions(silent = true) {
               reason: `Closed remaining @ ${currentPrice}`
             });
 
-            // ✅ NEW: Save to history
             await savePositionToHistory(
               dbPos,
               currentPrice,
               'tp3_hit',
               closeOrderId,
               apiKey,
-              apiSecret,
-              passphrase,
-              demo
+              apiSecret
             );
 
-            // ✅ NEW: Cleanup orphaned orders
             console.log(`🧹 Cleaning up orphaned orders for ${symbol}...`);
             const cleanupResult = await cleanupOrphanedOrders(
               symbol,
               apiKey,
               apiSecret,
-              passphrase,
-              demo,
               3
             );
 
             if (!cleanupResult.success) {
               console.error(`⚠️ Cleanup failed for ${symbol}: ${cleanupResult.errors.join(', ')}`);
               
-              // Lock symbol if cleanup failed
               await db.insert(symbolLocks).values({
                 symbol,
                 lockReason: 'order_cleanup_failed',
@@ -1333,85 +1217,23 @@ export async function monitorAndManagePositions(silent = true) {
       }
 
       // ============================================
-      // 🛡️ CRITICAL FIX: CHECK AND FIX MISSING SL/TP WITH LIMITER
+      // 🛡️ CHECK AND FIX MISSING SL/TP WITH LIMITER
       // ============================================
 
-      const positionAlgos = algoOrders.filter((a: any) => a.instId === symbol);
-      const hasSL = positionAlgos.some((a: any) => a.slTriggerPx && a.slTriggerPx !== '' && parseFloat(a.slTriggerPx) > 0);
-      const hasTP = positionAlgos.some((a: any) => a.tpTriggerPx && a.tpTriggerPx !== '' && parseFloat(a.tpTriggerPx) > 0);
+      const positionAlgos = algoOrders.filter((a: any) => a.symbol === symbol);
+      const hasSL = positionAlgos.some((a: any) => a.stopLoss && a.stopLoss !== '' && parseFloat(a.stopLoss) > 0);
+      const hasTP = positionAlgos.some((a: any) => a.takeProfit && a.takeProfit !== '' && parseFloat(a.takeProfit) > 0);
 
       console.log(`   🔍 Algo Orders: SL=${hasSL}, TP=${hasTP} (Total: ${positionAlgos.length})`);
 
-      // ✅ NEW: Check position age and retry attempts
       const positionAge = Date.now() - new Date(dbPos.openedAt).getTime();
       const positionAgeSeconds = positionAge / 1000;
       
       console.log(`   ⏱️ Position age: ${positionAgeSeconds.toFixed(0)}s`);
 
-      // ✅ CRITICAL FIX: If demo environment AND position > 60s old AND missing SL/TP
-      // Then FORCE CLOSE because demo can't set algo orders
-      if (demo && positionAgeSeconds > 60 && (!hasSL || !hasTP)) {
-        console.error(`\n🚨 CRITICAL: Demo environment can't set SL/TP - FORCE CLOSING position!`);
-        console.error(`   Position: ${symbol} ${dbPos.side}`);
-        console.error(`   Age: ${positionAgeSeconds.toFixed(0)}s`);
-        console.error(`   Missing: ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''}`);
-        
-        await logToBot('error', 'demo_sl_tp_impossible', `Demo environment cannot set SL/TP - closing position ${symbol}`, {
-          symbol,
-          side: dbPos.side,
-          positionAge: positionAgeSeconds,
-          missingSL: !hasSL,
-          missingTP: !hasTP,
-          reason: 'demo_environment_limitation'
-        }, undefined, dbPos.id);
-        
-        try {
-          const closeOrderId = await closePositionPartial(
-            symbol,
-            dbPos.side,
-            dbPos.quantity,
-            apiKey,
-            apiSecret,
-            passphrase,
-            demo
-          );
-          
-          await db.update(botPositions)
-            .set({
-              status: "closed",
-              closeReason: "demo_sl_tp_impossible",
-              closedAt: new Date().toISOString(),
-            })
-            .where(eq(botPositions.id, dbPos.id));
-          
-          const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret, passphrase, demo);
-          await savePositionToHistory(dbPos, currentPrice, 'demo_sl_tp_impossible', closeOrderId, apiKey, apiSecret, passphrase, demo);
-          await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
-          
-          emergencyClosed++;
-          okoActions++;
-          
-          details.push({
-            symbol,
-            side: dbPos.side,
-            action: "demo_force_close",
-            reason: "Demo environment cannot set SL/TP"
-          });
-          
-          console.log(`   ✅ Position force closed due to demo SL/TP limitation`);
-          
-          continue;
-        } catch (error: any) {
-          const errMsg = `Failed to force close ${symbol}: ${error.message}`;
-          console.error(`   ❌ ${errMsg}`);
-          errors.push(errMsg);
-        }
-      }
-
       if (!hasSL || !hasTP) {
         console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
         
-        // 🔧 COFNIĘTY LIMIT: 20 → 3 (jak prosił użytkownik)
         const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
         const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
         
@@ -1423,13 +1245,11 @@ export async function monitorAndManagePositions(silent = true) {
           console.log(`   ⛔ [LIMITER] Max TP repair attempts reached (3/3) - skipping repair`);
         }
 
-        // If both limiters say no, skip this position
         if (!shouldAttemptSlRepair && !shouldAttemptTpRepair) {
           console.log(`   ⏭️ Skipping position - waiting for cooldown period`);
           continue;
         }
         
-        // ✅ NEW: Count previous repair attempts from tpslRetryAttempts table
         const retryAttempts = await db.select()
           .from(tpslRetryAttempts)
           .where(eq(tpslRetryAttempts.positionId, dbPos.id));
@@ -1455,7 +1275,6 @@ export async function monitorAndManagePositions(silent = true) {
           newTP = entryPrice * (1 - nextTpRR / 100);
         }
         
-        // Check if already hit
         const slAlreadyHit = isLong 
           ? currentPrice <= newSL 
           : currentPrice >= newSL;
@@ -1468,7 +1287,7 @@ export async function monitorAndManagePositions(silent = true) {
           console.error(`   ⚠️ SL ALREADY HIT! Closing position immediately...`);
           
           try {
-            const closeOrderId = await closePositionPartial(symbol, side, quantity, apiKey, apiSecret, passphrase, demo);
+            const closeOrderId = await closePositionPartial(symbol, side, quantity, apiKey, apiSecret);
             
             await db.update(botPositions)
               .set({
@@ -1478,11 +1297,8 @@ export async function monitorAndManagePositions(silent = true) {
               })
               .where(eq(botPositions.id, dbPos.id));
 
-            // ✅ NEW: Save to history
-            await savePositionToHistory(dbPos, currentPrice, 'sl_hit', closeOrderId, apiKey, apiSecret, passphrase, demo);
-
-            // ✅ NEW: Cleanup orphaned orders
-            await cleanupOrphanedOrders(symbol, apiKey, apiSecret, passphrase, demo, 3);
+            await savePositionToHistory(dbPos, currentPrice, 'sl_hit', closeOrderId, apiKey, apiSecret);
+            await cleanupOrphanedOrders(symbol, apiKey, apiSecret, 3);
             
             continue;
           } catch (error: any) {
@@ -1504,9 +1320,7 @@ export async function monitorAndManagePositions(silent = true) {
               side, 
               closeQty, 
               apiKey, 
-              apiSecret, 
-              passphrase, 
-              demo
+              apiSecret
             );
             
             console.log(`   ✅ Closed ${closePercent}% @ market due to TP hit - Order: ${orderId}`);
@@ -1527,7 +1341,6 @@ export async function monitorAndManagePositions(silent = true) {
               reason: `Closed ${closePercent}% - TP already hit @ ${currentPrice}`
             });
             
-            // After TP hit, recalculate SL with breakeven if configured
             if (config.slManagementAfterTp1 === "breakeven") {
               newSL = entryPrice;
             }
@@ -1538,7 +1351,6 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
-        // ✅ CRITICAL FIX: Use setAlgoOrderWithRetry with limiter check
         if (!hasSL && !slAlreadyHit && shouldAttemptSlRepair) {
           console.log(`   🔧 Attempting to fix SL (attempt ${slAttempts + 1}/5)...`);
           
@@ -1551,23 +1363,18 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            passphrase,
-            demo,
             3
           );
           
           if (slAlgoId) {
             console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)}`);
             slTpFixed++;
-            
-            // 🆕 FAZA 4: Clear repair attempts after success
             clearRepairAttempts(dbPos.id, 'missing_sl_tp');
           } else {
             console.error(`   ⚠️ Failed to set SL - will retry on next monitor cycle`);
           }
         }
         
-        // Similar for TP
         if (!hasTP && !tpAlreadyHit && shouldAttemptTpRepair) {
           console.log(`   🔧 Attempting to fix TP (attempt ${tpAttempts + 1}/5)...`);
           
@@ -1580,16 +1387,12 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            passphrase,
-            demo,
             3
           );
           
           if (tpAlgoId) {
             console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)}`);
             slTpFixed++;
-            
-            // 🆕 FAZA 4: Clear repair attempts after success
             clearRepairAttempts(dbPos.id, 'missing_sl_tp');
           } else {
             console.error(`   ⚠️ Failed to set TP - will retry on next monitor cycle`);
@@ -1597,14 +1400,9 @@ export async function monitorAndManagePositions(silent = true) {
         }
       } else {
         console.log(`   ✅ Position has both SL and TP - OK`);
-        
-        // 🆕 FAZA 4: Clear repair attempts if position is now OK
         clearRepairAttempts(dbPos.id, 'missing_sl_tp');
       }
 
-      // ============================================
-      // 🚫 CRITICAL FIX: Check symbol lock AFTER attempting repairs
-      // ============================================
       const symbolLock = activeLocks.find(lock => lock.symbol === symbol);
       if (symbolLock && positionAgeSeconds > 120) {
         console.log(`   🚫 Symbol ${symbol} is LOCKED (${symbolLock.lockReason}) and position > 120s - skipping further checks`);
@@ -1612,7 +1410,6 @@ export async function monitorAndManagePositions(silent = true) {
       }
     }
 
-    // Clear old Oko confirmations
     clearOldConfirmations();
 
     console.log(`\n✅ [MONITOR] Completed - TP Hits: ${tpHits}, SL Adj: ${slAdjustments}, Fixed: ${slTpFixed}, Emergency Closed: ${emergencyClosed}, Oko Actions: ${okoActions}, Ghost Orders: ${ghostCleanupResult.cleaned}`);
@@ -1642,5 +1439,4 @@ export async function monitorAndManagePositions(silent = true) {
   }
 }
 
-// ✅ Export alias for compatibility with route handler
 export const monitorAllPositions = monitorAndManagePositions;

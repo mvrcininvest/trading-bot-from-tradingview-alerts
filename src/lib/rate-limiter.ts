@@ -1,9 +1,9 @@
 // ============================================
 // ⏱️ RATE LIMITER MODULE
 // ============================================
-// Zapobiega przekroczeniu limitów OKX API:
-// - Public API: 20 req / 2s
-// - Private API: 60 req / 2s
+// Zapobiega przekroczeniu limitów Bybit API:
+// - Public API: rate limits według Bybit docs
+// - Private API: rate limits według Bybit docs
 // - Implementuje exponential backoff
 
 export class RateLimiter {
@@ -93,6 +93,9 @@ export class RateLimiter {
 }
 
 /**
- * Singleton instance dla OKX API
+ * Singleton instance dla Bybit API
  */
-export const okxRateLimiter = new RateLimiter(5, 100); // 5 concurrent, 100ms interval
+export const bybitRateLimiter = new RateLimiter(5, 100); // 5 concurrent, 100ms interval
+
+// Legacy export for backwards compatibility
+export const okxRateLimiter = bybitRateLimiter;
