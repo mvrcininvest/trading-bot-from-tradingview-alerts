@@ -5,9 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, XCircle, Loader2, TrendingUp, AlertTriangle, Info } from "lucide-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { CheckCircle2, XCircle, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 
@@ -20,20 +18,10 @@ interface ConnectionResult {
   };
 }
 
-type BybitEnvironment = "mainnet" | "testnet" | "demo";
-type OkxEnvironment = "mainnet" | "demo";
-type ToobitEnvironment = "mainnet";
-
 export default function ExchangeTestPage() {
   const router = useRouter();
-  const [exchange, setExchange] = useState<"binance" | "bybit" | "okx" | "toobit">("toobit");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
-  const [passphrase, setPassphrase] = useState("");
-  const [testnet, setTestnet] = useState(true);
-  const [bybitEnv, setBybitEnv] = useState<BybitEnvironment>("demo");
-  const [okxEnv, setOkxEnv] = useState<OkxEnvironment>("demo");
-  const [toobitEnv, setToobitEnv] = useState<ToobitEnvironment>("mainnet");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [savedWithoutTest, setSavedWithoutTest] = useState(false);
@@ -49,18 +37,8 @@ export default function ExchangeTestPage() {
         if (data.success && data.credentials) {
           const creds = data.credentials;
           if (creds.apiKey) {
-            setExchange(creds.exchange || "binance");
             setApiKey(creds.apiKey || "");
             setApiSecret(creds.apiSecret || "");
-            setPassphrase(creds.passphrase || "");
-            
-            if (creds.exchange === "binance") {
-              setTestnet(creds.environment === "testnet");
-            } else if (creds.exchange === "bybit") {
-              setBybitEnv(creds.environment || "demo");
-            } else if (creds.exchange === "okx") {
-              setOkxEnv(creds.environment === "demo" ? "demo" : "mainnet");
-            }
             console.log("✅ Credentials loaded from database");
             return;
           }
@@ -70,18 +48,8 @@ export default function ExchangeTestPage() {
         const stored = localStorage.getItem("exchange_credentials");
         if (stored) {
           const creds = JSON.parse(stored);
-          setExchange(creds.exchange || "binance");
           setApiKey(creds.apiKey || "");
           setApiSecret(creds.apiSecret || "");
-          setPassphrase(creds.passphrase || "");
-          
-          if (creds.exchange === "binance") {
-            setTestnet(creds.environment === "testnet");
-          } else if (creds.exchange === "bybit") {
-            setBybitEnv(creds.environment || "demo");
-          } else if (creds.exchange === "okx") {
-            setOkxEnv(creds.environment === "demo" ? "demo" : "mainnet");
-          }
           console.log("✅ Credentials loaded from localStorage");
         }
       } catch (error) {
@@ -98,21 +66,11 @@ export default function ExchangeTestPage() {
     setSavedWithoutTest(false);
 
     try {
-      let payload: any = { exchange, apiKey, apiSecret };
-
-      if (exchange === "binance") {
-        payload.testnet = testnet;
-      } else if (exchange === "bybit") {
-        payload.testnet = bybitEnv === "testnet";
-        payload.demo = bybitEnv === "demo";
-      } else if (exchange === "okx") {
-        payload.demo = okxEnv === "demo";
-        payload.passphrase = passphrase;
-      } else if (exchange === "toobit") {
-        // Toobit only has mainnet
-        payload.testnet = false;
-        payload.demo = false;
-      }
+      const payload = { 
+        exchange: "bybit", 
+        apiKey, 
+        apiSecret 
+      };
 
       const response = await fetch("/api/exchange/test-connection", {
         method: "POST",
@@ -124,23 +82,11 @@ export default function ExchangeTestPage() {
       setResult(data);
       
       if (data.success) {
-        let environment: string;
-        if (exchange === "binance") {
-          environment = testnet ? "testnet" : "mainnet";
-        } else if (exchange === "bybit") {
-          environment = bybitEnv;
-        } else if (exchange === "okx") {
-          environment = okxEnv;
-        } else {
-          environment = "mainnet";
-        }
-
         const credentials = {
-          exchange,
+          exchange: "bybit",
           apiKey,
           apiSecret,
-          passphrase: exchange === "okx" ? passphrase : undefined,
-          environment,
+          environment: "mainnet",
           savedAt: new Date().toISOString()
         };
         
@@ -153,9 +99,8 @@ export default function ExchangeTestPage() {
             body: JSON.stringify({
               apiKey: credentials.apiKey,
               apiSecret: credentials.apiSecret,
-              passphrase: credentials.passphrase,
-              exchange: credentials.exchange,
-              environment: credentials.environment
+              exchange: "bybit",
+              environment: "mainnet"
             })
           });
           
@@ -195,29 +140,18 @@ export default function ExchangeTestPage() {
       message: "✅ Klucze API zostały zapisane bez testowania. Upewnij się, że klucze są poprawne przed rozpoczęciem tradingu.",
     });
     
-    // Save keys to localStorage AND database
-    let environment: string;
-    if (exchange === "binance") {
-      environment = testnet ? "testnet" : "mainnet";
-    } else if (exchange === "bybit") {
-      environment = bybitEnv;
-    } else {
-      environment = okxEnv;
-    }
-
     const credentials = {
-      exchange,
+      exchange: "bybit",
       apiKey,
       apiSecret,
-      passphrase: exchange === "okx" ? passphrase : undefined,
-      environment,
+      environment: "mainnet",
       savedAt: new Date().toISOString()
     };
     
-    // Save to localStorage (for client-side dashboard)
+    // Save to localStorage
     localStorage.setItem("exchange_credentials", JSON.stringify(credentials));
     
-    // CRITICAL: Save to database (for server-side webhook)
+    // Save to database
     try {
       const response = await fetch("/api/bot/credentials", {
         method: "POST",
@@ -225,9 +159,8 @@ export default function ExchangeTestPage() {
         body: JSON.stringify({
           apiKey: credentials.apiKey,
           apiSecret: credentials.apiSecret,
-          passphrase: credentials.passphrase,
-          exchange: credentials.exchange,
-          environment: credentials.environment
+          exchange: "bybit",
+          environment: "mainnet"
         })
       });
       
@@ -256,53 +189,41 @@ export default function ExchangeTestPage() {
           </div>
           <div className="flex-1">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              Test Połączenia z Giełdą
+              Test Połączenia - Bybit Mainnet
             </h1>
-            <p className="text-gray-300">Sprawdź połączenie z API giełdy przed rozpoczęciem tradingu</p>
+            <p className="text-gray-300">Sprawdź połączenie z API Bybit przed rozpoczęciem tradingu</p>
           </div>
         </div>
 
-        {exchange === "bybit" && bybitEnv === "demo" && (
-          <Alert className="border-yellow-500 bg-yellow-500/10">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            <AlertTitle className="text-yellow-500">Uwaga: Bybit Demo i CloudFlare</AlertTitle>
-            <AlertDescription className="text-sm text-gray-300">
-              API Bybit Demo jest chronione przez CloudFlare/WAF, co często powoduje błędy 403 podczas testowania.
-              <strong className="text-yellow-400"> To NIE oznacza że Twoje klucze są nieprawidłowe</strong> - CloudFlare blokuje requesty testowe z serwerów.
-              <br /><br />
-              <strong className="text-yellow-400">Rozwiązania:</strong>
-              <ul className="list-disc list-inside mt-2 space-y-1 text-gray-300">
-                <li>Użyj przycisku <strong className="text-white">"Zapisz bez testowania"</strong> poniżej - jeśli jesteś pewien że klucze są poprawne</li>
-                <li>Spróbuj ponownie za 5-10 minut (tymczasowa blokada)</li>
-                <li>Dodaj IP serwera do whitelisty w panelu API Bybit (jeśli dostępne)</li>
-                <li>W prawdziwym tradingu (nie testowaniu) CloudFlare może pozwolić na requesty</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
+        <Alert className="border-red-500 bg-red-500/10">
+          <AlertTriangle className="h-5 w-5 text-red-500" />
+          <AlertTitle className="text-red-500">⚠️ UWAGA: BYBIT MAINNET - PRAWDZIWE PIENIĄDZE!</AlertTitle>
+          <AlertDescription className="text-sm text-gray-300">
+            <strong className="text-red-400">Używasz prawdziwego konta Bybit Mainnet.</strong> Wszystkie transakcje będą wykonywane z prawdziwymi środkami.
+            <br /><br />
+            <strong className="text-red-300">Zalecenia bezpieczeństwa:</strong>
+            <ul className="list-disc list-inside mt-2 space-y-1 text-gray-300">
+              <li>Ustaw małe pozycje ($5-10) w ustawieniach bota</li>
+              <li>Używaj niskiej dźwigni (max 10x)</li>
+              <li>Zawsze miej ustawione SL/TP</li>
+              <li>Monitoruj pozycje regularnie</li>
+            </ul>
+          </AlertDescription>
+        </Alert>
 
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-white">Konfiguracja API</CardTitle>
-            <CardDescription className="text-gray-300">Wprowadź klucze API z wybranej giełdy</CardDescription>
+            <CardTitle className="text-white">Konfiguracja API Bybit</CardTitle>
+            <CardDescription className="text-gray-300">Wprowadź klucze API z Bybit Mainnet</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Tabs value={exchange} onValueChange={(v) => setExchange(v as any)}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="toobit" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Toobit</TabsTrigger>
-                <TabsTrigger value="binance" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Binance</TabsTrigger>
-                <TabsTrigger value="bybit" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Bybit</TabsTrigger>
-                <TabsTrigger value="okx" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">OKX</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="apiKey" className="text-gray-200">API Key</Label>
                 <Input
                   id="apiKey"
                   type="text"
-                  placeholder="Wprowadź swój API Key"
+                  placeholder="Wprowadź swój Bybit API Key"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   className="bg-gray-800 border-gray-700 text-white"
@@ -314,99 +235,17 @@ export default function ExchangeTestPage() {
                 <Input
                   id="apiSecret"
                   type="password"
-                  placeholder="Wprowadź swój API Secret"
+                  placeholder="Wprowadź swój Bybit API Secret"
                   value={apiSecret}
                   onChange={(e) => setApiSecret(e.target.value)}
                   className="bg-gray-800 border-gray-700 text-white"
                 />
               </div>
 
-              {exchange === "okx" && (
-                <div className="space-y-2">
-                  <Label htmlFor="passphrase" className="text-gray-200">Passphrase</Label>
-                  <Input
-                    id="passphrase"
-                    type="password"
-                    placeholder="Wprowadź swoje Passphrase"
-                    value={passphrase}
-                    onChange={(e) => setPassphrase(e.target.value)}
-                    className="bg-gray-800 border-gray-700 text-white"
-                  />
-                  <p className="text-xs text-gray-400">Passphrase utworzone podczas tworzenia klucza API</p>
-                </div>
-              )}
-
-              {exchange === "toobit" ? (
-                <div className="space-y-3">
-                  <Alert className="border-yellow-500 bg-yellow-500/10">
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                    <AlertDescription className="text-sm text-gray-300">
-                      <strong className="text-yellow-400">Toobit nie ma testnetu.</strong> Używasz prawdziwego konta mainnet. 
-                      Ustaw małe pozycje ($5-10) w ustawieniach bota!
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              ) : exchange === "binance" ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="testnet"
-                    checked={testnet}
-                    onChange={(e) => setTestnet(e.target.checked)}
-                    className="h-4 w-4 bg-gray-800 border-gray-700 text-purple-500 rounded focus:ring-purple-500"
-                  />
-                  <Label htmlFor="testnet" className="text-gray-200 cursor-pointer">
-                    Użyj Testnet (zalecane do testów)
-                  </Label>
-                </div>
-              ) : exchange === "bybit" ? (
-                <div className="space-y-3">
-                  <Label className="text-gray-200">Środowisko Bybit</Label>
-                  <RadioGroup value={bybitEnv} onValueChange={(v) => setBybitEnv(v as BybitEnvironment)}>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mainnet" id="mainnet" className="bg-gray-800 border-gray-700" />
-                      <Label htmlFor="mainnet" className="text-gray-200 cursor-pointer font-normal">
-                        <span className="font-semibold text-white">Mainnet</span> - Prawdziwe konto produkcyjne (prawdziwa płynność)
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="demo" id="demo" className="bg-gray-800 border-gray-700" />
-                      <Label htmlFor="demo" className="text-gray-200 cursor-pointer font-normal">
-                        <span className="font-semibold text-white">Demo</span> - Konto demo (prawdziwa płynność, może być blokowane przez CloudFlare)
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="testnet" id="testnet-radio" className="bg-gray-800 border-gray-700" />
-                      <Label htmlFor="testnet-radio" className="text-gray-200 cursor-pointer font-normal">
-                        <span className="font-semibold text-white">Testnet</span> - Środowisko testowe (mniejsza płynność)
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <Label className="text-gray-200">Środowisko OKX</Label>
-                  <RadioGroup value={okxEnv} onValueChange={(v) => setOkxEnv(v as OkxEnvironment)}>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mainnet" id="okx-mainnet" className="bg-gray-800 border-gray-700" />
-                      <Label htmlFor="okx-mainnet" className="text-gray-200 cursor-pointer font-normal">
-                        <span className="font-semibold text-white">Mainnet</span> - Prawdziwe konto produkcyjne
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="demo" id="okx-demo" className="bg-gray-800 border-gray-700" />
-                      <Label htmlFor="okx-demo" className="text-gray-200 cursor-pointer font-normal">
-                        <span className="font-semibold text-white">Demo</span> - Demo Trading (prawdziwa płynność, środowisko testowe)
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              )}
-
               <div className="flex gap-3">
                 <Button 
                   onClick={testConnection} 
-                  disabled={loading || !apiKey || !apiSecret || (exchange === "okx" && !passphrase)}
+                  disabled={loading || !apiKey || !apiSecret}
                   className="flex-1 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white"
                 >
                   {loading ? (
@@ -421,43 +260,13 @@ export default function ExchangeTestPage() {
                 
                 <Button 
                   onClick={saveWithoutTesting}
-                  disabled={loading || !apiKey || !apiSecret || (exchange === "okx" && !passphrase)}
+                  disabled={loading || !apiKey || !apiSecret}
                   variant="outline"
                   className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
                 >
                   Zapisz bez testowania
                 </Button>
               </div>
-
-              {exchange === "toobit" && (
-                <Alert className="border-red-500 bg-red-500/10">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <AlertDescription className="text-sm text-gray-200">
-                    <strong className="text-red-400">UWAGA:</strong> Toobit mainnet - prawdziwe pieniądze! 
-                    Upewnij się że ustawienia bota mają małe pozycje ($5-10 max).
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {exchange === "bybit" && bybitEnv === "mainnet" && (
-                <Alert className="border-red-500 bg-red-500/10">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <AlertDescription className="text-sm text-gray-200">
-                    <strong className="text-red-400">UWAGA:</strong> Używasz prawdziwego konta Bybit Mainnet. 
-                    Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {exchange === "okx" && okxEnv === "mainnet" && (
-                <Alert className="border-red-500 bg-red-500/10">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <AlertDescription className="text-sm text-gray-200">
-                    <strong className="text-red-400">UWAGA:</strong> Używasz prawdziwego konta OKX Mainnet. 
-                    Wszystkie transakcje będą wykonywane z prawdziwymi środkami. Upewnij się, że rozumiesz ryzyko!
-                  </AlertDescription>
-                </Alert>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -481,19 +290,6 @@ export default function ExchangeTestPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-200 mb-4 whitespace-pre-line">{result.message}</p>
-
-              {!result.success && exchange === "bybit" && bybitEnv === "demo" && (
-                <div className="mt-4 p-4 bg-gray-800/50 rounded-lg space-y-2">
-                  <div className="flex items-start gap-2">
-                    <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-gray-200">
-                      <strong className="text-blue-400">Sugestia:</strong> Jeśli jesteś pewien że klucze są poprawne 
-                      (stworzone w Demo Trading z wszystkimi uprawnieniami), możesz <strong className="text-white">zapisać je bez testowania</strong> 
-                      klikając przycisk "Zapisz bez testowania" powyżej. Klucze będą działać w prawdziwym tradingu mimo błędu testowego.
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {result.success && result.accountInfo && (
                 <div className="space-y-3">
@@ -525,42 +321,32 @@ export default function ExchangeTestPage() {
 
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-lg text-white">Jak uzyskać klucze API?</CardTitle>
+            <CardTitle className="text-lg text-white">Jak uzyskać klucze API Bybit?</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-200">
-            <p><strong className="text-white">Toobit (ZALECANE - bez ograniczeń regionalnych):</strong></p>
+            <p><strong className="text-white">Bybit Mainnet (PRAWDZIWE PIENIĄDZE):</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>Zaloguj się na <a href="https://www.toobit.com" target="_blank" className="text-blue-400 underline">Toobit.com</a></li>
-              <li>Profile icon → <strong>API Management</strong></li>
-              <li>Create New Key / + New API</li>
-              <li>Włącz uprawnienia: <strong>Futures Trading</strong>, <strong>Read Account</strong></li>
-              <li><strong>IP Whitelisting</strong> (opcjonalnie ale zalecane)</li>
-              <li>Potwierdź z 2FA (Google Authenticator)</li>
-              <li><strong>UWAGA:</strong> Secret Key pokazuje się tylko RAZ - zapisz natychmiast!</li>
+              <li>Zaloguj się na <a href="https://www.bybit.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Bybit.com</a></li>
+              <li>Idź do: Profile icon → <strong>API Management</strong></li>
+              <li>Create New Key / + API</li>
+              <li>Włącz uprawnienia: <strong>Contract - Trade</strong>, <strong>Contract - Position</strong></li>
+              <li><strong>IP Whitelisting</strong> (opcjonalnie ale zalecane dla bezpieczeństwa)</li>
+              <li>Potwierdź z 2FA (Google Authenticator lub Email)</li>
+              <li><strong>WAŻNE:</strong> API Secret pokazuje się tylko RAZ - zapisz go natychmiast!</li>
             </ol>
-            <p className="mt-4"><strong className="text-white">Binance:</strong></p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>Zaloguj się na Binance</li>
-              <li>Przejdź do API Management w ustawieniach</li>
-              <li>Utwórz nowy klucz API</li>
-              <li>Włącz uprawnienia: "Enable Spot & Margin Trading"</li>
-              <li>Dla testów użyj: <a href="https://testnet.binance.vision/" target="_blank" className="text-blue-400 underline">Binance Testnet</a></li>
-            </ol>
-            <p className="mt-4"><strong className="text-white">Bybit:</strong></p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li><strong className="text-white">Mainnet (zalecane dla prawdziwej płynności):</strong> Użyj prawdziwego konta Bybit → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
-              <li><strong className="text-white">Demo Account:</strong> Zaloguj się na Bybit → Przełącz na "Demo Trading" → API Management → Utwórz klucz (może być blokowane przez CloudFlare)</li>
-              <li><strong className="text-white">Testnet (mniejsza płynność):</strong> Zarejestruj się na <a href="https://testnet.bybit.com/" target="_blank" className="text-blue-400 underline">testnet.bybit.com</a> → API Management</li>
-              <li>Włącz uprawnienia tradingu przy tworzeniu klucza</li>
-            </ol>
-            <p className="mt-4"><strong className="text-white">OKX:</strong></p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li><strong className="text-white">Demo Trading (zalecane do testów):</strong> Zaloguj się na OKX → Przełącz tryb na "Demo Trading" (prawy górny róg) → API → Create Demo API Key</li>
-              <li><strong className="text-white">Live Trading (prawdziwe pieniądze!):</strong> Zaloguj się na OKX (tryb Live) → API → Create V5 API Key</li>
-              <li>Włącz uprawnienia: "Trade" przy tworzeniu klucza</li>
-              <li><strong className="text-red-400">WAŻNE:</strong> Zapisz Passphrase - nie możesz go później odzyskać!</li>
-              <li><strong className="text-yellow-400">UWAGA:</strong> OKX NIE MA testnet - używaj Demo Trading do testów (prawdziwa płynność, bez ryzyka)</li>
-            </ol>
+            
+            <div className="mt-4 p-4 bg-red-900/20 border-2 border-red-700 rounded-lg">
+              <p className="text-base font-bold text-red-200 mb-2">
+                🔐 Bezpieczeństwo API Keys:
+              </p>
+              <ul className="space-y-1 text-sm text-gray-200 list-disc list-inside">
+                <li><strong className="text-white">NIE udostępniaj</strong> nikomu swoich kluczy API</li>
+                <li><strong className="text-white">Whitelist IP</strong> jeśli to możliwe</li>
+                <li><strong className="text-white">Włącz tylko niezbędne</strong> uprawnienia (Contract Trade, Position)</li>
+                <li><strong className="text-white">Regularnie rotuj</strong> klucze API (co 30-90 dni)</li>
+                <li><strong className="text-white">Ustaw limity</strong> w ustawieniach bota (małe pozycje!)</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
       </div>

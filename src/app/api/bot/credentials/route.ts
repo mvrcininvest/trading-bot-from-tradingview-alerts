@@ -3,8 +3,8 @@ import { db } from '@/db';
 import { botSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
-const VALID_EXCHANGES = ['bybit', 'binance', 'okx'];
-const VALID_ENVIRONMENTS = ['demo', 'testnet', 'mainnet'];
+const VALID_EXCHANGES = ['bybit'];
+const VALID_ENVIRONMENTS = ['mainnet'];
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,9 +18,8 @@ export async function GET(request: NextRequest) {
         credentials: {
           apiKey: '',
           apiSecret: '',
-          passphrase: '',
           exchange: 'bybit',
-          environment: 'demo'
+          environment: 'mainnet'
         }
       }, { status: 200 });
     }
@@ -32,9 +31,8 @@ export async function GET(request: NextRequest) {
       credentials: {
         apiKey: record.apiKey ?? '',
         apiSecret: record.apiSecret ?? '',
-        passphrase: record.passphrase ?? '',
-        exchange: record.exchange ?? 'bybit',
-        environment: record.environment ?? 'demo'
+        exchange: 'bybit',
+        environment: 'mainnet'
       }
     }, { status: 200 });
   } catch (error) {
@@ -50,12 +48,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, apiSecret, passphrase, exchange, environment } = body;
+    const { apiKey, apiSecret, exchange, environment } = body;
 
     if (exchange !== undefined && exchange !== '' && !VALID_EXCHANGES.includes(exchange)) {
       return NextResponse.json({
         success: false,
-        error: `Invalid exchange. Must be one of: ${VALID_EXCHANGES.join(', ')}`,
+        error: `Invalid exchange. Only Bybit mainnet is supported.`,
         code: 'INVALID_EXCHANGE'
       }, { status: 400 });
     }
@@ -63,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (environment !== undefined && environment !== '' && !VALID_ENVIRONMENTS.includes(environment)) {
       return NextResponse.json({
         success: false,
-        error: `Invalid environment. Must be one of: ${VALID_ENVIRONMENTS.join(', ')}`,
+        error: `Invalid environment. Only mainnet is supported.`,
         code: 'INVALID_ENVIRONMENT'
       }, { status: 400 });
     }
@@ -79,9 +77,9 @@ export async function POST(request: NextRequest) {
         botEnabled: false,
         apiKey: apiKey || null,
         apiSecret: apiSecret || null,
-        passphrase: passphrase || null,
-        exchange: exchange || 'bybit',
-        environment: environment || 'demo',
+        passphrase: null,
+        exchange: 'bybit',
+        environment: 'mainnet',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -97,7 +95,10 @@ export async function POST(request: NextRequest) {
     const settingsId = existingSettings[0].id;
 
     const updateData: any = {
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      exchange: 'bybit',
+      environment: 'mainnet',
+      passphrase: null
     };
 
     if (apiKey !== undefined) {
@@ -106,18 +107,6 @@ export async function POST(request: NextRequest) {
 
     if (apiSecret !== undefined) {
       updateData.apiSecret = apiSecret === '' ? null : apiSecret;
-    }
-
-    if (passphrase !== undefined) {
-      updateData.passphrase = passphrase === '' ? null : passphrase;
-    }
-
-    if (exchange !== undefined && exchange !== '') {
-      updateData.exchange = exchange;
-    }
-
-    if (environment !== undefined && environment !== '') {
-      updateData.environment = environment;
     }
 
     await db.update(botSettings)

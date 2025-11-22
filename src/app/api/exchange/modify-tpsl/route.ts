@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { modifyBybitTpSl } from "@/lib/bybit-helpers";
 
 // ============================================
-// 🔐 OKX SIGNATURE HELPER
-// ============================================
-
-function signOkxRequest(
-  timestamp: string,
-  method: string,
-  requestPath: string,
-  body: string,
-  apiSecret: string
-): string {
-  const message = timestamp + method + requestPath + body;
-  return crypto
-    .createHmac("sha256", apiSecret)
-    .update(message)
-    .digest("base64");
-}
-
-// ============================================
-// 📨 POST ENDPOINT - MODIFY TP/SL (OKX ONLY)
+// 📨 POST ENDPOINT - MODIFY TP/SL (BYBIT ONLY)
 // ============================================
 
 export async function POST(req: NextRequest) {
@@ -30,11 +12,9 @@ export async function POST(req: NextRequest) {
       exchange,
       apiKey,
       apiSecret,
-      passphrase,
-      environment,
       symbol,
-      stopLoss, // new SL (optional)
-      takeProfit, // new TP (optional)
+      stopLoss,
+      takeProfit,
     } = body;
 
     if (!exchange || !apiKey || !apiSecret || !symbol) {
@@ -44,103 +24,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Only support OKX
-    if (exchange !== "okx") {
+    // Only support Bybit
+    if (exchange !== "bybit") {
       return NextResponse.json(
-        { success: false, message: "Only OKX is supported. Update your exchange to OKX." },
+        { success: false, message: "Only Bybit mainnet is supported." },
         { status: 400 }
       );
     }
 
-    if (!passphrase) {
-      return NextResponse.json(
-        { success: false, message: "Passphrase is required for OKX" },
-        { status: 400 }
+    try {
+      await modifyBybitTpSl(
+        symbol,
+        apiKey,
+        apiSecret,
+        takeProfit ? parseFloat(takeProfit) : undefined,
+        stopLoss ? parseFloat(stopLoss) : undefined
       );
-    }
 
-    const baseUrl = "https://www.okx.com";
-    const demo = environment === "demo";
-
-    const results: any = {
-      tpSlUpdated: false,
-      errors: [],
-    };
-
-    // Modify TP/SL using amend-order endpoint
-    if (stopLoss || takeProfit) {
-      try {
-        const timestamp = new Date().toISOString();
-        const requestPath = "/api/v5/trade/amend-algos";
-        
-        const amendPayload: any = {
-          instId: symbol,
-        };
-
-        if (stopLoss) {
-          amendPayload.slTriggerPx = stopLoss;
-          amendPayload.slOrdPx = "-1"; // Market order
-        }
-
-        if (takeProfit) {
-          amendPayload.tpTriggerPx = takeProfit;
-          amendPayload.tpOrdPx = "-1"; // Market order
-        }
-
-        const bodyString = JSON.stringify(amendPayload);
-        const signature = signOkxRequest(timestamp, "POST", requestPath, bodyString, apiSecret);
-
-        const headers: Record<string, string> = {
-          "OK-ACCESS-KEY": apiKey,
-          "OK-ACCESS-SIGN": signature,
-          "OK-ACCESS-TIMESTAMP": timestamp,
-          "OK-ACCESS-PASSPHRASE": passphrase,
-          "Content-Type": "application/json",
-        };
-
-        if (demo) {
-          headers["x-simulated-trading"] = "1";
-        }
-
-        const response = await fetch(`${baseUrl}${requestPath}`, {
-          method: "POST",
-          headers,
-          body: bodyString,
-        });
-
-        const data = await response.json();
-
-        if (data.code === "0") {
-          results.tpSlUpdated = true;
-          console.log("✅ OKX TP/SL updated successfully");
-        } else {
-          results.errors.push(`TP/SL update failed: ${data.msg}`);
-        }
-      } catch (err) {
-        results.errors.push(`Error updating TP/SL: ${err instanceof Error ? err.message : "Unknown"}`);
-      }
-    }
-
-    // Determine success
-    const hasUpdates = results.tpSlUpdated;
-    const hasErrors = results.errors.length > 0;
-
-    if (!hasUpdates && hasErrors) {
+      return NextResponse.json({
+        success: true,
+        message: "TP/SL modifications completed",
+      });
+    } catch (err) {
       return NextResponse.json(
         {
           success: false,
-          message: "Failed to update TP/SL",
-          errors: results.errors,
+          message: err instanceof Error ? err.message : "Unknown error",
         },
         { status: 400 }
       );
     }
-
-    return NextResponse.json({
-      success: true,
-      message: "TP/SL modifications completed",
-      results,
-    });
   } catch (error) {
     console.error("Error modifying TP/SL:", error);
     return NextResponse.json(

@@ -33,11 +33,10 @@ interface Position {
 }
 
 interface ExchangeCredentials {
-  exchange: "binance" | "bybit" | "okx";
+  exchange: "bybit";
   apiKey: string;
   apiSecret: string;
-  passphrase?: string;
-  environment: string;
+  environment: "mainnet";
   savedAt: string;
 }
 
@@ -65,7 +64,6 @@ interface BotPosition {
   confidenceScore: number;
   openedAt: string;
   status: string;
-  // NEW: Live prices from exchange
   liveSlPrice?: number | null;
   liveTp1Price?: number | null;
   liveTp2Price?: number | null;
@@ -172,128 +170,61 @@ export default function DashboardPage() {
     setPositionsError(null);
 
     try {
-      if (credsToUse.exchange === "bybit") {
-        const timestamp = Date.now();
-        const params: Record<string, any> = {
-          category: "linear",
-          settleCoin: "USDT"
-        };
-        
-        const signature = await signBybitRequest(
-          credsToUse.apiKey,
-          credsToUse.apiSecret,
-          timestamp,
-          params
-        );
-        
-        const baseUrl = credsToUse.environment === "demo" 
-          ? "https://api-demo.bybit.com"
-          : credsToUse.environment === "testnet"
-          ? "https://api-testnet.bybit.com"
-          : "https://api.bybit.com";
-        
-        const queryString = Object.keys(params)
-          .sort()
-          .map(key => `${key}=${params[key]}`)
-          .join("&");
-        
-        const url = `${baseUrl}/v5/position/list?${queryString}`;
-        
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "X-BAPI-API-KEY": credsToUse.apiKey,
-            "X-BAPI-TIMESTAMP": timestamp.toString(),
-            "X-BAPI-SIGN": signature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-        });
+      // Only Bybit is supported
+      const timestamp = Date.now();
+      const params: Record<string, any> = {
+        category: "linear",
+        settleCoin: "USDT"
+      };
+      
+      const signature = await signBybitRequest(
+        credsToUse.apiKey,
+        credsToUse.apiSecret,
+        timestamp,
+        params
+      );
+      
+      const baseUrl = "https://api.bybit.com";
+      
+      const queryString = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${params[key]}`)
+        .join("&");
+      
+      const url = `${baseUrl}/v5/position/list?${queryString}`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-BAPI-API-KEY": credsToUse.apiKey,
+          "X-BAPI-TIMESTAMP": timestamp.toString(),
+          "X-BAPI-SIGN": signature,
+          "X-BAPI-RECV-WINDOW": "5000",
+        },
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (data.retCode === 0 && data.result?.list) {
-          const openPositions = data.result.list
-            .filter((p: any) => parseFloat(p.size) > 0)
-            .map((p: any) => ({
-              symbol: p.symbol,
-              side: p.side,
-              size: p.size,
-              entryPrice: p.avgPrice,
-              markPrice: p.markPrice,
-              leverage: p.leverage,
-              unrealisedPnl: p.unrealisedPnl,
-              takeProfit: p.takeProfit || "0",
-              stopLoss: p.stopLoss || "0",
-              positionValue: p.positionValue
-            }));
-          
-          setPositions(openPositions);
-          setPositionsError(null);
-        } else {
-          setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
-        }
-      } else if (credsToUse.exchange === "okx") {
-        const timestamp = new Date().toISOString();
-        const method = "GET";
-        const requestPath = "/api/v5/account/positions";
-        const queryString = "?instType=SWAP";
-        const body = "";
+      if (data.retCode === 0 && data.result?.list) {
+        const openPositions = data.result.list
+          .filter((p: any) => parseFloat(p.size) > 0)
+          .map((p: any) => ({
+            symbol: p.symbol,
+            side: p.side,
+            size: p.size,
+            entryPrice: p.avgPrice,
+            markPrice: p.markPrice,
+            leverage: p.leverage,
+            unrealisedPnl: p.unrealisedPnl,
+            takeProfit: p.takeProfit || "0",
+            stopLoss: p.stopLoss || "0",
+            positionValue: p.positionValue
+          }));
         
-        const signature = await signOkxRequest(
-          timestamp,
-          method,
-          requestPath,
-          queryString,
-          body,
-          credsToUse.apiSecret
-        );
-        
-        const baseUrl = "https://www.okx.com";
-        const url = `${baseUrl}${requestPath}${queryString}`;
-        
-        const headers: Record<string, string> = {
-          "OK-ACCESS-KEY": credsToUse.apiKey,
-          "OK-ACCESS-SIGN": signature,
-          "OK-ACCESS-TIMESTAMP": timestamp,
-          "OK-ACCESS-PASSPHRASE": credsToUse.passphrase || "",
-          "Content-Type": "application/json",
-        };
-        
-        // Add x-simulated-trading header for demo environment
-        if (credsToUse.environment === "demo") {
-          headers["x-simulated-trading"] = "1";
-        }
-        
-        const response = await fetch(url, {
-          method: "GET",
-          headers,
-        });
-
-        const data = await response.json();
-
-        if (data.code === "0" && data.data) {
-          const openPositions = data.data
-            .filter((p: any) => parseFloat(p.pos) !== 0)
-            .map((p: any) => ({
-              symbol: p.instId,
-              side: parseFloat(p.pos) > 0 ? "Buy" : "Sell",
-              size: Math.abs(parseFloat(p.pos)).toString(),
-              entryPrice: p.avgPx,
-              markPrice: p.markPx,
-              leverage: p.lever,
-              unrealisedPnl: p.upl,
-              takeProfit: "0",
-              stopLoss: "0",
-              positionValue: Math.abs(parseFloat(p.notionalUsd)).toString()
-            }));
-          
-          setPositions(openPositions);
-          setPositionsError(null);
-        } else {
-          setPositionsError(`OKX API error: ${data.msg || "Nieznany błąd"}`);
-        }
+        setPositions(openPositions);
+        setPositionsError(null);
       } else {
-        setPositionsError("Pobieranie pozycji jest obecnie wspierane tylko dla Bybit i OKX");
+        setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
       }
     } catch (err) {
       setPositionsError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
@@ -327,9 +258,13 @@ export default function DashboardPage() {
     if (stored) {
       const creds = JSON.parse(stored);
       
+      // Force Bybit mainnet
+      creds.exchange = "bybit";
+      creds.environment = "mainnet";
+      
       setCredentials(creds);
       
-      if (creds.passphrase && !credentialsSynced) {
+      if (!credentialsSynced) {
         syncCredentialsToDatabase(creds);
         setCredentialsSynced(true);
       }
@@ -429,10 +364,9 @@ export default function DashboardPage() {
     setSyncingCredentials(true);
     try {
       console.log("🔄 Syncing credentials to database:", {
-        exchange: credsToUse.exchange,
-        environment: credsToUse.environment,
-        apiKeyPreview: credsToUse.apiKey.substring(0, 8) + "...",
-        hasPassphrase: !!credsToUse.passphrase
+        exchange: "bybit",
+        environment: "mainnet",
+        apiKeyPreview: credsToUse.apiKey.substring(0, 8) + "..."
       });
 
       const response = await fetch("/api/bot/credentials", {
@@ -441,16 +375,15 @@ export default function DashboardPage() {
         body: JSON.stringify({
           apiKey: credsToUse.apiKey,
           apiSecret: credsToUse.apiSecret,
-          passphrase: credsToUse.passphrase,
-          exchange: credsToUse.exchange,
-          environment: credsToUse.environment
+          exchange: "bybit",
+          environment: "mainnet"
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        toast.success(`✅ Credentials ${credsToUse.exchange.toUpperCase()} zapisane do bazy danych!`);
+        toast.success(`✅ Credentials Bybit zapisane do bazy danych!`);
         console.log("✅ Database sync successful");
       } else {
         toast.error(`❌ Błąd zapisu: ${data.error}`);
@@ -514,35 +447,6 @@ export default function DashboardPage() {
     return hashHex;
   };
 
-  const signOkxRequest = async (
-    timestamp: string,
-    method: string,
-    requestPath: string,
-    queryString: string,
-    body: string,
-    apiSecret: string
-  ) => {
-    const message = timestamp + method + requestPath + queryString + body;
-    
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(message);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-    const hashArray = Array.from(new Uint8Array(signature));
-    const base64Signature = btoa(String.fromCharCode(...hashArray));
-    
-    return base64Signature;
-  };
-
   const fetchBalance = async (creds?: ExchangeCredentials) => {
     const credsToUse = creds || credentials;
     if (!credsToUse) return;
@@ -551,100 +455,59 @@ export default function DashboardPage() {
     setError(null);
 
     try {
-      if (credsToUse.exchange === "bybit") {
-        // Fetch balance directly from Bybit API (client-side)
-        const timestamp = Date.now();
-        const params: Record<string, any> = {
-          accountType: "UNIFIED"
-        };
-        
-        const signature = await signBybitRequest(
-          credsToUse.apiKey,
-          credsToUse.apiSecret,
-          timestamp,
-          params
-        );
-        
-        const baseUrl = credsToUse.environment === "demo" 
-          ? "https://api-demo.bybit.com"
-          : credsToUse.environment === "testnet"
-          ? "https://api-testnet.bybit.com"
-          : "https://api.bybit.com";
-        
-        const queryString = Object.keys(params)
-          .sort()
-          .map(key => `${key}=${params[key]}`)
-          .join("&");
-        
-        const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
-        
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "X-BAPI-API-KEY": credsToUse.apiKey,
-            "X-BAPI-TIMESTAMP": timestamp.toString(),
-            "X-BAPI-SIGN": signature,
-            "X-BAPI-RECV-WINDOW": "5000",
-          },
-        });
+      // Fetch balance directly from Bybit API (client-side)
+      const timestamp = Date.now();
+      const params: Record<string, any> = {
+        accountType: "UNIFIED"
+      };
+      
+      const signature = await signBybitRequest(
+        credsToUse.apiKey,
+        credsToUse.apiSecret,
+        timestamp,
+        params
+      );
+      
+      const baseUrl = "https://api.bybit.com";
+      
+      const queryString = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${params[key]}`)
+        .join("&");
+      
+      const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-BAPI-API-KEY": credsToUse.apiKey,
+          "X-BAPI-TIMESTAMP": timestamp.toString(),
+          "X-BAPI-SIGN": signature,
+          "X-BAPI-RECV-WINDOW": "5000",
+        },
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (data.retCode === 0 && data.result?.list) {
-          const walletData = data.result.list[0];
-          if (walletData?.coin) {
-            const filteredBalances = walletData.coin
-              .filter((c: any) => parseFloat(c.walletBalance || 0) > 0)
-              .map((c: any) => ({
-                asset: c.coin,
-                free: c.availableToWithdraw || "0",
-                locked: (parseFloat(c.walletBalance || 0) - parseFloat(c.availableToWithdraw || 0)).toFixed(8),
-                total: c.walletBalance || "0"
-              }));
-            
-            setBalances(filteredBalances);
-            setError(null);
-          } else {
-            setError("Brak danych o saldzie w odpowiedzi API");
-          }
-        } else {
-          setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
-        }
-      } else {
-        // Binance and OKX - use backend API
-        const payload: any = {
-          exchange: credsToUse.exchange,
-          apiKey: credsToUse.apiKey,
-          apiSecret: credsToUse.apiSecret,
-          testnet: credsToUse.environment === "testnet",
-          demo: credsToUse.environment === "demo"
-        };
-
-        if (credsToUse.exchange === "okx" && credsToUse.passphrase) {
-          payload.passphrase = credsToUse.passphrase;
-        }
-
-        const response = await fetch("/api/exchange/get-balance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await response.json();
-
-        if (data.success && data.balances) {
-          const filteredBalances = data.balances
-            .filter((b: Balance) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0)
-            .map((b: Balance) => ({
-              ...b,
-              total: (parseFloat(b.free) + parseFloat(b.locked)).toFixed(8)
+      if (data.retCode === 0 && data.result?.list) {
+        const walletData = data.result.list[0];
+        if (walletData?.coin) {
+          const filteredBalances = walletData.coin
+            .filter((c: any) => parseFloat(c.walletBalance || 0) > 0)
+            .map((c: any) => ({
+              asset: c.coin,
+              free: c.availableToWithdraw || "0",
+              locked: (parseFloat(c.walletBalance || 0) - parseFloat(c.availableToWithdraw || 0)).toFixed(8),
+              total: c.walletBalance || "0"
             }));
           
           setBalances(filteredBalances);
           setError(null);
         } else {
-          setError(data.message || "Nie udało się pobrać salda");
+          setError("Brak danych o saldzie w odpowiedzi API");
         }
+      } else {
+        setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
       }
     } catch (err) {
       setError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
@@ -873,17 +736,17 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-red-300">
               <AlertCircle className="h-6 w-6" />
-              ⚠️ Błędne dane w localStorage!
+              ⚠️ Brak konfiguracji Bybit!
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="p-4 rounded-lg bg-red-900/40 border-2 border-red-700">
                 <p className="text-lg font-bold text-red-200 mb-2">
-                  🔍 Wykryto UUID zamiast prawdziwego klucza API
+                  🔍 Nie znaleziono kluczy API Bybit
                 </p>
                 <p className="text-sm text-gray-200">
-                  Twój klucz API w localStorage wygląda na UUID (placeholder) zamiast prawdziwego klucza OKX.
+                  Musisz skonfigurować klucze API Bybit Mainnet aby korzystać z bota.
                 </p>
               </div>
 
@@ -893,44 +756,21 @@ export default function DashboardPage() {
                 </p>
                 <ol className="space-y-2 text-sm text-gray-200 list-decimal list-inside">
                   <li>Kliknij przycisk <strong className="text-white">"Konfiguracja API"</strong> poniżej</li>
-                  <li>Wprowadź <strong className="text-white">PRAWDZIWE klucze OKX</strong> (nie UUID!)</li>
-                  <li>Kliknij <strong className="text-white">"Test Connection"</strong> aby sprawdzić czy działają</li>
-                  <li>Kliknij <strong className="text-white">"Save Credentials"</strong></li>
-                  <li>Wróć tutaj i kliknij <strong className="text-white">"Sync do Bazy"</strong></li>
-                </ol>
-              </div>
-
-              <div className="p-4 rounded-lg bg-yellow-900/40 border-2 border-yellow-700">
-                <p className="text-base font-bold text-yellow-200 mb-2">
-                  🔐 Gdzie znaleźć prawdziwe klucze OKX:
-                </p>
-                <ol className="space-y-1 text-sm text-gray-200 list-decimal list-inside">
-                  <li>Zaloguj się na <strong className="text-white">okx.com</strong></li>
-                  <li>Idź do: Profile → API → Create API Key</li>
-                  <li>Skopiuj: <strong className="text-white">API Key, Secret Key, Passphrase</strong></li>
+                  <li>Wprowadź <strong className="text-white">klucze Bybit Mainnet</strong></li>
+                  <li>Kliknij <strong className="text-white">"Test Connection"</strong></li>
+                  <li>Wróć do dashboardu</li>
                 </ol>
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <Button 
-                onClick={() => router.push("/exchange-test")} 
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                size="lg"
-              >
-                <Settings className="mr-2 h-5 w-5" />
-                Konfiguracja API
-              </Button>
-              <Button 
-                onClick={clearLocalStorageAndReconfigure} 
-                variant="outline"
-                className="border-red-600 text-red-400 hover:bg-red-600/20"
-                size="lg"
-              >
-                <AlertCircle className="mr-2 h-5 w-5" />
-                Wyczyść localStorage
-              </Button>
-            </div>
+            <Button 
+              onClick={() => router.push("/exchange-test")} 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              size="lg"
+            >
+              <Settings className="mr-2 h-5 w-5" />
+              Konfiguracja API
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -1057,11 +897,7 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <p className="text-sm text-gray-200 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    {credentials.exchange.toUpperCase()} · 
-                    <span className={credentials.environment === "demo" ? "text-red-300 font-bold" : "text-gray-200"}>
-                      {credentials.environment}
-                      {credentials.environment === "demo" && " ⚠️"}
-                    </span>
+                    BYBIT MAINNET
                   </p>
                   {botEnabled !== null && (
                     <Tooltip>
@@ -1081,9 +917,7 @@ export default function DashboardPage() {
                       <TooltipContent>
                         <p className="max-w-xs text-gray-200">
                           {botEnabled 
-                            ? credentials.environment === "demo"
-                              ? "⚠️ Bot włączony ale Demo environment może nie działać! Przełącz się na Testnet"
-                              : "Bot aktywnie monitoruje alerty z TradingView i automatycznie otwiera pozycje zgodne z ustawieniami"
+                            ? "Bot aktywnie monitoruje alerty z TradingView i automatycznie otwiera pozycje zgodne z ustawieniami"
                             : "Bot jest nieaktywny i nie będzie otwierał nowych pozycji. Przejdź do Ustawień Bota aby go włączyć"}
                         </p>
                       </TooltipContent>
@@ -2030,11 +1864,11 @@ export default function DashboardPage() {
                   <CardContent className="space-y-2 text-sm pt-4">
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
                       <span className="text-gray-300 font-medium">Giełda:</span>
-                      <span className="font-bold text-white">{credentials.exchange.toUpperCase()}</span>
+                      <span className="font-bold text-white">BYBIT</span>
                     </div>
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
                       <span className="text-gray-300 font-medium">Środowisko:</span>
-                      <span className="font-bold capitalize text-white">{credentials.environment}</span>
+                      <span className="font-bold text-white">Mainnet</span>
                     </div>
                     <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
                       <span className="text-gray-300 font-medium">API Key:</span>
