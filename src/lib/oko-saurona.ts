@@ -175,13 +175,16 @@ export async function checkMissingSlTp(
       ? position.symbol 
       : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
     
+    // ✅ CRITICAL FIX: Support NET MODE
+    // In net mode, posSide is always "net" regardless of direction
+    // Match by symbol only, not by side
     const positionAlgos = algoOrders.filter((a: AlgoOrderData) => a.instId === symbol);
     
     // Check for REAL SL/TP on exchange
     const hasRealSL = positionAlgos.some((a: AlgoOrderData) => a.slTriggerPx);
     const hasRealTP = positionAlgos.some((a: AlgoOrderData) => a.tpTriggerPx);
 
-    console.log(`   📊 OKX Sync: SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
+    console.log(`   📊 OKX Sync (net mode): SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
 
     if (!hasRealSL || !hasRealTP) {
       const missing = [];
@@ -192,7 +195,7 @@ export async function checkMissingSlTp(
         shouldClose: false,
         shouldFix: true,
         action: 'missing_sl_tp',
-        reason: `Missing ${missing.join(' and ')} on OKX exchange`,
+        reason: `Missing ${missing.join(' and ')} on OKX exchange (net mode)`,
         checkCount: 1, // Instant fix attempt
         metadata: {
           missingSL: !hasRealSL,
