@@ -22,16 +22,18 @@ interface ConnectionResult {
 
 type BybitEnvironment = "mainnet" | "testnet" | "demo";
 type OkxEnvironment = "mainnet" | "demo";
+type ToobitEnvironment = "mainnet";
 
 export default function ExchangeTestPage() {
   const router = useRouter();
-  const [exchange, setExchange] = useState<"binance" | "bybit" | "okx">("binance");
+  const [exchange, setExchange] = useState<"binance" | "bybit" | "okx" | "toobit">("toobit");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [testnet, setTestnet] = useState(true);
   const [bybitEnv, setBybitEnv] = useState<BybitEnvironment>("demo");
   const [okxEnv, setOkxEnv] = useState<OkxEnvironment>("demo");
+  const [toobitEnv, setToobitEnv] = useState<ToobitEnvironment>("mainnet");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [savedWithoutTest, setSavedWithoutTest] = useState(false);
@@ -106,6 +108,10 @@ export default function ExchangeTestPage() {
       } else if (exchange === "okx") {
         payload.demo = okxEnv === "demo";
         payload.passphrase = passphrase;
+      } else if (exchange === "toobit") {
+        // Toobit only has mainnet
+        payload.testnet = false;
+        payload.demo = false;
       }
 
       const response = await fetch("/api/exchange/test-connection", {
@@ -117,15 +123,16 @@ export default function ExchangeTestPage() {
       const data = await response.json();
       setResult(data);
       
-      // CRITICAL FIX: Save credentials to database after successful test
       if (data.success) {
         let environment: string;
         if (exchange === "binance") {
           environment = testnet ? "testnet" : "mainnet";
         } else if (exchange === "bybit") {
           environment = bybitEnv;
-        } else {
+        } else if (exchange === "okx") {
           environment = okxEnv;
+        } else {
+          environment = "mainnet";
         }
 
         const credentials = {
@@ -137,10 +144,8 @@ export default function ExchangeTestPage() {
           savedAt: new Date().toISOString()
         };
         
-        // Save to localStorage (for client-side dashboard)
         localStorage.setItem("exchange_credentials", JSON.stringify(credentials));
         
-        // CRITICAL: Save to database (for server-side webhook)
         try {
           const dbResponse = await fetch("/api/bot/credentials", {
             method: "POST",
@@ -164,13 +169,11 @@ export default function ExchangeTestPage() {
           console.error("❌ Error saving credentials to database:", error);
         }
         
-        // Update success message to mention database save
         setResult({
           ...data,
           message: data.message + "\n\n✅ Credentials zostały automatycznie zapisane do localStorage i bazy danych."
         });
         
-        // Redirect to dashboard after 2 seconds
         setTimeout(() => {
           router.push("/dashboard");
         }, 2000);
@@ -284,8 +287,9 @@ export default function ExchangeTestPage() {
             <CardDescription className="text-gray-300">Wprowadź klucze API z wybranej giełdy</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Tabs value={exchange} onValueChange={(v) => setExchange(v as "binance" | "bybit" | "okx")}>
-              <TabsList className="grid w-full grid-cols-3">
+            <Tabs value={exchange} onValueChange={(v) => setExchange(v as any)}>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="toobit" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Toobit</TabsTrigger>
                 <TabsTrigger value="binance" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Binance</TabsTrigger>
                 <TabsTrigger value="bybit" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Bybit</TabsTrigger>
                 <TabsTrigger value="okx" className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">OKX</TabsTrigger>
@@ -332,7 +336,17 @@ export default function ExchangeTestPage() {
                 </div>
               )}
 
-              {exchange === "binance" ? (
+              {exchange === "toobit" ? (
+                <div className="space-y-3">
+                  <Alert className="border-yellow-500 bg-yellow-500/10">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    <AlertDescription className="text-sm text-gray-300">
+                      <strong className="text-yellow-400">Toobit nie ma testnetu.</strong> Używasz prawdziwego konta mainnet. 
+                      Ustaw małe pozycje ($5-10) w ustawieniach bota!
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : exchange === "binance" ? (
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -414,6 +428,16 @@ export default function ExchangeTestPage() {
                   Zapisz bez testowania
                 </Button>
               </div>
+
+              {exchange === "toobit" && (
+                <Alert className="border-red-500 bg-red-500/10">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <AlertDescription className="text-sm text-gray-200">
+                    <strong className="text-red-400">UWAGA:</strong> Toobit mainnet - prawdziwe pieniądze! 
+                    Upewnij się że ustawienia bota mają małe pozycje ($5-10 max).
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {exchange === "bybit" && bybitEnv === "mainnet" && (
                 <Alert className="border-red-500 bg-red-500/10">
@@ -504,7 +528,17 @@ export default function ExchangeTestPage() {
             <CardTitle className="text-lg text-white">Jak uzyskać klucze API?</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-200">
-            <p><strong className="text-white">Binance:</strong></p>
+            <p><strong className="text-white">Toobit (ZALECANE - bez ograniczeń regionalnych):</strong></p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>Zaloguj się na <a href="https://www.toobit.com" target="_blank" className="text-blue-400 underline">Toobit.com</a></li>
+              <li>Profile icon → <strong>API Management</strong></li>
+              <li>Create New Key / + New API</li>
+              <li>Włącz uprawnienia: <strong>Futures Trading</strong>, <strong>Read Account</strong></li>
+              <li><strong>IP Whitelisting</strong> (opcjonalnie ale zalecane)</li>
+              <li>Potwierdź z 2FA (Google Authenticator)</li>
+              <li><strong>UWAGA:</strong> Secret Key pokazuje się tylko RAZ - zapisz natychmiast!</li>
+            </ol>
+            <p className="mt-4"><strong className="text-white">Binance:</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
               <li>Zaloguj się na Binance</li>
               <li>Przejdź do API Management w ustawieniach</li>

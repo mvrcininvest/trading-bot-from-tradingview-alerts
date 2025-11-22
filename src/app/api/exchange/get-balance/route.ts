@@ -7,6 +7,7 @@ const BYBIT_TESTNET_URL = "https://api-testnet.bybit.com";
 const BYBIT_DEMO_URL = "https://api-demo.bybit.com";
 const BYBIT_MAINNET_URL = "https://api.bybit.com";
 const OKX_BASE_URL = "https://www.okx.com";
+const TOOBIT_BASE_URL = "https://api.toobit.com";
 
 function createBybitSignature(
   apiKey: string,
@@ -23,6 +24,16 @@ function createBinanceSignature(
   queryString: string
 ): string {
   return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
+}
+
+function createToobitSignature(
+  apiSecret: string,
+  timestamp: number,
+  params: Record<string, any>
+): string {
+  // Toobit uses HMAC SHA256 signature similar to Binance
+  const paramString = JSON.stringify(params);
+  return crypto.createHmac("sha256", apiSecret).update(paramString).digest("hex");
 }
 
 async function getBinanceBalance(
@@ -207,6 +218,68 @@ async function getOkxBalance(
   };
 }
 
+async function getToobitBalance(
+  apiKey: string,
+  apiSecret: string
+) {
+  const timestamp = Date.now();
+  const params = {
+    apiKey,
+    timestamp,
+  };
+
+  const signature = createToobitSignature(apiSecret, timestamp, params);
+  const queryParams = new URLSearchParams({
+    apiKey,
+    timestamp: timestamp.toString(),
+    signature,
+  });
+
+  const response = await fetch(
+    `${TOOBIT_BASE_URL}/swap/v1/account/balance?${queryParams.toString()}`,
+    {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Toobit API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+
+  if (data.code !== 0) {
+    throw new Error(`Toobit API error: ${data.msg || "Unknown error"}`);
+  }
+
+  // Extract balances from Toobit response
+  const balances: Array<{ asset: string; free: string; locked: string }> = [];
+  
+  if (data.data?.balances) {
+    data.data.balances.forEach((balance: any) => {
+      const free = parseFloat(balance.available || "0");
+      const locked = parseFloat(balance.locked || "0");
+      
+      if (free > 0 || locked > 0) {
+        balances.push({
+          asset: balance.asset,
+          free: free.toFixed(8),
+          locked: locked.toFixed(8),
+        });
+      }
+    });
+  }
+
+  return {
+    success: true,
+    balances,
+    canTrade: true,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -234,6 +307,8 @@ export async function POST(request: NextRequest) {
       result = await getBybitBalance(apiKey, apiSecret, demo, testnet);
     } else if (exchange === "okx") {
       result = await getOkxBalance(apiKey, apiSecret, passphrase, demo);
+    } else if (exchange === "toobit") {
+      result = await getToobitBalance(apiKey, apiSecret);
     } else {
       return NextResponse.json(
         { success: false, message: "Nieobsługiwana giełda" },
