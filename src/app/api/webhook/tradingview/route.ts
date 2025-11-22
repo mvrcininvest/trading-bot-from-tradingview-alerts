@@ -132,8 +132,9 @@ async function verifyPositionOpening(
   
   const discrepancies: VerificationResult['discrepancies'] = [];
   
-  const PRICE_TOLERANCE = 0.03; // 3%
-  const QUANTITY_TOLERANCE = 0.10; // 10%
+  // ✅ SCALPING TOLERANCES - REDUCED FOR PRECISION
+  const PRICE_TOLERANCE = 0.01; // 1% for entry, SL, TP
+  const QUANTITY_TOLERANCE = 0.03; // 3% for quantity
   
   console.log(`   ⚙️ Tolerances: Price ${(PRICE_TOLERANCE * 100).toFixed(1)}%, Quantity ${(QUANTITY_TOLERANCE * 100).toFixed(1)}%`);
   

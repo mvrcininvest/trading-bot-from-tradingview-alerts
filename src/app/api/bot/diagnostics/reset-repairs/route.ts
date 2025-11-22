@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { tpslRetryAttempts } from '@/db/schema';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 
 // POST /api/bot/diagnostics/reset-repairs - Reset all repair attempts
 export async function POST(request: Request) {
@@ -12,22 +12,23 @@ export async function POST(request: Request) {
     if (positionId) {
       // Reset for specific position
       const result = await db.delete(tpslRetryAttempts)
-        .where(sql`${tpslRetryAttempts.positionId} = ${parseInt(positionId)}`);
+        .where(eq(tpslRetryAttempts.positionId, parseInt(positionId)))
+        .returning();
       
       return NextResponse.json({
         success: true,
         message: `Reset repair attempts for position ${positionId}`,
-        deleted: result.rowCount || 0
+        deleted: result.length
       });
     } else {
       // Reset ALL repair attempts
       const result = await db.delete(tpslRetryAttempts)
-        .where(sql`1=1`);
+        .returning();
       
       return NextResponse.json({
         success: true,
         message: 'Reset ALL repair attempts',
-        deleted: result.rowCount || 0
+        deleted: result.length
       });
     }
   } catch (error: any) {
