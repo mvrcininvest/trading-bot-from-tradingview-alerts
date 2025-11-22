@@ -76,6 +76,27 @@ export async function makeBybitRequest(
 }
 
 // ============================================
+// 🔄 SYMBOL CONVERSION HELPERS
+// ============================================
+
+export function convertSymbolToBybit(symbol: string): string {
+  // Remove any existing suffixes and ensure uppercase
+  const cleaned = symbol.replace(/\.P$/i, '').replace(/-USDT-SWAP$/i, '').toUpperCase();
+  
+  // Bybit uses format like: BTCUSDT, ETHUSDT
+  if (!cleaned.endsWith('USDT')) {
+    return `${cleaned}USDT`;
+  }
+  
+  return cleaned;
+}
+
+export function convertSymbolFromBybit(bybitSymbol: string): string {
+  // Convert from BTCUSDT to BTC format
+  return bybitSymbol.replace('USDT', '');
+}
+
+// ============================================
 // 📊 GET CURRENT MARKET PRICE
 // ============================================
 
@@ -310,6 +331,103 @@ export async function getBybitPositions(
 }
 
 // ============================================
+// 📜 GET ALGO ORDERS (SL/TP ORDERS)
+// ============================================
+
+export async function getBybitAlgoOrders(
+  apiKey: string,
+  apiSecret: string
+): Promise<any[]> {
+  try {
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/order/realtime',
+      apiKey,
+      apiSecret,
+      {
+        category: 'linear',
+        settleCoin: 'USDT'
+      }
+    );
+
+    if (!data.result?.list) {
+      return [];
+    }
+
+    // Return all active orders (TP/SL are stored in position, not as separate orders in Bybit V5)
+    // We'll get TP/SL from position data instead
+    return data.result.list || [];
+  } catch (error: any) {
+    console.error('Failed to get Bybit algo orders:', error.message);
+    return [];
+  }
+}
+
+// ============================================
+// 🗑️ CANCEL BYBIT ALGO ORDER
+// ============================================
+
+export async function cancelBybitAlgoOrder(
+  orderId: string,
+  symbol: string,
+  apiKey: string,
+  apiSecret: string
+): Promise<boolean> {
+  try {
+    await makeBybitRequest(
+      'POST',
+      '/v5/order/cancel',
+      apiKey,
+      apiSecret,
+      {},
+      {
+        category: 'linear',
+        symbol: symbol,
+        orderId: orderId
+      }
+    );
+    
+    console.log(`✅ Cancelled algo order: ${orderId}`);
+    return true;
+  } catch (error: any) {
+    console.error(`❌ Failed to cancel algo order ${orderId}:`, error.message);
+    return false;
+  }
+}
+
+// ============================================
+// 📜 GET POSITIONS HISTORY
+// ============================================
+
+export async function getBybitPositionsHistory(
+  apiKey: string,
+  apiSecret: string,
+  limit: number = 100
+): Promise<any[]> {
+  try {
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/position/closed-pnl',
+      apiKey,
+      apiSecret,
+      {
+        category: 'linear',
+        limit: limit.toString()
+      }
+    );
+
+    if (!data.result?.list) {
+      return [];
+    }
+
+    return data.result.list;
+  } catch (error: any) {
+    console.error('Failed to get Bybit positions history:', error.message);
+    return [];
+  }
+}
+
+// ============================================
 // 💰 GET WALLET BALANCE
 // ============================================
 
@@ -349,4 +467,13 @@ export async function getBybitWalletBalance(
     balances,
     canTrade: true
   };
+}
+
+// ============================================
+// 🔐 BYBIT CREDENTIALS TYPE
+// ============================================
+
+export interface BybitCredentials {
+  apiKey: string;
+  apiSecret: string;
 }
