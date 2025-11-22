@@ -122,6 +122,15 @@ export default function BotHistoryPage() {
     closed_on_exchange: "🔄 Zamknięte na giełdzie",
     emergency_verification_failure: "⚠️ Błąd weryfikacji (emergency)",
     partial_close: "📊 Częściowe zamknięcie",
+    // Oko Saurona actions
+    oko_emergency: "👁️ OKO: Emergency Close",
+    oko_sl_breach: "👁️ OKO: SL Breach",
+    oko_pnl_emergency: "👁️ OKO: PnL Emergency",
+    oko_multi_position_correlation: "👁️ OKO: Multi-Position",
+    oko_time_based_exit: "👁️ OKO: Time-Based Exit",
+    oko_account_drawdown: "👁️ OKO: Account Drawdown",
+    oko_ghost_position_cleanup: "👁️ OKO: Ghost Position",
+    ghost_position_cleanup: "👻 Ghost Position Cleanup",
   };
 
   const getCloseReasonLabel = (reason: string) => {
