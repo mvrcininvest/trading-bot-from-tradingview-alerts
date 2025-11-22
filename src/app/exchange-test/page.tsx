@@ -521,10 +521,11 @@ export default function ExchangeTestPage() {
             </ol>
             <p className="mt-4"><strong className="text-white">OKX:</strong></p>
             <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li><strong className="text-white">Demo Trading (zalecane do testów):</strong> Zaloguj się na OKX → Trading → Demo Trading → Personal Center → Create Demo APIKey</li>
-              <li><strong className="text-white">Mainnet:</strong> Użyj prawdziwego konta OKX → API Management → Utwórz klucz (ostrożnie z funduszami!)</li>
+              <li><strong className="text-white">Demo Trading (zalecane do testów):</strong> Zaloguj się na OKX → Przełącz tryb na "Demo Trading" (prawy górny róg) → API → Create Demo API Key</li>
+              <li><strong className="text-white">Live Trading (prawdziwe pieniądze!):</strong> Zaloguj się na OKX (tryb Live) → API → Create V5 API Key</li>
               <li>Włącz uprawnienia: "Trade" przy tworzeniu klucza</li>
-              <li><strong className="text-white">WAŻNE:</strong> Zapisz Passphrase - nie możesz go później odzyskać!</li>
+              <li><strong className="text-red-400">WAŻNE:</strong> Zapisz Passphrase - nie możesz go później odzyskać!</li>
+              <li><strong className="text-yellow-400">UWAGA:</strong> OKX NIE MA testnet - używaj Demo Trading do testów (prawdziwa płynność, bez ryzyka)</li>
             </ol>
           </CardContent>
         </Card>
