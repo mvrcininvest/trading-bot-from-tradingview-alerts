@@ -2,143 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { botPositions, botSettings } from '@/db/schema';
 import { eq, like, desc, and, or } from 'drizzle-orm';
-import crypto from 'crypto';
-
-// ============================================
-// 🔐 OKX SIGNATURE HELPER
-// ============================================
-
-function createOkxSignature(
-  timestamp: string,
-  method: string,
-  requestPath: string,
-  body: string,
-  apiSecret: string
-): string {
-  const message = timestamp + method + requestPath + body;
-  return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
-}
-
-// ============================================
-// 🔄 SYMBOL CONVERSION FOR OKX
-// ============================================
-
-function convertSymbolToOkx(symbol: string): string {
-  if (symbol.includes('-')) {
-    return symbol;
-  }
-  
-  const match = symbol.match(/^([A-Z0-9]+)(USDT|USD)$/i);
-  if (match) {
-    const [, base, quote] = match;
-    return `${base.toUpperCase()}-${quote.toUpperCase()}-SWAP`;
-  }
-  
-  return symbol;
-}
-
-// ============================================
-// 🏦 GET LIVE POSITIONS FROM OKX
-// ============================================
-
-async function getOkxPositions(
-  apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
-) {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = "/api/v5/account/positions";
-  const queryString = "?instType=SWAP";
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
-  
-  const baseUrl = "https://www.okx.com";
-  const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "Content-Type": "application/json",
-  };
-  
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
-    method: "GET",
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (data.code !== "0") {
-    console.error("OKX API error:", data);
-    return [];
-  }
-
-  // Return only positions with pos !== 0
-  return data.data?.filter((p: any) => parseFloat(p.pos) !== 0) || [];
-}
-
-// ============================================
-// 🏦 GET ALGO ORDERS FROM OKX (SL/TP)
-// ============================================
-
-async function getOkxAlgoOrders(
-  apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
-) {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = "/api/v5/trade/orders-algo-pending";
-  const queryString = "?ordType=conditional";
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
-  
-  const baseUrl = "https://www.okx.com";
-  const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "Content-Type": "application/json",
-  };
-  
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  console.log(`📡 [API /positions] Fetching algo orders from OKX (demo: ${demo})...`);
-  
-  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
-    method: "GET",
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (data.code !== "0") {
-    console.error(`❌ [API /positions] OKX API error (algo orders):`, data);
-    return [];
-  }
-
-  console.log(`✅ [API /positions] Got ${data.data?.length || 0} algo orders from OKX`);
-  return data.data || [];
-}
+import { getBybitPositions, getBybitAlgoOrders, convertSymbolToBybit } from '@/lib/bybit-helpers';
 
 // ============================================
 // 🎯 HELPER: MAP ALGO ORDERS TO POSITIONS
 // ============================================
 
 function mapAlgoOrdersToPositions(
-  okxAlgoOrders: any[],
+  bybitAlgoOrders: any[],
   positions: any[]
 ): Map<number, {
   liveSlPrice: number | null;
@@ -151,18 +22,14 @@ function mapAlgoOrdersToPositions(
   console.log(`\n🗺️ [API /positions] Mapping algo orders to ${positions.length} positions...`);
 
   for (const pos of positions) {
-    const okxSymbol = convertSymbolToOkx(pos.symbol);
+    const bybitSymbol = convertSymbolToBybit(pos.symbol);
     
-    // ✅ CRITICAL FIX: Support NET MODE (most OKX accounts)
-    // In net mode, posSide is always "net" regardless of direction
-    // We just need to match by symbol
+    console.log(`  📊 [${pos.symbol}] Looking for orders: ${bybitSymbol}`);
     
-    console.log(`  📊 [${pos.symbol}] Looking for orders: ${okxSymbol} (net mode)`);
-    
-    // Filter orders for this symbol only (ignore posSide in net mode)
-    const relevantOrders = okxAlgoOrders.filter((order: any) => {
-      const matchesSymbol = order.instId === okxSymbol;
-      console.log(`    Order ${order.algoId}: instId=${order.instId}, posSide=${order.posSide}, matches=${matchesSymbol}`);
+    // Filter orders for this symbol
+    const relevantOrders = bybitAlgoOrders.filter((order: any) => {
+      const matchesSymbol = order.symbol === bybitSymbol;
+      console.log(`    Order ${order.orderId}: symbol=${order.symbol}, side=${order.side}, matches=${matchesSymbol}`);
       return matchesSymbol;
     });
 
@@ -171,19 +38,19 @@ function mapAlgoOrdersToPositions(
     let liveSlPrice: number | null = null;
     const tpPrices: number[] = [];
 
-    // Extract SL and TP prices
+    // Extract SL and TP prices from Bybit orders
     for (const order of relevantOrders) {
-      console.log(`    Order details: slTriggerPx=${order.slTriggerPx}, tpTriggerPx=${order.tpTriggerPx}, sz=${order.sz}`);
+      console.log(`    Order details: stopLoss=${order.stopLoss}, takeProfit=${order.takeProfit}, qty=${order.qty}`);
       
       // Stop Loss
-      if (order.slTriggerPx && parseFloat(order.slTriggerPx) > 0) {
-        liveSlPrice = parseFloat(order.slTriggerPx);
+      if (order.stopLoss && parseFloat(order.stopLoss) > 0) {
+        liveSlPrice = parseFloat(order.stopLoss);
         console.log(`    Found SL: ${liveSlPrice}`);
       }
       
       // Take Profit
-      if (order.tpTriggerPx && parseFloat(order.tpTriggerPx) > 0) {
-        const tpPrice = parseFloat(order.tpTriggerPx);
+      if (order.takeProfit && parseFloat(order.takeProfit) > 0) {
+        const tpPrice = parseFloat(order.takeProfit);
         tpPrices.push(tpPrice);
         console.log(`    Found TP: ${tpPrice}`);
       }
@@ -192,7 +59,7 @@ function mapAlgoOrdersToPositions(
     // Sort TP prices (closest to entry price = TP1, farthest = TP3)
     const entryPrice = pos.entryPrice;
     
-    if (pos.side === 'BUY') {
+    if (pos.side === 'Buy') {
       // Long: TP prices above entry, sort ascending
       tpPrices.sort((a, b) => a - b);
     } else {
@@ -273,7 +140,7 @@ export async function GET(request: NextRequest) {
     console.log(`\n📊 [API /positions] Found ${positions.length} positions in DB`);
 
     // ============================================
-    // 🔥 CRITICAL FIX: FETCH LIVE PNL AND SL/TP FROM OKX
+    // 🔥 FETCH LIVE PNL AND SL/TP FROM BYBIT
     // ============================================
     
     // Get bot settings for API credentials
@@ -281,57 +148,55 @@ export async function GET(request: NextRequest) {
     
     if (settings.length > 0) {
       const botConfig = settings[0];
-      const { apiKey, apiSecret, passphrase } = botConfig;
+      const { apiKey, apiSecret } = botConfig;
       
-      console.log(`🔑 [API /positions] Credentials check: apiKey=${!!apiKey}, apiSecret=${!!apiSecret}, passphrase=${!!passphrase}`);
+      console.log(`🔑 [API /positions] Credentials check: apiKey=${!!apiKey}, apiSecret=${!!apiSecret}`);
       
-      // ✅ Type-safe check: ensure all credentials exist
-      if (apiKey && apiSecret && passphrase) {
-        const demo = botConfig.environment === "demo";
-        
-        console.log(`🌐 [API /positions] Environment: ${botConfig.environment} (demo: ${demo})`);
+      // Type-safe check: ensure all credentials exist
+      if (apiKey && apiSecret) {
+        console.log(`🌐 [API /positions] Environment: Bybit Mainnet`);
         
         try {
-          console.log(`\n🚀 [API /positions] Starting parallel OKX fetch...`);
+          console.log(`\n🚀 [API /positions] Starting parallel Bybit fetch...`);
           
-          // Fetch live positions and algo orders from OKX in parallel
-          const [okxPositions, okxAlgoOrders] = await Promise.all([
-            getOkxPositions(apiKey, apiSecret, passphrase, demo),
-            getOkxAlgoOrders(apiKey, apiSecret, passphrase, demo)
+          // Fetch live positions and algo orders from Bybit in parallel
+          const [bybitPositions, bybitAlgoOrders] = await Promise.all([
+            getBybitPositions(apiKey, apiSecret),
+            getBybitAlgoOrders(apiKey, apiSecret)
           ]);
           
-          console.log(`📊 [API /positions] OKX Results: ${okxPositions.length} positions, ${okxAlgoOrders.length} algo orders`);
+          console.log(`📊 [API /positions] Bybit Results: ${bybitPositions.length} positions, ${bybitAlgoOrders.length} algo orders`);
           
-          // Create map for quick lookup: "SYMBOL_SIDE" -> OKX position
-          const okxPositionsMap = new Map(
-            okxPositions.map((p: any) => {
-              const okxSymbol = p.instId;
-              const positionSide = parseFloat(p.pos) > 0 ? "BUY" : "SELL";
-              return [`${okxSymbol}_${positionSide}`, p];
+          // Create map for quick lookup: "SYMBOL_SIDE" -> Bybit position
+          const bybitPositionsMap = new Map(
+            bybitPositions.map((p: any) => {
+              const bybitSymbol = p.symbol;
+              const positionSide = p.side === "Buy" ? "Buy" : "Sell";
+              return [`${bybitSymbol}_${positionSide}`, p];
             })
           );
           
-          console.log(`🗺️ [API /positions] Created position map with ${okxPositionsMap.size} entries`);
+          console.log(`🗺️ [API /positions] Created position map with ${bybitPositionsMap.size} entries`);
           
-          // ✅ IMPROVED: Map algo orders to positions with correct side filtering and sorting
-          const positionOrdersMap = mapAlgoOrdersToPositions(okxAlgoOrders, positions);
+          // Map algo orders to positions
+          const positionOrdersMap = mapAlgoOrdersToPositions(bybitAlgoOrders, positions);
           
-          // Update each position with live PnL and SL/TP from OKX
+          // Update each position with live PnL and SL/TP from Bybit
           const updatedPositions = positions.map(pos => {
-            const okxSymbol = convertSymbolToOkx(pos.symbol);
-            const posKey = `${okxSymbol}_${pos.side}`;
-            const okxPos = okxPositionsMap.get(posKey) as any;
+            const bybitSymbol = convertSymbolToBybit(pos.symbol);
+            const posKey = `${bybitSymbol}_${pos.side}`;
+            const bybitPos = bybitPositionsMap.get(posKey) as any;
             const algoOrders = positionOrdersMap.get(pos.id);
             
             let updatedPos = { ...pos };
             
             // Update live PnL
-            if (okxPos) {
-              const livePnl = parseFloat(okxPos.upl || "0");
+            if (bybitPos) {
+              const livePnl = parseFloat(bybitPos.unrealisedPnl || "0");
               updatedPos.unrealisedPnl = livePnl;
               console.log(`💰 [${pos.symbol}] Updated PnL: ${livePnl.toFixed(2)} USDT`);
             } else {
-              console.log(`⚠️ [${pos.symbol}] No OKX position found for ${posKey}`);
+              console.log(`⚠️ [${pos.symbol}] No Bybit position found for ${posKey}`);
             }
             
             // Update live SL/TP
@@ -370,8 +235,8 @@ export async function GET(request: NextRequest) {
             { status: 200 }
           );
         } catch (error) {
-          console.error("❌ [API /positions] Failed to fetch live data from OKX:", error);
-          // If OKX fetch fails, return positions with DB values
+          console.error("❌ [API /positions] Failed to fetch live data from Bybit:", error);
+          // If Bybit fetch fails, return positions with DB values
         }
       } else {
         console.log(`⚠️ [API /positions] Missing credentials - returning DB values only`);
@@ -379,7 +244,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Fallback: return positions without live data
-    console.log(`⚠️ [API /positions] Returning positions without live OKX data\n`);
+    console.log(`⚠️ [API /positions] Returning positions without live Bybit data\n`);
     return NextResponse.json(
       {
         success: true,

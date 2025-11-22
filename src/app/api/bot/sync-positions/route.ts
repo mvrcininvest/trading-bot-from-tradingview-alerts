@@ -2,158 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { botPositions, positionHistory, botActions, botSettings } from "@/db/schema";
 import { eq, or } from "drizzle-orm";
-import crypto from 'crypto';
+import { getBybitPositions, getBybitPositionsHistory, convertSymbolToBybit } from '@/lib/bybit-helpers';
 
 /**
- * Synchronize bot positions with exchange (OKX ONLY)
+ * Synchronize bot positions with exchange (BYBIT ONLY)
  * Checks if positions marked as "open" in DB are still open on the exchange
  * If closed on exchange, updates DB and moves to history
  */
-
-// ============================================
-// 🔐 OKX SIGNATURE HELPER
-// ============================================
-
-function createOkxSignature(
-  timestamp: string,
-  method: string,
-  requestPath: string,
-  body: string,
-  apiSecret: string
-): string {
-  const message = timestamp + method + requestPath + body;
-  return crypto.createHmac('sha256', apiSecret).update(message).digest('base64');
-}
-
-// ============================================
-// 🔄 SYMBOL CONVERSION FOR OKX
-// ============================================
-
-function convertSymbolToOkx(symbol: string): string {
-  if (symbol.includes('-')) {
-    return symbol;
-  }
-  
-  const match = symbol.match(/^([A-Z0-9]+)(USDT|USD)$/i);
-  if (match) {
-    const [, base, quote] = match;
-    return `${base.toUpperCase()}-${quote.toUpperCase()}-SWAP`;
-  }
-  
-  return symbol;
-}
-
-// ============================================
-// 🏦 GET OPEN POSITIONS FROM OKX
-// ============================================
-
-async function getOkxPositions(
-  apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean
-) {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = "/api/v5/account/positions";
-  const queryString = "?instType=SWAP";
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
-  
-  const baseUrl = "https://www.okx.com";
-  const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "Content-Type": "application/json",
-  };
-  
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
-    method: "GET",
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (data.code !== "0") {
-    throw new Error(`OKX API error: ${data.msg}`);
-  }
-
-  // Return only positions with pos !== 0
-  return data.data?.filter((p: any) => parseFloat(p.pos) !== 0) || [];
-}
-
-// ============================================
-// 📜 GET CLOSED POSITIONS HISTORY FROM OKX
-// ============================================
-
-async function getOkxPositionsHistory(
-  apiKey: string,
-  apiSecret: string,
-  passphrase: string,
-  demo: boolean,
-  limit: number = 100
-) {
-  const timestamp = new Date().toISOString();
-  const method = "GET";
-  const requestPath = "/api/v5/account/positions-history";
-  const queryString = `?instType=SWAP&limit=${limit}`;
-  const body = "";
-  
-  const signature = createOkxSignature(timestamp, method, requestPath + queryString, body, apiSecret);
-  
-  const baseUrl = "https://www.okx.com";
-  const headers: Record<string, string> = {
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": signature,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "Content-Type": "application/json",
-  };
-  
-  if (demo) {
-    headers["x-simulated-trading"] = "1";
-  }
-  
-  const response = await fetch(`${baseUrl}${requestPath}${queryString}`, {
-    method: "GET",
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (data.code !== "0") {
-    throw new Error(`OKX positions history error: ${data.msg}`);
-  }
-
-  return data.data || [];
-}
 
 export async function POST(request: NextRequest) {
   try {
     // Get bot settings for API credentials
     const settings = await db.select().from(botSettings).limit(1);
-    if (settings.length === 0 || !settings[0].apiKey || !settings[0].apiSecret || !settings[0].passphrase) {
+    if (settings.length === 0 || !settings[0].apiKey || !settings[0].apiSecret) {
       return NextResponse.json({
         success: false,
-        message: "OKX API credentials not configured in bot settings",
+        message: "Bybit API credentials not configured in bot settings",
       }, { status: 400 });
     }
 
     const botConfig = settings[0];
     const apiKey = botConfig.apiKey!;
     const apiSecret = botConfig.apiSecret!;
-    const passphrase = botConfig.passphrase!;
-    const environment = botConfig.environment || "demo";
-    const demo = environment === "demo";
 
-    console.log(`[Sync] Using OKX (${environment}) - API Key: ${apiKey?.substring(0, 8) ?? 'N/A'}...`);
+    console.log(`[Sync] Using Bybit Mainnet - API Key: ${apiKey?.substring(0, 8) ?? 'N/A'}...`);
 
     // Get all open AND partial_close positions from database
     const dbPositions = await db
@@ -168,25 +40,24 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Sync] Found ${dbPositions.length} open/partial positions in database`);
 
-    // Get all open positions from OKX
-    let okxPositions;
+    // Get all open positions from Bybit
+    let bybitPositions;
     try {
-      okxPositions = await getOkxPositions(apiKey, apiSecret, passphrase, demo);
-      console.log(`[Sync] Found ${okxPositions.length} open positions on OKX`);
+      bybitPositions = await getBybitPositions(apiKey, apiSecret);
+      console.log(`[Sync] Found ${bybitPositions.length} open positions on Bybit`);
     } catch (error) {
-      console.error("[Sync] Failed to fetch OKX positions:", error);
+      console.error("[Sync] Failed to fetch Bybit positions:", error);
       return NextResponse.json({
         success: false,
-        message: `Failed to fetch OKX positions: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Failed to fetch Bybit positions: ${error instanceof Error ? error.message : "Unknown error"}`,
       }, { status: 500 });
     }
 
-    // Create a map of OKX positions for quick lookup
-    // Key format: "SYMBOL_SIDE" e.g., "XRP-USDT-SWAP_long" or "XRP-USDT-SWAP_short"
-    const okxPositionsMap = new Map(
-      okxPositions.map((p: any) => {
-        const positionSide = parseFloat(p.pos) > 0 ? "long" : "short";
-        return [`${p.instId}_${positionSide}`, p];
+    // Create a map of Bybit positions for quick lookup
+    // Key format: "SYMBOL_SIDE" e.g., "BTCUSDT_Buy" or "BTCUSDT_Sell"
+    const bybitPositionsMap = new Map(
+      bybitPositions.map((p: any) => {
+        return [`${p.symbol}_${p.side}`, p];
       })
     );
 
@@ -197,18 +68,17 @@ export async function POST(request: NextRequest) {
       errors: [] as string[],
     };
 
-    // Check each DB position against OKX positions
+    // Check each DB position against Bybit positions
     for (const dbPos of dbPositions) {
       syncResults.checked++;
       
-      const okxSymbol = convertSymbolToOkx(dbPos.symbol);
-      const positionSide = dbPos.side === "BUY" ? "long" : "short";
-      const posKey = `${okxSymbol}_${positionSide}`;
-      const okxPos = okxPositionsMap.get(posKey) as any;
+      const bybitSymbol = convertSymbolToBybit(dbPos.symbol);
+      const posKey = `${bybitSymbol}_${dbPos.side}`;
+      const bybitPos = bybitPositionsMap.get(posKey) as any;
 
-      if (!okxPos) {
+      if (!bybitPos) {
         // Position is closed on exchange but still open in DB
-        console.log(`[Sync] Position ${dbPos.symbol} ${dbPos.side} is closed on OKX, syncing...`);
+        console.log(`[Sync] Position ${dbPos.symbol} ${dbPos.side} is closed on Bybit, syncing...`);
 
         try {
           // Calculate final PnL (use last known values)
@@ -260,7 +130,7 @@ export async function POST(request: NextRequest) {
             side: dbPos.side,
             reason: "auto_sync",
             details: JSON.stringify({
-              message: "Position closed on OKX, synced to database",
+              message: "Position closed on Bybit, synced to database",
               positionId: dbPos.id,
             }),
             success: true,
@@ -275,11 +145,11 @@ export async function POST(request: NextRequest) {
           syncResults.errors.push(errorMsg);
         }
       } else {
-        // Position still open on OKX
+        // Position still open on Bybit
         syncResults.stillOpen++;
 
-        // Update unrealised PnL from OKX data
-        const updatedPnl = parseFloat(okxPos.upl || "0");
+        // Update unrealised PnL from Bybit data
+        const updatedPnl = parseFloat(bybitPos.unrealisedPnl || "0");
         if (Math.abs(updatedPnl - dbPos.unrealisedPnl) > 0.01) {
           await db
             .update(botPositions)

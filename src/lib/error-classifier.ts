@@ -18,9 +18,9 @@ export interface ClassifiedError {
 }
 
 /**
- * Klasyfikuje błąd OKX API
+ * Klasyfikuje błąd Bybit API
  */
-export function classifyOkxError(errorCode: string, errorMessage: string): ClassifiedError {
+export function classifyBybitError(errorCode: string, errorMessage: string): ClassifiedError {
   const msgLower = errorMessage.toLowerCase();
   
   // ============================================
@@ -114,4 +114,4 @@ export function canRetry(errorType: ErrorType): boolean {
 }
 
 // ✅ Export alias for compatibility with webhook
-export const classifyError = classifyOkxError;
+export const classifyError = classifyBybitError;

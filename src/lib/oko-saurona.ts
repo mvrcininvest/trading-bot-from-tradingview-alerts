@@ -1,7 +1,13 @@
 import { db } from '@/db';
 import { botSettings, botPositions, positionGuardActions, positionGuardLogs, symbolLocks } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { makeOkxRequestWithRetry } from './okx-helpers';
+import { 
+  getBybitPositions, 
+  getBybitAlgoOrders, 
+  convertSymbolToBybit,
+  cancelBybitAlgoOrder,
+  type BybitCredentials 
+} from './bybit-helpers';
 
 // ============================================
 // 🔐 OKO SAURONA - POSITION GUARD SYSTEM
@@ -51,25 +57,6 @@ interface ConfirmationState {
   lastCheckData: any;
 }
 
-// ============================================
-// 🆕 FAZA 2: NEW INTERFACES
-// ============================================
-
-interface AlgoOrderData {
-  algoId: string;
-  instId: string;
-  slTriggerPx?: string;
-  tpTriggerPx?: string;
-  sz: string;
-}
-
-interface OkxCredentials {
-  apiKey: string;
-  apiSecret: string;
-  passphrase: string;
-  demo: boolean;
-}
-
 // In-memory confirmation tracking (persists across checks within same monitoring cycle)
 const confirmationTracking = new Map<string, ConfirmationState>();
 
@@ -97,110 +84,43 @@ async function getOkoSettings(): Promise<OkoSettings | null> {
 }
 
 // ============================================
-// 🆕 FAZA 2: GET ALGO ORDERS FROM OKX
-// ============================================
-
-async function getAlgoOrdersFromOkx(
-  credentials: OkxCredentials
-): Promise<AlgoOrderData[]> {
-  try {
-    const data = await makeOkxRequestWithRetry(
-      'GET',
-      '/api/v5/trade/orders-algo-pending?ordType=conditional',
-      credentials.apiKey,
-      credentials.apiSecret,
-      credentials.passphrase,
-      credentials.demo,
-      undefined,
-      2
-    );
-
-    if (data.code !== '0') {
-      console.error(`❌ Failed to get algo orders: ${data.msg}`);
-      return [];
-    }
-
-    return data.data || [];
-  } catch (error: any) {
-    console.error(`❌ Failed to fetch algo orders:`, error.message);
-    return [];
-  }
-}
-
-// ============================================
-// 🆕 FAZA 2: GET OKX POSITIONS
-// ============================================
-
-async function getOkxPositions(
-  credentials: OkxCredentials
-): Promise<any[]> {
-  try {
-    const data = await makeOkxRequestWithRetry(
-      'GET',
-      '/api/v5/account/positions?instType=SWAP',
-      credentials.apiKey,
-      credentials.apiSecret,
-      credentials.passphrase,
-      credentials.demo,
-      undefined,
-      2
-    );
-
-    if (data.code !== '0') {
-      console.error(`❌ Failed to get positions: ${data.msg}`);
-      return [];
-    }
-
-    return (data.data || []).filter((p: any) => parseFloat(p.pos) !== 0);
-  } catch (error: any) {
-    console.error(`❌ Failed to fetch positions:`, error.message);
-    return [];
-  }
-}
-
-// ============================================
-// 🆕 FAZA 2 - CHECK 5: MISSING SL/TP (SYNCHRONIZED WITH OKX)
+// 🆕 FAZA 2 - CHECK 5: MISSING SL/TP (SYNCHRONIZED WITH BYBIT)
 // ============================================
 
 export async function checkMissingSlTp(
   position: PositionData,
-  credentials: OkxCredentials
+  credentials: BybitCredentials
 ): Promise<OkoCheckResult> {
   try {
-    console.log(`   🔍 [OKO] Missing SL/TP Check (synchronized with OKX)...`);
+    console.log(`   🔍 [OKO] Missing SL/TP Check (synchronized with Bybit)...`);
 
-    // Get real algo orders from OKX
-    const algoOrders = await getAlgoOrdersFromOkx(credentials);
-    const symbol = position.symbol.includes('-') 
-      ? position.symbol 
-      : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
+    // Get real algo orders from Bybit
+    const algoOrders = await getBybitAlgoOrders(credentials.apiKey, credentials.apiSecret);
+    const symbol = convertSymbolToBybit(position.symbol);
     
-    // ✅ CRITICAL FIX: Support NET MODE
-    // In net mode, posSide is always "net" regardless of direction
-    // Match by symbol only, not by side
-    const positionAlgos = algoOrders.filter((a: AlgoOrderData) => a.instId === symbol);
+    // Filter orders for this symbol
+    const positionAlgos = algoOrders.filter((a: any) => a.symbol === symbol);
     
-    console.log(`   📊 Found ${positionAlgos.length} algo orders for ${symbol} (net mode)`);
+    console.log(`   📊 Found ${positionAlgos.length} algo orders for ${symbol}`);
     
-    // ✅ CRITICAL FIX: Check for non-empty and non-zero values
-    // OKX API may return empty strings or "0" which are truthy but invalid
-    const hasRealSL = positionAlgos.some((a: AlgoOrderData) => {
-      const valid = a.slTriggerPx && a.slTriggerPx !== '' && parseFloat(a.slTriggerPx) > 0;
-      if (a.slTriggerPx) {
-        console.log(`      SL order: ${a.slTriggerPx} (valid: ${valid})`);
+    // Check for valid SL/TP
+    const hasRealSL = positionAlgos.some((a: any) => {
+      const valid = a.stopLoss && a.stopLoss !== '' && parseFloat(a.stopLoss) > 0;
+      if (a.stopLoss) {
+        console.log(`      SL order: ${a.stopLoss} (valid: ${valid})`);
       }
       return valid;
     });
     
-    const hasRealTP = positionAlgos.some((a: AlgoOrderData) => {
-      const valid = a.tpTriggerPx && a.tpTriggerPx !== '' && parseFloat(a.tpTriggerPx) > 0;
-      if (a.tpTriggerPx) {
-        console.log(`      TP order: ${a.tpTriggerPx} (valid: ${valid})`);
+    const hasRealTP = positionAlgos.some((a: any) => {
+      const valid = a.takeProfit && a.takeProfit !== '' && parseFloat(a.takeProfit) > 0;
+      if (a.takeProfit) {
+        console.log(`      TP order: ${a.takeProfit} (valid: ${valid})`);
       }
       return valid;
     });
 
-    console.log(`   📊 OKX Sync (net mode): SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
+    console.log(`   📊 Bybit Sync: SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
 
     if (!hasRealSL || !hasRealTP) {
       const missing = [];
@@ -211,16 +131,16 @@ export async function checkMissingSlTp(
         shouldClose: false,
         shouldFix: true,
         action: 'missing_sl_tp',
-        reason: `Missing ${missing.join(' and ')} on OKX exchange (net mode)`,
+        reason: `Missing ${missing.join(' and ')} on Bybit exchange`,
         checkCount: 1, // Instant fix attempt
         metadata: {
           missingSL: !hasRealSL,
           missingTP: !hasRealTP,
           currentAlgoCount: positionAlgos.length,
-          algoOrders: positionAlgos.map((a: AlgoOrderData) => ({
-            algoId: a.algoId,
-            slTriggerPx: a.slTriggerPx || 'none',
-            tpTriggerPx: a.tpTriggerPx || 'none',
+          algoOrders: positionAlgos.map((a: any) => ({
+            orderId: a.orderId,
+            stopLoss: a.stopLoss || 'none',
+            takeProfit: a.takeProfit || 'none',
           })),
         }
       };
@@ -230,7 +150,7 @@ export async function checkMissingSlTp(
       shouldClose: false,
       shouldFix: false,
       action: 'none',
-      reason: 'SL/TP present on OKX',
+      reason: 'SL/TP present on Bybit',
       checkCount: 0,
     };
   } catch (error: any) {
@@ -251,7 +171,7 @@ export async function checkMissingSlTp(
 
 export async function checkTp1QuantityMismatch(
   position: PositionData,
-  credentials: OkxCredentials
+  credentials: BybitCredentials
 ): Promise<OkoCheckResult> {
   try {
     // Only check if TP1 was hit
@@ -267,39 +187,37 @@ export async function checkTp1QuantityMismatch(
 
     console.log(`   🔍 [OKO] TP1 Quantity Check...`);
 
-    // Get real position from OKX
-    const okxPositions = await getOkxPositions(credentials);
-    const symbol = position.symbol.includes('-') 
-      ? position.symbol 
-      : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
+    // Get real position from Bybit
+    const bybitPositions = await getBybitPositions(credentials.apiKey, credentials.apiSecret);
+    const symbol = convertSymbolToBybit(position.symbol);
     
-    const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+    const bybitPos = bybitPositions.find((p: any) => p.symbol === symbol);
     
-    if (!okxPos) {
+    if (!bybitPos) {
       return {
         shouldClose: false,
         shouldFix: false,
         action: 'none',
-        reason: 'Position not found on OKX',
+        reason: 'Position not found on Bybit',
         checkCount: 0,
       };
     }
 
-    const realQuantity = Math.abs(parseFloat(okxPos.pos));
+    const realQuantity = Math.abs(parseFloat(bybitPos.size || bybitPos.qty));
     const dbQuantity = position.quantity;
     
     // Allow 0.1% tolerance for rounding
     const tolerance = dbQuantity * 0.001;
     const mismatch = Math.abs(realQuantity - dbQuantity) > tolerance;
 
-    console.log(`   📊 Quantity: DB=${dbQuantity}, OKX=${realQuantity}, Mismatch=${mismatch}`);
+    console.log(`   📊 Quantity: DB=${dbQuantity}, Bybit=${realQuantity}, Mismatch=${mismatch}`);
 
     if (mismatch) {
       return {
         shouldClose: false,
         shouldFix: true,
         action: 'tp1_quantity_fix',
-        reason: `Quantity mismatch: DB shows ${dbQuantity}, OKX shows ${realQuantity}`,
+        reason: `Quantity mismatch: DB shows ${dbQuantity}, Bybit shows ${realQuantity}`,
         checkCount: 1, // Instant fix
         metadata: {
           dbQuantity,
@@ -446,7 +364,7 @@ export async function checkSlBreach(
   position: PositionData,
   settings: OkoSettings
 ): Promise<OkoCheckResult> {
-  const isLong = position.side === 'BUY';
+  const isLong = position.side === 'Buy' || position.side === 'BUY';
   const currentSl = position.currentSl;
   const currentPrice = position.currentPrice;
   
@@ -587,19 +505,17 @@ export async function checkTimeBasedExit(
 
 export async function checkGhostPosition(
   position: PositionData,
-  okxPositions: any[]
+  bybitPositions: any[]
 ): Promise<OkoCheckResult> {
   try {
     console.log(`   🔍 [OKO] Ghost Position Check...`);
 
-    // Check if position exists on OKX
-    const symbol = position.symbol.includes('-') 
-      ? position.symbol 
-      : `${position.symbol.replace('USDT', '')}-USDT-SWAP`;
+    // Check if position exists on Bybit
+    const symbol = convertSymbolToBybit(position.symbol);
     
-    const okxPos = okxPositions.find((p: any) => p.instId === symbol);
+    const bybitPos = bybitPositions.find((p: any) => p.symbol === symbol);
     
-    if (!okxPos || parseFloat(okxPos.pos) === 0) {
+    if (!bybitPos || parseFloat(bybitPos.size || bybitPos.qty) === 0) {
       // Position doesn't exist on exchange but exists in DB = GHOST
       return {
         shouldClose: false,
@@ -616,18 +532,18 @@ export async function checkGhostPosition(
     }
 
     // Verify position direction matches
-    const okxSide = parseFloat(okxPos.pos) > 0 ? 'BUY' : 'SELL';
-    if (okxSide !== position.side) {
+    const bybitSide = bybitPos.side;
+    if (bybitSide !== position.side) {
       return {
         shouldClose: false,
         shouldFix: true,
         action: 'ghost_position_direction_mismatch',
-        reason: `DB shows ${position.side}, exchange shows ${okxSide}`,
+        reason: `DB shows ${position.side}, exchange shows ${bybitSide}`,
         checkCount: 1,
         metadata: {
           symbol: position.symbol,
           dbSide: position.side,
-          okxSide,
+          bybitSide,
         }
       };
     }
@@ -656,7 +572,7 @@ export async function checkGhostPosition(
 // ============================================
 
 export async function checkAndCleanupGhostOrders(
-  credentials: OkxCredentials,
+  credentials: BybitCredentials,
   openPositions: PositionData[]
 ): Promise<{
   cleaned: number;
@@ -666,8 +582,8 @@ export async function checkAndCleanupGhostOrders(
   try {
     console.log(`   🔍 [OKO] Ghost Orders Cleanup Check...`);
 
-    // Get all algo orders from OKX
-    const algoOrders = await getAlgoOrdersFromOkx(credentials);
+    // Get all algo orders from Bybit
+    const algoOrders = await getBybitAlgoOrders(credentials.apiKey, credentials.apiSecret);
     
     if (algoOrders.length === 0) {
       console.log(`   ✅ [OKO] No algo orders found`);
@@ -676,17 +592,15 @@ export async function checkAndCleanupGhostOrders(
 
     // Get list of symbols with open positions
     const openSymbols = new Set(
-      openPositions.map(p => 
-        p.symbol.includes('-') ? p.symbol : `${p.symbol.replace('USDT', '')}-USDT-SWAP`
-      )
+      openPositions.map(p => convertSymbolToBybit(p.symbol))
     );
 
     console.log(`   📊 Open positions: ${Array.from(openSymbols).join(', ')}`);
     console.log(`   📊 Total algo orders: ${algoOrders.length}`);
 
     // Find ghost orders (orders for symbols without positions)
-    const ghostOrders = algoOrders.filter((order: AlgoOrderData) => 
-      !openSymbols.has(order.instId)
+    const ghostOrders = algoOrders.filter((order: any) => 
+      !openSymbols.has(order.symbol)
     );
 
     console.log(`   👻 Ghost orders found: ${ghostOrders.length}`);
@@ -702,38 +616,31 @@ export async function checkAndCleanupGhostOrders(
     
     for (const order of ghostOrders) {
       try {
-        console.log(`   🗑️ Cancelling ghost order: ${order.instId} (${order.algoId})`);
+        console.log(`   🗑️ Cancelling ghost order: ${order.symbol} (${order.orderId})`);
         
-        const cancelData = await makeOkxRequestWithRetry(
-          'POST',
-          '/api/v5/trade/cancel-algos',
+        const success = await cancelBybitAlgoOrder(
+          order.orderId,
+          order.symbol,
           credentials.apiKey,
-          credentials.apiSecret,
-          credentials.passphrase,
-          credentials.demo,
-          JSON.stringify([{
-            algoId: order.algoId,
-            instId: order.instId,
-          }]),
-          2
+          credentials.apiSecret
         );
 
-        if (cancelData.code === '0') {
-          console.log(`   ✅ Cancelled: ${order.instId}`);
+        if (success) {
+          console.log(`   ✅ Cancelled: ${order.symbol}`);
           cleaned++;
           details.push({
-            symbol: order.instId,
-            orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
-            orderId: order.algoId,
+            symbol: order.symbol,
+            orderType: order.stopLoss ? 'SL' : order.takeProfit ? 'TP' : 'Unknown',
+            orderId: order.orderId,
             status: 'cancelled'
           });
         } else {
-          console.error(`   ❌ Failed to cancel ${order.instId}: ${cancelData.msg}`);
+          console.error(`   ❌ Failed to cancel ${order.symbol}`);
           failed++;
           details.push({
-            symbol: order.instId,
-            orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
-            orderId: order.algoId,
+            symbol: order.symbol,
+            orderType: order.stopLoss ? 'SL' : order.takeProfit ? 'TP' : 'Unknown',
+            orderId: order.orderId,
             status: 'failed'
           });
         }
@@ -741,9 +648,9 @@ export async function checkAndCleanupGhostOrders(
         console.error(`   ❌ Error cancelling order:`, error.message);
         failed++;
         details.push({
-          symbol: order.instId,
-          orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
-          orderId: order.algoId,
+          symbol: order.symbol,
+          orderType: order.stopLoss ? 'SL' : order.takeProfit ? 'TP' : 'Unknown',
+          orderId: order.orderId,
           status: 'failed'
         });
       }
@@ -1062,8 +969,8 @@ export async function isSymbolBanned(symbol: string): Promise<boolean> {
 export async function runOkoGuard(
   position: PositionData,
   allPositions: PositionData[],
-  credentials?: OkxCredentials,
-  okxPositions?: any[]
+  credentials?: BybitCredentials,
+  bybitPositions?: any[]
 ): Promise<OkoCheckResult> {
   try {
     console.log(`\n👁️ [OKO] Scanning position ${position.symbol}...`);
@@ -1098,8 +1005,8 @@ export async function runOkoGuard(
     // 🆕 FAZA 3 - PRIORITY 0: GHOST POSITION CHECK (FIRST!)
     // ============================================
     
-    if (okxPositions) {
-      const ghostResult = await checkGhostPosition(position, okxPositions);
+    if (bybitPositions) {
+      const ghostResult = await checkGhostPosition(position, bybitPositions);
       if (ghostResult.shouldFix && ghostResult.action === 'ghost_position_cleanup') {
         console.log(`   👻 [OKO] GHOST POSITION DETECTED - cleanup needed`);
         
@@ -1239,7 +1146,7 @@ export async function runOkoGuard(
     // ============================================
     
     if (credentials) {
-      // Check Missing SL/TP (synchronized with OKX)
+      // Check Missing SL/TP (synchronized with Bybit)
       const missingSlTpResult = await checkMissingSlTp(position, credentials);
       if (missingSlTpResult.shouldFix) {
         console.log(`   🔧 [OKO] Missing SL/TP detected - needs repair`);
