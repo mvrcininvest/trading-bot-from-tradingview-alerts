@@ -668,20 +668,41 @@ export async function monitorAndManagePositions(silent = true) {
       }))
     );
 
-    if (ghostCleanupResult.cleaned > 0) {
-      console.log(`✅ [MONITOR] Cleaned up ${ghostCleanupResult.cleaned} ghost orders:`);
+    if (ghostCleanupResult.cleaned > 0 || ghostCleanupResult.failed > 0) {
+      console.log(`📊 [MONITOR] Ghost Orders: ${ghostCleanupResult.cleaned} cancelled, ${ghostCleanupResult.failed} failed`);
+      
       ghostCleanupResult.details.forEach(detail => {
-        console.log(`   - ${detail.symbol}: ${detail.orderType} (${detail.orderId})`);
+        if (detail.status === 'cancelled') {
+          console.log(`   ✅ ${detail.symbol}: ${detail.orderType} (${detail.orderId})`);
+        } else {
+          console.log(`   ❌ ${detail.symbol}: ${detail.orderType} (${detail.orderId}) - FAILED`);
+        }
       });
+
+      if (ghostCleanupResult.failed > 0 && demo) {
+        console.error(`\n⚠️ ========================================`);
+        console.error(`⚠️ DEMO ENVIRONMENT LIMITATION DETECTED`);
+        console.error(`⚠️ ========================================`);
+        console.error(`OKX Demo API blocks some operations:`);
+        console.error(`  ❌ Cancel algo orders - BLOCKED`);
+        console.error(`  ❌ Close positions - BLOCKED`);
+        console.error(`  ✅ Create algo orders - WORKS`);
+        console.error(`\nRecommendation: Switch to TESTNET for full functionality`);
+        console.error(`========================================\n`);
+      }
 
       // Log to Oko actions
       await logOkoAction(
         null,
         'GHOST_ORDERS',
         'ghost_orders_cleanup',
-        `Cleaned up ${ghostCleanupResult.cleaned} orphaned orders`,
+        `Cleaned ${ghostCleanupResult.cleaned}/${ghostCleanupResult.cleaned + ghostCleanupResult.failed} orphaned orders`,
         1,
-        { cleaned: ghostCleanupResult.cleaned, details: ghostCleanupResult.details }
+        { 
+          cleaned: ghostCleanupResult.cleaned, 
+          failed: ghostCleanupResult.failed,
+          details: ghostCleanupResult.details 
+        }
       );
     } else {
       console.log(`✅ [MONITOR] No ghost orders found`);

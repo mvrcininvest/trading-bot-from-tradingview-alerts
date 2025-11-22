@@ -180,9 +180,25 @@ export async function checkMissingSlTp(
     // Match by symbol only, not by side
     const positionAlgos = algoOrders.filter((a: AlgoOrderData) => a.instId === symbol);
     
-    // Check for REAL SL/TP on exchange
-    const hasRealSL = positionAlgos.some((a: AlgoOrderData) => a.slTriggerPx);
-    const hasRealTP = positionAlgos.some((a: AlgoOrderData) => a.tpTriggerPx);
+    console.log(`   📊 Found ${positionAlgos.length} algo orders for ${symbol} (net mode)`);
+    
+    // ✅ CRITICAL FIX: Check for non-empty and non-zero values
+    // OKX API may return empty strings or "0" which are truthy but invalid
+    const hasRealSL = positionAlgos.some((a: AlgoOrderData) => {
+      const valid = a.slTriggerPx && a.slTriggerPx !== '' && parseFloat(a.slTriggerPx) > 0;
+      if (a.slTriggerPx) {
+        console.log(`      SL order: ${a.slTriggerPx} (valid: ${valid})`);
+      }
+      return valid;
+    });
+    
+    const hasRealTP = positionAlgos.some((a: AlgoOrderData) => {
+      const valid = a.tpTriggerPx && a.tpTriggerPx !== '' && parseFloat(a.tpTriggerPx) > 0;
+      if (a.tpTriggerPx) {
+        console.log(`      TP order: ${a.tpTriggerPx} (valid: ${valid})`);
+      }
+      return valid;
+    });
 
     console.log(`   📊 OKX Sync (net mode): SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
 
@@ -201,6 +217,11 @@ export async function checkMissingSlTp(
           missingSL: !hasRealSL,
           missingTP: !hasRealTP,
           currentAlgoCount: positionAlgos.length,
+          algoOrders: positionAlgos.map((a: AlgoOrderData) => ({
+            algoId: a.algoId,
+            slTriggerPx: a.slTriggerPx || 'none',
+            tpTriggerPx: a.tpTriggerPx || 'none',
+          })),
         }
       };
     }
@@ -639,7 +660,8 @@ export async function checkAndCleanupGhostOrders(
   openPositions: PositionData[]
 ): Promise<{
   cleaned: number;
-  details: Array<{ symbol: string; orderType: string; orderId: string }>;
+  failed: number;
+  details: Array<{ symbol: string; orderType: string; orderId: string; status: 'cancelled' | 'failed' }>;
 }> {
   try {
     console.log(`   🔍 [OKO] Ghost Orders Cleanup Check...`);
@@ -649,7 +671,7 @@ export async function checkAndCleanupGhostOrders(
     
     if (algoOrders.length === 0) {
       console.log(`   ✅ [OKO] No algo orders found`);
-      return { cleaned: 0, details: [] };
+      return { cleaned: 0, failed: 0, details: [] };
     }
 
     // Get list of symbols with open positions
@@ -670,11 +692,13 @@ export async function checkAndCleanupGhostOrders(
     console.log(`   👻 Ghost orders found: ${ghostOrders.length}`);
 
     if (ghostOrders.length === 0) {
-      return { cleaned: 0, details: [] };
+      return { cleaned: 0, failed: 0, details: [] };
     }
 
     // Cancel ghost orders
-    const cleaned: Array<{ symbol: string; orderType: string; orderId: string }> = [];
+    const details: Array<{ symbol: string; orderType: string; orderId: string; status: 'cancelled' | 'failed' }> = [];
+    let cleaned = 0;
+    let failed = 0;
     
     for (const order of ghostOrders) {
       try {
@@ -696,23 +720,39 @@ export async function checkAndCleanupGhostOrders(
 
         if (cancelData.code === '0') {
           console.log(`   ✅ Cancelled: ${order.instId}`);
-          cleaned.push({
+          cleaned++;
+          details.push({
             symbol: order.instId,
             orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
             orderId: order.algoId,
+            status: 'cancelled'
           });
         } else {
           console.error(`   ❌ Failed to cancel ${order.instId}: ${cancelData.msg}`);
+          failed++;
+          details.push({
+            symbol: order.instId,
+            orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
+            orderId: order.algoId,
+            status: 'failed'
+          });
         }
       } catch (error: any) {
         console.error(`   ❌ Error cancelling order:`, error.message);
+        failed++;
+        details.push({
+          symbol: order.instId,
+          orderType: order.slTriggerPx ? 'SL' : order.tpTriggerPx ? 'TP' : 'Unknown',
+          orderId: order.algoId,
+          status: 'failed'
+        });
       }
     }
 
-    return { cleaned: cleaned.length, details: cleaned };
+    return { cleaned, failed, details };
   } catch (error: any) {
     console.error(`   ❌ [OKO] Failed to cleanup ghost orders:`, error.message);
-    return { cleaned: 0, details: [] };
+    return { cleaned: 0, failed: 0, details: [] };
   }
 }
 
