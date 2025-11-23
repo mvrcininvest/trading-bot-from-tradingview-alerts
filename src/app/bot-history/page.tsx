@@ -81,16 +81,39 @@ export default function BotHistoryPage() {
   const handleImportBybitHistory = async () => {
     setImportingHistory(true);
     try {
-      // Get credentials from localStorage
-      const stored = localStorage.getItem("exchange_credentials");
-      if (!stored) {
-        toast.error("❌ Brak konfiguracji API Bybit");
-        return;
+      // Get credentials from database first, then fallback to localStorage
+      let apiKey = "";
+      let apiSecret = "";
+
+      try {
+        const response = await fetch("/api/bot/credentials");
+        const data = await response.json();
+        
+        if (data.success && data.credentials) {
+          apiKey = data.credentials.apiKey || "";
+          apiSecret = data.credentials.apiSecret || "";
+          console.log("✅ Credentials loaded from database");
+        }
+      } catch (error) {
+        console.warn("Failed to load credentials from database, trying localStorage...");
       }
 
-      const creds = JSON.parse(stored);
-      if (!creds.apiKey || !creds.apiSecret) {
-        toast.error("❌ Nieprawidłowe dane API");
+      // Fallback to localStorage if database didn't have credentials
+      if (!apiKey || !apiSecret) {
+        const stored = localStorage.getItem("exchange_credentials");
+        if (stored) {
+          const creds = JSON.parse(stored);
+          apiKey = creds.apiKey || "";
+          apiSecret = creds.apiSecret || "";
+          console.log("✅ Credentials loaded from localStorage");
+        }
+      }
+
+      // Check if we have valid credentials
+      if (!apiKey || !apiSecret) {
+        toast.error("❌ Brak konfiguracji API Bybit", {
+          description: "Przejdź do zakładki 'Test Połączenia' i skonfiguruj klucze API"
+        });
         return;
       }
 
@@ -102,8 +125,8 @@ export default function BotHistoryPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          apiKey: creds.apiKey,
-          apiSecret: creds.apiSecret,
+          apiKey,
+          apiSecret,
           daysBack: 30, // Last 30 days
         }),
       });
