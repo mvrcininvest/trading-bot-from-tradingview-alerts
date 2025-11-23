@@ -111,6 +111,9 @@ export async function GET(request: NextRequest) {
     const lossOnly = searchParams.get('lossOnly') === 'true';
     const includeBybitHistory = searchParams.get('includeBybitHistory') === 'true';
 
+    // ✅ NOWE: Status filter (nie używany w historii, ale dostępny)
+    // Frontend nie powinien tego używać - historia to ZAWSZE closed
+
     // Validate side parameter
     if (side && side !== 'Buy' && side !== 'Sell') {
       return NextResponse.json({ 
@@ -186,6 +189,8 @@ export async function GET(request: NextRequest) {
     const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
 
     // Get paginated results with conditional where clause
+    // ✅ NOTE: positionHistory table ONLY contains closed positions (status='closed')
+    // No need to filter by status - the table design ensures this
     const history = whereCondition
       ? await db.select()
           .from(positionHistory)
@@ -198,6 +203,8 @@ export async function GET(request: NextRequest) {
           .orderBy(desc(positionHistory.closedAt))
           .limit(limit)
           .offset(offset);
+
+    console.log(`[History API] Fetched ${history.length} closed positions from positionHistory table`);
 
     // ============================================
     // 🔥 CLASSIFY DATABASE POSITIONS
@@ -318,6 +325,8 @@ export async function GET(request: NextRequest) {
     const winRate = stats.totalCount > 0 
       ? ((stats.profitableCount / stats.totalCount) * 100) 
       : 0;
+
+    console.log(`[History API] Returning ${includeBybitHistory ? combinedHistory.length : classifiedHistory.length} total positions (${classifiedHistory.length} from DB, ${bybitHistory.length} from Bybit)`);
 
     return NextResponse.json({
       success: true,

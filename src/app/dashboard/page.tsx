@@ -443,43 +443,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button 
-            onClick={() => router.push("/bot-history")}
-            variant="outline"
-            className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
-          >
-            <Activity className="mr-2 h-4 w-4" />
-            Historia
-          </Button>
-          <Button 
-            onClick={() => router.push("/statystyki")}
-            variant="outline"
-            className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
-          >
-            <TrendingUp className="mr-2 h-4 w-4" />
-            Statystyki
-          </Button>
-          <Button 
-            onClick={() => router.push("/ustawienia-bota")}
-            variant="outline"
-            className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
-          >
-            <Settings className="mr-2 h-4 w-4" />
-            Ustawienia
-          </Button>
-          <Button 
-            onClick={handleSyncPositions}
-            disabled={loadingSync}
-            variant="outline"
-            className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? 'animate-spin' : ''}`} />
-            Synchronizuj
-          </Button>
-        </div>
-
         {/* Positions List */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
@@ -514,6 +477,10 @@ export default function DashboardPage() {
                 {positions.map((position, idx) => {
                   const pnl = parseFloat(position.unrealisedPnl || "0");
                   const isProfitable = pnl > 0;
+                  const posValue = parseFloat(position.positionValue);
+                  const entryPrice = parseFloat(position.entryPrice);
+                  const markPrice = parseFloat(position.markPrice);
+                  const size = parseFloat(position.size);
 
                   return (
                     <div
@@ -553,22 +520,31 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      {/* ✅ ROZSZERZONE DANE - więcej informacji */}
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                         <div>
                           <div className="text-gray-300">Wejście</div>
-                          <div className="font-semibold text-white">{parseFloat(position.entryPrice).toFixed(4)}</div>
+                          <div className="font-semibold text-white">{entryPrice.toFixed(4)}</div>
                         </div>
                         <div>
                           <div className="text-gray-300">Obecna Cena</div>
-                          <div className="font-semibold text-white">{parseFloat(position.markPrice).toFixed(4)}</div>
+                          <div className="font-semibold text-white">{markPrice.toFixed(4)}</div>
                         </div>
                         <div>
                           <div className="text-gray-300">Rozmiar</div>
-                          <div className="font-semibold text-white">{parseFloat(position.size).toFixed(4)}</div>
+                          <div className="font-semibold text-white">{size.toFixed(4)}</div>
                         </div>
                         <div>
                           <div className="text-gray-300">Wartość</div>
-                          <div className="font-semibold text-white">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
+                          <div className="font-semibold text-white">{posValue.toFixed(2)} USDT</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-300">Likwidacja</div>
+                          <div className="font-semibold text-red-400">
+                            {position.liqPrice && parseFloat(position.liqPrice) > 0 
+                              ? parseFloat(position.liqPrice).toFixed(4) 
+                              : "N/A"}
+                          </div>
                         </div>
                       </div>
 

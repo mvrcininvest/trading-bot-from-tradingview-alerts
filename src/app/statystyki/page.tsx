@@ -771,16 +771,17 @@ export default function StatystykiPage() {
                   </Card>
                 )}
 
-                {/* Win Rate by Confirmation Count */}
+                {/* Win Rate by Confirmation Count - ✅ DODANE WYJAŚNIENIE */}
                 {aiStats.winRateByConfirmation && aiStats.winRateByConfirmation.length > 0 && (
                   <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
                     <CardHeader>
                       <CardTitle className="text-white flex items-center gap-2">
                         <Zap className="h-5 w-5 text-yellow-400" />
-                        Analiza Potwierdzeń - Optymalna Wartość
+                        Analiza Potwierdzeń Sygnału - Optymalna Wartość
                       </CardTitle>
                       <CardDescription className="text-gray-400">
-                        Ile potwierdzeń daje najlepsze rezultaty?
+                        💡 <strong>Potwierdzenia</strong> = ile razy ten sam sygnał (ten sam symbol + kierunek) został powtórzony przez wskaźnik w krótkim czasie. 
+                        Więcej potwierdzeń = silniejszy sygnał. Analiza pokazuje która liczba potwierdzeń daje najlepsze wyniki.
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -1043,38 +1044,59 @@ export default function StatystykiPage() {
                   </Card>
                 )}
 
-                {/* Close Reason Distribution */}
+                {/* Close Reason Distribution - ✅ POPRAWIONE ETYKIETY */}
                 {aiStats.closeReasonDistribution && aiStats.closeReasonDistribution.length > 0 && (
                   <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
                     <CardHeader>
                       <CardTitle className="text-white flex items-center gap-2">
                         <XCircle className="h-5 w-5 text-red-400" />
-                        Rozkład Przyczyn Zamknięcia
+                        Rozkład Przyczyn Zamknięcia Pozycji
                       </CardTitle>
                       <CardDescription className="text-gray-400">
-                        Dlaczego pozycje zostały zamknięte
+                        Dlaczego pozycje zostały zamknięte - analiza powodów
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
-                        {aiStats.closeReasonDistribution.map((item: any, idx: number) => (
-                          <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-gray-800/50 border border-gray-700">
-                            <div className="flex-1">
-                              <h4 className="text-sm font-semibold text-white">{item.closeReason}</h4>
-                              <p className="text-xs text-gray-400">
-                                {item.count} trades ({item.percentage.toFixed(1)}%)
-                              </p>
+                        {aiStats.closeReasonDistribution.map((item: any, idx: number) => {
+                          const closeReasonLabels: Record<string, string> = {
+                            sl_hit: "🛑 Stop Loss trafiony",
+                            tp_main_hit: "🎯 Take Profit (główny)",
+                            tp1_hit: "🎯 TP1 trafiony",
+                            tp2_hit: "🎯 TP2 trafiony",
+                            tp3_hit: "🎯 TP3 trafiony",
+                            manual_close: "👤 Ręczne zamknięcie",
+                            emergency_override: "⚠️ Emergency Override (alert lepszy)",
+                            opposite_direction: "🔄 Alert w przeciwnym kierunku",
+                            auto_sync: "🔄 Auto-sync (zamknięte na giełdzie)",
+                            closed_on_exchange: "🔄 Zamknięte na giełdzie (auto-sync)",
+                            oko_emergency: "👁️ OKO - Emergency Close",
+                            oko_sl_breach: "👁️ OKO - SL Breach Detection",
+                            oko_account_drawdown: "👁️ OKO - Account Drawdown Protection",
+                            ghost_position_cleanup: "👻 Ghost Position Cleanup",
+                          };
+                          
+                          const label = closeReasonLabels[item.closeReason] || item.closeReason;
+                          
+                          return (
+                            <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                              <div className="flex-1">
+                                <h4 className="text-sm font-semibold text-white">{label}</h4>
+                                <p className="text-xs text-gray-400">
+                                  {item.count} trades ({item.percentage.toFixed(1)}%)
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-lg font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)}
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  Śr: {item.avgPnL.toFixed(2)}
+                                </p>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className={`text-lg font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)}
-                              </p>
-                              <p className="text-xs text-gray-400">
-                                Avg: {item.avgPnL.toFixed(2)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>
@@ -1248,13 +1270,13 @@ export default function StatystykiPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Risk Metrics */}
+        {/* Risk Metrics - ✅ PRZETŁUMACZONE ETYKIETY */}
         {stats && (
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-white">Metryki Ryzyka</CardTitle>
               <CardDescription className="text-gray-200">
-                Analiza ryzyka i drawdown
+                Analiza ryzyka i maksymalnego spadku kapitału
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1264,7 +1286,7 @@ export default function StatystykiPage() {
                     <div className="p-2 rounded-lg bg-blue-500/20">
                       <Percent className="h-4 w-4 text-blue-400" />
                     </div>
-                    <h3 className="font-semibold text-gray-100">Sharpe Ratio</h3>
+                    <h3 className="font-semibold text-gray-100">Współczynnik Sharpe</h3>
                   </div>
                   <p className="text-2xl font-bold text-white mb-1">{stats.sharpeRatio.toFixed(2)}</p>
                   <p className="text-xs text-gray-300">
@@ -1277,12 +1299,12 @@ export default function StatystykiPage() {
                     <div className="p-2 rounded-lg bg-red-500/20">
                       <AlertCircle className="h-4 w-4 text-red-400" />
                     </div>
-                    <h3 className="font-semibold text-gray-100">Max Drawdown</h3>
+                    <h3 className="font-semibold text-gray-100">Maksymalny Spadek</h3>
                   </div>
                   <p className="text-2xl font-bold text-red-400 mb-1">
                     -{stats.maxDrawdown.toFixed(2)} USDT
                   </p>
-                  <p className="text-xs text-gray-300">Największy spadek z peak</p>
+                  <p className="text-xs text-gray-300">Największy spadek z szczytu</p>
                 </div>
 
                 <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
@@ -1290,20 +1312,20 @@ export default function StatystykiPage() {
                     <div className="p-2 rounded-lg bg-orange-500/20">
                       <TrendingDown className="h-4 w-4 text-orange-400" />
                     </div>
-                    <h3 className="font-semibold text-gray-100">Current Drawdown</h3>
+                    <h3 className="font-semibold text-gray-100">Aktualny Spadek</h3>
                   </div>
                   <p className="text-2xl font-bold text-orange-400 mb-1">
                     -{stats.currentDrawdown.toFixed(2)} USDT
                   </p>
-                  <p className="text-xs text-gray-300">Aktualny spadek z peak</p>
+                  <p className="text-xs text-gray-300">Obecny spadek z szczytu</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Summary Cards - ✅ USUNIĘTO "Aktywne Pozycje" (błędny licznik) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-sm font-medium text-gray-200">Otrzymane Alerty</CardTitle>
@@ -1311,16 +1333,6 @@ export default function StatystykiPage() {
             <CardContent>
               <p className="text-3xl font-bold text-white">{totalAlerts}</p>
               <p className="text-xs text-gray-300 mt-1">Całkowita liczba alertów z TradingView</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-200">Aktywne Pozycje</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-white">{currentPositions.length}</p>
-              <p className="text-xs text-gray-300 mt-1">Obecnie otwarte pozycje bota</p>
             </CardContent>
           </Card>
 

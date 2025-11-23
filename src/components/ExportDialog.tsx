@@ -168,60 +168,102 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Format Selection */}
+          {/* Format Selection - ✅ POPRAWIONY WYGLĄD */}
           <div className="space-y-3">
-            <Label className="text-white">Format Pliku</Label>
-            <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as "json" | "csv")}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="json" id="json" />
-                <Label htmlFor="json" className="text-gray-300 cursor-pointer">
-                  JSON (dla AI/ML - zawiera pełne dane alertów)
-                </Label>
+            <Label className="text-white text-base font-semibold">Format Pliku</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                onClick={() => setExportFormat("json")}
+                className={cn(
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                  exportFormat === "json"
+                    ? "border-blue-500 bg-blue-500/10"
+                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                    exportFormat === "json" ? "border-blue-500" : "border-gray-600"
+                  )}>
+                    {exportFormat === "json" && (
+                      <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white">JSON</p>
+                    <p className="text-xs text-gray-400">Pełne dane + alerty</p>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="csv" id="csv" />
-                <Label htmlFor="csv" className="text-gray-300 cursor-pointer">
-                  CSV (dla Excel/Google Sheets)
-                </Label>
+
+              <div
+                onClick={() => setExportFormat("csv")}
+                className={cn(
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                  exportFormat === "csv"
+                    ? "border-blue-500 bg-blue-500/10"
+                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                    exportFormat === "csv" ? "border-blue-500" : "border-gray-600"
+                  )}>
+                    {exportFormat === "csv" && (
+                      <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white">CSV</p>
+                    <p className="text-xs text-gray-400">Excel/Sheets</p>
+                  </div>
+                </div>
               </div>
-            </RadioGroup>
+            </div>
           </div>
 
-          {/* Period Selection */}
+          {/* Period Selection - ✅ POPRAWIONY WYGLĄD */}
           <div className="space-y-3">
-            <Label className="text-white">Okres Danych</Label>
-            <RadioGroup value={period} onValueChange={(v) => setPeriod(v as any)}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="7" id="7days" />
-                <Label htmlFor="7days" className="text-gray-300 cursor-pointer">
-                  Ostatnie 7 dni
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="30" id="30days" />
-                <Label htmlFor="30days" className="text-gray-300 cursor-pointer">
-                  Ostatnie 30 dni
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="90" id="90days" />
-                <Label htmlFor="90days" className="text-gray-300 cursor-pointer">
-                  Ostatnie 90 dni
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="all" id="all" />
-                <Label htmlFor="all" className="text-gray-300 cursor-pointer">
-                  Wszystkie dane
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="custom" id="custom" />
-                <Label htmlFor="custom" className="text-gray-300 cursor-pointer">
-                  Niestandardowy zakres
-                </Label>
-              </div>
-            </RadioGroup>
+            <Label className="text-white text-base font-semibold">Okres Danych</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: "7", label: "7 dni" },
+                { value: "30", label: "30 dni" },
+                { value: "90", label: "90 dni" },
+                { value: "all", label: "Wszystko" },
+                { value: "custom", label: "Niestandardowy" },
+              ].map((option) => (
+                <div
+                  key={option.value}
+                  onClick={() => setPeriod(option.value as any)}
+                  className={cn(
+                    "p-3 rounded-lg border-2 cursor-pointer transition-all text-center",
+                    period === option.value
+                      ? "border-blue-500 bg-blue-500/10"
+                      : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                  )}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                      period === option.value ? "border-blue-500" : "border-gray-600"
+                    )}>
+                      {period === option.value && (
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      )}
+                    </div>
+                    <span className={cn(
+                      "font-medium",
+                      period === option.value ? "text-white" : "text-gray-300"
+                    )}>
+                      {option.label}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Custom Date Range */}

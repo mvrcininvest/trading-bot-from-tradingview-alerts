@@ -10,12 +10,16 @@ export async function DELETE(request: NextRequest) {
     today.setHours(0, 0, 0, 0);
     const todayStart = today.toISOString();
 
+    console.log(`[Cleanup] Deleting alerts older than ${todayStart}`);
+
     // Delete all alerts where createdAt < today's start
     const deletedRecords = await db.delete(alerts)
       .where(lt(alerts.createdAt, todayStart))
       .returning();
 
     const deletedCount = deletedRecords.length;
+
+    console.log(`[Cleanup] Successfully deleted ${deletedCount} old alerts`);
 
     return NextResponse.json({
       success: true,
@@ -24,9 +28,21 @@ export async function DELETE(request: NextRequest) {
     }, { status: 200 });
 
   } catch (error) {
-    console.error('DELETE error:', error);
+    console.error('[Cleanup] DELETE error:', error);
+    
+    // ✅ POPRAWKA: Zwróć więcej szczegółów o błędzie
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('[Cleanup] Error details:', {
+      message: errorMessage,
+      stack: errorStack
+    });
+    
     return NextResponse.json({
-      error: 'Internal server error: ' + (error instanceof Error ? error.message : 'Unknown error')
+      success: false,
+      error: 'Database cleanup failed: ' + errorMessage,
+      details: errorStack
     }, { status: 500 });
   }
 }
