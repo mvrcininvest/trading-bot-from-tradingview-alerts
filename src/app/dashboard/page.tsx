@@ -103,6 +103,9 @@ interface OkoAction {
 
 interface OkoStats {
   total: number;
+  winning: number;
+  losing: number;
+  stale: number;
   closures: number;
   repairs: number;
   byType: Record<string, number>;
