@@ -1,3 +1,5 @@
 {
-  "crons": []
+  "crons": [],
+  "installCommand": "bun install",
+  "buildCommand": "bun run build"
 }
