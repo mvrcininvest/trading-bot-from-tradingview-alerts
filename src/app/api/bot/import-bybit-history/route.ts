@@ -104,6 +104,40 @@ async function fetchBybitHistoryPage(
   };
 }
 
+// ✅ NOWA FUNKCJA: Fetch all positions for a 7-day segment
+async function fetchBybitHistorySegment(
+  apiKey: string,
+  apiSecret: string,
+  startTime: number,
+  endTime: number
+): Promise<BybitHistoryPosition[]> {
+  let allPositions: BybitHistoryPosition[] = [];
+  let cursor: string | null = null;
+  let pageCount = 0;
+
+  do {
+    pageCount++;
+    const { positions, nextCursor } = await fetchBybitHistoryPage(
+      apiKey,
+      apiSecret,
+      startTime,
+      endTime,
+      cursor || undefined
+    );
+
+    allPositions = [...allPositions, ...positions];
+    cursor = nextCursor;
+
+    // Safety limit - max 20 pages per segment (2000 positions)
+    if (pageCount >= 20) {
+      console.log(`[Import] ⚠️ Reached safety limit of 20 pages for this segment`);
+      break;
+    }
+  } while (cursor);
+
+  return allPositions;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -118,40 +152,49 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Import Bybit History] Starting import for last ${daysBack} days...`);
 
-    // Fetch ALL closed positions from Bybit with pagination
-    const timestamp = Date.now();
-    const startTime = timestamp - daysBack * 24 * 60 * 60 * 1000;
-    
+    // ✅ NOWE: Divide time range into 7-day segments (Bybit limit)
+    const now = Date.now();
+    const totalMs = daysBack * 24 * 60 * 60 * 1000;
+    const segmentMs = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+    const segments: Array<{ start: number; end: number }> = [];
+
+    // Create 7-day segments from oldest to newest
+    let currentStart = now - totalMs;
+    while (currentStart < now) {
+      const currentEnd = Math.min(currentStart + segmentMs, now);
+      segments.push({ start: currentStart, end: currentEnd });
+      currentStart = currentEnd;
+    }
+
+    console.log(`[Import] Created ${segments.length} segments of max 7 days each`);
+
     let allPositions: BybitHistoryPosition[] = [];
-    let cursor: string | null = null;
-    let pageCount = 0;
 
-    // Fetch all pages
-    do {
-      pageCount++;
-      console.log(`[Import] Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ''}...`);
+    // ✅ NOWE: Fetch each 7-day segment
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const segmentStartDate = new Date(segment.start).toISOString().split('T')[0];
+      const segmentEndDate = new Date(segment.end).toISOString().split('T')[0];
       
-      const { positions, nextCursor } = await fetchBybitHistoryPage(
-        apiKey,
-        apiSecret,
-        startTime,
-        timestamp,
-        cursor || undefined
-      );
+      console.log(`[Import] Fetching segment ${i + 1}/${segments.length}: ${segmentStartDate} to ${segmentEndDate}`);
 
-      allPositions = [...allPositions, ...positions];
-      cursor = nextCursor;
+      try {
+        const segmentPositions = await fetchBybitHistorySegment(
+          apiKey,
+          apiSecret,
+          segment.start,
+          segment.end
+        );
 
-      console.log(`[Import] Page ${pageCount}: ${positions.length} positions, Total so far: ${allPositions.length}`);
-
-      // Safety limit - max 50 pages (5000 positions)
-      if (pageCount >= 50) {
-        console.log(`[Import] ⚠️ Reached safety limit of 50 pages`);
-        break;
+        allPositions = [...allPositions, ...segmentPositions];
+        console.log(`[Import] Segment ${i + 1}: ${segmentPositions.length} positions, Total so far: ${allPositions.length}`);
+      } catch (error) {
+        console.error(`[Import] ❌ Error fetching segment ${i + 1}:`, error);
+        // Continue with next segment instead of failing completely
       }
-    } while (cursor);
+    }
 
-    console.log(`[Import Bybit History] ✅ Fetched ${allPositions.length} total positions from Bybit across ${pageCount} pages`);
+    console.log(`[Import Bybit History] ✅ Fetched ${allPositions.length} total positions from Bybit across ${segments.length} segments`);
 
     if (allPositions.length === 0) {
       return NextResponse.json({
@@ -235,9 +278,6 @@ export async function POST(request: NextRequest) {
         durationMinutes,
       });
 
-      console.log(
-        `[Import] ✅ Imported ${bybitPos.symbol} ${bybitPos.side} - PnL: ${pnl.toFixed(2)} USDT`
-      );
       imported++;
     }
 
@@ -249,7 +289,7 @@ export async function POST(request: NextRequest) {
       imported,
       skipped,
       total: allPositions.length,
-      pages: pageCount,
+      segments: segments.length,
     });
   } catch (error) {
     console.error("[Import Bybit History] Error:", error);
