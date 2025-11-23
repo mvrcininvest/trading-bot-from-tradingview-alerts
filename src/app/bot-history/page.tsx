@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Filter } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Filter, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
 
 interface HistoryPosition {
   id: number;
@@ -41,6 +42,7 @@ export default function BotHistoryPage() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "profitable" | "loss">("all");
   const [closeReasonFilter, setCloseReasonFilter] = useState<string>("all");
+  const [importingHistory, setImportingHistory] = useState(false);
 
   useEffect(() => {
     fetchHistory();
@@ -63,6 +65,51 @@ export default function BotHistoryPage() {
       console.error("Failed to fetch history:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleImportBybitHistory = async () => {
+    setImportingHistory(true);
+    try {
+      // Get credentials from localStorage
+      const stored = localStorage.getItem("exchange_credentials");
+      if (!stored) {
+        toast.error("❌ Brak konfiguracji API Bybit");
+        return;
+      }
+
+      const creds = JSON.parse(stored);
+      if (!creds.apiKey || !creds.apiSecret) {
+        toast.error("❌ Nieprawidłowe dane API");
+        return;
+      }
+
+      toast.info("🔄 Importowanie historii z Bybit...");
+
+      const response = await fetch("/api/bot/import-bybit-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: creds.apiKey,
+          apiSecret: creds.apiSecret,
+          daysBack: 30, // Last 30 days
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(
+          `✅ Import zakończony!\n${data.imported} nowych pozycji\n${data.skipped} już w historii`
+        );
+        await fetchHistory(); // Refresh history
+      } else {
+        toast.error(`❌ Błąd: ${data.message}`);
+      }
+    } catch (err) {
+      toast.error(`❌ Błąd importu: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setImportingHistory(false);
     }
   };
 
@@ -162,10 +209,20 @@ export default function BotHistoryPage() {
               </p>
             </div>
           </div>
-          <Button onClick={fetchHistory} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
-            <History className="mr-2 h-4 w-4" />
-            Odśwież
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleImportBybitHistory} 
+              disabled={importingHistory}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {importingHistory ? "Importowanie..." : "Import z Bybit"}
+            </Button>
+            <Button onClick={fetchHistory} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <History className="mr-2 h-4 w-4" />
+              Odśwież
+            </Button>
+          </div>
         </div>
 
         {/* Statistics Cards */}
