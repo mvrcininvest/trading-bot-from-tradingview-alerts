@@ -149,7 +149,7 @@ export const botActions = sqliteTable('bot_actions', {
 
 export const positionHistory = sqliteTable('position_history', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  positionId: integer('position_id').references(() => botPositions.id).notNull(),
+  positionId: integer('position_id').references(() => botPositions.id),
   alertId: integer('alert_id').references(() => alerts.id),
   symbol: text('symbol').notNull(),
   side: text('side').notNull(),

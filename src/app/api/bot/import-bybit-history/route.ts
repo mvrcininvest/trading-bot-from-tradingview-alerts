@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
 
       // Insert into history
       await db.insert(positionHistory).values({
-        positionId: 0, // No bot position ID for imported positions
+        positionId: null,
         symbol: bybitPos.symbol,
         side: bybitPos.side,
         tier: "Standard", // Default tier for imported positions
@@ -232,7 +232,6 @@ export async function POST(request: NextRequest) {
         openedAt: openedAt.toISOString(),
         closedAt: closedAt.toISOString(),
         durationMinutes,
-        status: "closed",
       });
 
       console.log(
