@@ -84,7 +84,9 @@ export default function BotHistoryPage() {
         return;
       }
 
-      toast.info("🔄 Importowanie historii z Bybit...");
+      toast.info("🔄 Importowanie historii z Bybit...", {
+        description: "Pobieranie wszystkich stron (może potrwać chwilę)"
+      });
 
       const response = await fetch("/api/bot/import-bybit-history", {
         method: "POST",
@@ -100,7 +102,11 @@ export default function BotHistoryPage() {
 
       if (data.success) {
         toast.success(
-          `✅ Import zakończony!\n${data.imported} nowych pozycji\n${data.skipped} już w historii`
+          `✅ Import zakończony!`,
+          {
+            description: `📊 ${data.imported} nowych pozycji zaimportowano\n✓ ${data.skipped} już było w historii\n📄 Przeszukano ${data.pages || 1} ${data.pages === 1 ? 'stronę' : 'stron'} (${data.total} pozycji na Bybit)`,
+            duration: 8000
+          }
         );
         await fetchHistory(); // Refresh history
       } else {

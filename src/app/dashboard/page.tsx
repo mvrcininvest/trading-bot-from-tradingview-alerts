@@ -688,7 +688,7 @@ export default function DashboardPage() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs font-semibold text-gray-300">Poziomy SL/TP</div>
                           {/* ✅ NOWY PRZYCISK: Pokaż dane alertu */}
-                          {botPos?.alertData && (
+                          {botPos?.alertData ? (
                             <Button
                               onClick={() => handleShowAlertData(botPos.alertData)}
                               size="sm"
@@ -698,6 +698,10 @@ export default function DashboardPage() {
                               <FileText className="h-3 w-3 mr-1" />
                               Zobacz Alert
                             </Button>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-gray-500 border-gray-600">
+                              Brak danych alertu
+                            </Badge>
                           )}
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">

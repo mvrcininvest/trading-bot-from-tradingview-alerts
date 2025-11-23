@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(botPositions.openedAt));
 
     console.log(`\n📊 [API /positions] Found ${positions.length} positions in DB`);
+    console.log(`📋 [API /positions] Sample position fields:`, positions[0] ? Object.keys(positions[0]).join(', ') : 'No positions');
 
     // ============================================
     // 🔥 FETCH LIVE PNL AND SL/TP FROM BYBIT

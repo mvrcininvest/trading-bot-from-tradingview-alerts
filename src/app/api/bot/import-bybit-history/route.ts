@@ -53,6 +53,57 @@ async function signBybitRequest(
   return hashHex;
 }
 
+async function fetchBybitHistoryPage(
+  apiKey: string,
+  apiSecret: string,
+  startTime: number,
+  endTime: number,
+  cursor?: string
+): Promise<{ positions: BybitHistoryPosition[]; nextCursor: string | null }> {
+  const timestamp = Date.now();
+  
+  const params: Record<string, any> = {
+    category: "linear",
+    startTime: startTime.toString(),
+    endTime: endTime.toString(),
+    limit: 100, // Max limit per page
+  };
+
+  if (cursor) {
+    params.cursor = cursor;
+  }
+
+  const signature = await signBybitRequest(apiKey, apiSecret, timestamp, params);
+
+  const queryString = Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${params[key]}`)
+    .join("&");
+
+  const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-TIMESTAMP": timestamp.toString(),
+      "X-BAPI-SIGN": signature,
+      "X-BAPI-RECV-WINDOW": "5000",
+    },
+  });
+
+  const data = await response.json();
+
+  if (data.retCode !== 0) {
+    throw new Error(`Bybit API error: ${data.retMsg}`);
+  }
+
+  return {
+    positions: data.result?.list || [],
+    nextCursor: data.result?.nextPageCursor || null,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -67,50 +118,42 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Import Bybit History] Starting import for last ${daysBack} days...`);
 
-    // Fetch closed PnL history from Bybit
+    // Fetch ALL closed positions from Bybit with pagination
     const timestamp = Date.now();
     const startTime = timestamp - daysBack * 24 * 60 * 60 * 1000;
     
-    const params: Record<string, any> = {
-      category: "linear",
-      startTime: startTime.toString(),
-      endTime: timestamp.toString(),
-      limit: 100,
-    };
+    let allPositions: BybitHistoryPosition[] = [];
+    let cursor: string | null = null;
+    let pageCount = 0;
 
-    const signature = await signBybitRequest(apiKey, apiSecret, timestamp, params);
-
-    const queryString = Object.keys(params)
-      .sort()
-      .map((key) => `${key}=${params[key]}`)
-      .join("&");
-
-    const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "X-BAPI-API-KEY": apiKey,
-        "X-BAPI-TIMESTAMP": timestamp.toString(),
-        "X-BAPI-SIGN": signature,
-        "X-BAPI-RECV-WINDOW": "5000",
-      },
-    });
-
-    const data = await response.json();
-
-    if (data.retCode !== 0) {
-      console.error("[Import Bybit History] API error:", data.retMsg);
-      return NextResponse.json(
-        { success: false, message: `Bybit API error: ${data.retMsg}` },
-        { status: 400 }
+    // Fetch all pages
+    do {
+      pageCount++;
+      console.log(`[Import] Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ''}...`);
+      
+      const { positions, nextCursor } = await fetchBybitHistoryPage(
+        apiKey,
+        apiSecret,
+        startTime,
+        timestamp,
+        cursor || undefined
       );
-    }
 
-    const bybitPositions: BybitHistoryPosition[] = data.result?.list || [];
-    console.log(`[Import Bybit History] Found ${bybitPositions.length} positions on Bybit`);
+      allPositions = [...allPositions, ...positions];
+      cursor = nextCursor;
 
-    if (bybitPositions.length === 0) {
+      console.log(`[Import] Page ${pageCount}: ${positions.length} positions, Total so far: ${allPositions.length}`);
+
+      // Safety limit - max 50 pages (5000 positions)
+      if (pageCount >= 50) {
+        console.log(`[Import] ⚠️ Reached safety limit of 50 pages`);
+        break;
+      }
+    } while (cursor);
+
+    console.log(`[Import Bybit History] ✅ Fetched ${allPositions.length} total positions from Bybit across ${pageCount} pages`);
+
+    if (allPositions.length === 0) {
       return NextResponse.json({
         success: true,
         message: "No positions found on Bybit",
@@ -127,30 +170,29 @@ export async function POST(request: NextRequest) {
     let imported = 0;
     let skipped = 0;
 
-    for (const bybitPos of bybitPositions) {
+    for (const bybitPos of allPositions) {
       const entryPrice = parseFloat(bybitPos.avgEntryPrice);
       const exitPrice = parseFloat(bybitPos.avgExitPrice);
       const qty = parseFloat(bybitPos.qty);
       const pnl = parseFloat(bybitPos.closedPnl);
       const leverage = parseInt(bybitPos.leverage);
 
-      // Check if position already exists in history (match by symbol, side, entry price, close time)
+      // Check if position already exists in history
       const closedAt = new Date(parseInt(bybitPos.updatedTime));
       const openedAt = new Date(parseInt(bybitPos.createdTime));
 
       const exists = existingHistory.some((existing) => {
         const isSameSymbol = existing.symbol === bybitPos.symbol;
         const isSameSide = existing.side === bybitPos.side;
-        const isSimilarEntry = Math.abs(existing.entryPrice - entryPrice) < entryPrice * 0.0001; // 0.01% tolerance
+        const isSimilarEntry = Math.abs(existing.entryPrice - entryPrice) < entryPrice * 0.001; // 0.1% tolerance (increased)
         const isSameCloseTime = 
           existing.closedAt && 
-          Math.abs(new Date(existing.closedAt).getTime() - closedAt.getTime()) < 60000; // 1 min tolerance
+          Math.abs(new Date(existing.closedAt).getTime() - closedAt.getTime()) < 300000; // 5 min tolerance (increased)
 
         return isSameSymbol && isSameSide && isSimilarEntry && isSameCloseTime;
       });
 
       if (exists) {
-        console.log(`[Import] Skipping ${bybitPos.symbol} - already in history`);
         skipped++;
         continue;
       }
@@ -199,14 +241,15 @@ export async function POST(request: NextRequest) {
       imported++;
     }
 
-    console.log(`[Import Bybit History] Complete: ${imported} imported, ${skipped} skipped`);
+    console.log(`[Import Bybit History] Complete: ${imported} imported, ${skipped} skipped out of ${allPositions.length} total`);
 
     return NextResponse.json({
       success: true,
-      message: `Import complete: ${imported} positions imported, ${skipped} skipped`,
+      message: `Import complete: ${imported} positions imported, ${skipped} already in history`,
       imported,
       skipped,
-      total: bybitPositions.length,
+      total: allPositions.length,
+      pages: pageCount,
     });
   } catch (error) {
     console.error("[Import Bybit History] Error:", error);
