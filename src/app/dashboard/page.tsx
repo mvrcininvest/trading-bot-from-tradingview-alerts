@@ -705,11 +705,11 @@ export default function DashboardPage() {
                 ? "bg-green-600 text-white" 
                 : livePrice
                   ? "border-green-700 text-green-300"
-                  : "border-yellow-700 text-yellow-300"
+                  : "border-gray-600 text-gray-400"
             }
           >
             {label}: {(livePrice || price)?.toFixed(4)} 
-            {isHit ? " ✓" : livePrice ? " 🟢" : " 🟡"}
+            {isHit ? " ✓" : livePrice ? " 🟢" : ""}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
@@ -717,8 +717,8 @@ export default function DashboardPage() {
             {isHit 
               ? `✓ ${label} osiągnięty` 
               : livePrice 
-                ? "🟢 Aktywny na giełdzie (live)" 
-                : "🟡 Planowany (cache) - może nie być ustawiony!"}
+                ? "🟢 Aktywny na giełdzie" 
+                : "Z pamięci podręcznej - może nie być ustawiony na giełdzie"}
           </p>
         </TooltipContent>
       </Tooltip>
@@ -1447,7 +1447,7 @@ export default function DashboardPage() {
                             </div>
                             {position.positionIM && parseFloat(position.positionIM) > 0 && (
                               <div>
-                                <div className="text-gray-300">Initial Margin</div>
+                                <div className="text-gray-300">Depozyt Początkowy</div>
                                 <div className="font-semibold text-blue-300">{parseFloat(position.positionIM).toFixed(2)} USDT</div>
                               </div>
                             )}
@@ -1459,13 +1459,13 @@ export default function DashboardPage() {
                             )}
                             {position.positionMM && parseFloat(position.positionMM) > 0 && (
                               <div>
-                                <div className="text-gray-300">Maintenance Margin</div>
+                                <div className="text-gray-300">Depozyt Utrzymania</div>
                                 <div className="font-semibold text-yellow-300">{parseFloat(position.positionMM).toFixed(2)} USDT</div>
                               </div>
                             )}
                             {position.cumRealisedPnl && parseFloat(position.cumRealisedPnl) !== 0 && (
                               <div>
-                                <div className="text-gray-300">Realized PnL</div>
+                                <div className="text-gray-300">Zrealizowany PnL</div>
                                 <div className={`font-semibold ${parseFloat(position.cumRealisedPnl) >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                                   {parseFloat(position.cumRealisedPnl) >= 0 ? '+' : ''}{parseFloat(position.cumRealisedPnl).toFixed(2)} USDT
                                 </div>
@@ -1473,7 +1473,7 @@ export default function DashboardPage() {
                             )}
                           </div>
 
-                          {/* ✅ IMPROVED: SL/TP Display with correct colors */}
+                          {/* ✅ IMPROVED: SL/TP Display with Polish labels and removed yellow circles */}
                           <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
@@ -1500,11 +1500,11 @@ export default function DashboardPage() {
                                       </div>
                                       {isLive ? (
                                         <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
-                                          🟢 Live
+                                          🟢 Aktywny
                                         </Badge>
                                       ) : (
-                                        <Badge className="text-xs bg-yellow-600/30 text-yellow-300 border-yellow-500">
-                                          🟡 Cache
+                                        <Badge className="text-xs bg-gray-600/30 text-gray-400 border-gray-500">
+                                          Z pamięci
                                         </Badge>
                                       )}
                                     </div>
@@ -1568,15 +1568,15 @@ export default function DashboardPage() {
                                           </div>
                                           {tp.isHit ? (
                                             <Badge className="text-xs bg-green-600 text-white border-green-500">
-                                              ✓ Hit
+                                              ✓ Osiągnięty
                                             </Badge>
                                           ) : tp.isLive ? (
                                             <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
-                                              🟢
+                                              🟢 Aktywny
                                             </Badge>
                                           ) : (
-                                            <Badge className="text-xs bg-yellow-600/30 text-yellow-300 border-yellow-500">
-                                              🟡
+                                            <Badge className="text-xs bg-gray-600/30 text-gray-400 border-gray-500">
+                                              Z pamięci
                                             </Badge>
                                           )}
                                         </div>
@@ -1590,7 +1590,7 @@ export default function DashboardPage() {
 
                           {botPositionData && (
                             <div className="flex items-center justify-between text-xs text-gray-300 pt-2 mt-2 border-t border-gray-800">
-                              <span>Confidence: {(botPositionData.confidenceScore * 100).toFixed(0)}%</span>
+                              <span>Pewność: {(botPositionData.confidenceScore * 100).toFixed(0)}%</span>
                               <span>{new Date(botPositionData.openedAt).toLocaleString("pl-PL")}</span>
                             </div>
                           )}
