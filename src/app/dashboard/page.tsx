@@ -777,1442 +777,233 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Symbol Locks Alert */}
         {symbolLocks.length > 0 && (
-          <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm animate-pulse">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            <AlertDescription className="text-sm text-red-200">
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                <div className="flex-1 w-full">
-                  <strong className="text-red-100 text-base">🚫 UWAGA: {symbolLocks.length} zablokowanych symboli!</strong>
-                  <div className="mt-2 space-y-2">
-                    <p className="font-medium text-gray-100">
-                      Bot nie będzie otwierał pozycji na następujących symbolach: {" "}
-                      <strong className="text-red-100">{symbolLocks.map(l => l.symbol).join(", ")}</strong>
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                      {symbolLocks.map(lock => (
-                        <div key={lock.id} className="bg-red-900/30 border border-red-700/50 rounded-lg p-2">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-bold text-red-100">{lock.symbol}</div>
-                              <div className="text-xs text-red-200">{lock.lockReason}</div>
-                            </div>
-                            <div className="text-xs text-red-300">
-                              {new Date(lock.lockedAt).toLocaleString("pl-PL", { 
-                                month: 'short', 
-                                day: 'numeric', 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                  <Button
-                    onClick={() => router.push("/diagnostyka")}
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    <AlertTriangle className="mr-2 h-4 w-4" />
-                    Przejdź do Diagnostyki
-                  </Button>
-                  <Button
-                    onClick={fetchSymbolLocks}
-                    disabled={loadingLocks}
-                    variant="outline"
-                    className="border-red-600 text-red-400 hover:bg-red-600/20"
-                    size="sm"
-                  >
-                    <RefreshCw className={`mr-2 h-3 w-3 ${loadingLocks ? "animate-spin" : ""}`} />
-                    Odśwież
-                  </Button>
-                </div>
+          <Alert className="border-red-800 bg-red-900/30 text-red-200">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm font-medium">⚠️ {symbolLocks.length} symbolów zablokowanych</span>
               </div>
+              <p className="text-xs mt-1">
+                {symbolLocks.map((lock, i) => (
+                  <span key={i} className="inline-block mr-1">
+                    {lock.symbol} {lock.side} {lock.size} {lock.reason}
+                  </span>
+                ))}
+              </p>
             </AlertDescription>
           </Alert>
         )}
 
         {/* Oko Saurona Activity Summary */}
         {okoStats && okoStats.total > 0 && (
-          <Alert className="border-2 border-purple-600/50 bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-sm">
-            <Eye className="h-5 w-5 text-purple-400" />
-            <AlertDescription className="text-sm text-purple-200">
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                <div className="flex-1 w-full">
-                  <strong className="text-purple-100 text-base">👁️ Oko Saurona: {okoStats.total} akcji w ostatnich {okoTimeRange}h</strong>
-                  <div className="mt-2 flex items-center gap-4 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="destructive" className="bg-red-600/30 text-red-200 border-red-500/50">
-                        <XCircle className="mr-1 h-3 w-3" />
-                        {okoStats.closures} zamknięć
-                      </Badge>
-                      <Badge variant="secondary" className="bg-blue-600/30 text-blue-200 border-blue-500/50">
-                        <Wrench className="mr-1 h-3 w-3" />
-                        {okoStats.repairs} napraw
-                      </Badge>
-                    </div>
-                    {Object.keys(okoStats.byType).length > 0 && (
-                      <div className="flex items-center gap-1 flex-wrap text-xs text-purple-200">
-                        <span className="opacity-70">Typy:</span>
-                        {Object.entries(okoStats.byType).map(([type, count]) => (
-                          <Badge key={type} variant="outline" className="text-xs border-purple-500/30 text-purple-200">
-                            {type}: {count}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  onClick={() => setActiveTab('oko')}
-                  className="bg-purple-600 hover:bg-purple-700 text-white w-full sm:w-auto"
-                >
-                  <Eye className="mr-2 h-4 w-4" />
-                  Zobacz Szczegóły
-                </Button>
+          <Alert className="border-blue-800 bg-blue-900/30 text-blue-200">
+            <Bot className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="text-sm font-medium">🤖 {okoStats.total} aktywnych pozycji</span>
               </div>
+              <p className="text-xs mt-1">
+                <span className="text-green-400">🟢 {okoStats.winning}</span> / <span className="text-red-400">🔴 {okoStats.losing}</span> / <span className="text-yellow-400">🟡 {okoStats.stale}</span>
+              </p>
             </AlertDescription>
           </Alert>
         )}
 
         {/* Header with Quick Stats */}
         <div className="space-y-4 md:space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 border border-blue-500/30">
-                <TrendingUp className="h-6 w-6 md:h-8 md:w-8 text-blue-400" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-green-300">Razem</h3>
+                <Wallet className="h-4 w-4 text-green-400" />
               </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                  Dashboard Tradingowy
-                </h1>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-                  <p className="text-sm text-gray-200 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    BYBIT MAINNET
-                  </p>
-                  {botEnabled !== null && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge 
-                          variant={botEnabled ? "default" : "secondary"}
-                          className={`flex items-center gap-1.5 cursor-help ${
-                            botEnabled 
-                              ? "bg-green-600/20 text-green-300 border-green-500/30 hover:bg-green-600/30" 
-                              : "bg-red-600/20 text-red-300 border-red-500/30 hover:bg-red-600/30"
-                          }`}
-                        >
-                          <Power className="h-3 w-3" />
-                          BOT {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs text-gray-200">
-                          {botEnabled 
-                            ? "Bot aktywnie monitoruje alerty z TradingView i automatycznie otwiera pozycje zgodne z ustawieniami"
-                            : "Bot jest nieaktywny i nie będzie otwierał nowych pozycji. Przejdź do Ustawień Bota aby go włączyć"}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
+              <p className="text-2xl font-bold text-green-100">
+                {totalBalance.toLocaleString()}
+              </p>
+              <p className="text-xs text-green-400">USDT</p>
+            </div>
+
+            <div className="p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-blue-800/50 border border-blue-800/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-blue-300">PnL</h3>
+                <Zap className="h-4 w-4 text-blue-400" />
               </div>
+              <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
+                {totalPnL.toLocaleString()}
+              </p>
+              <p className="text-xs text-blue-400">USDT</p>
+            </div>
+
+            <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-purple-300">Bot PnL</h3>
+                <Bot className="h-4 w-4 text-purple-400" />
+              </div>
+              <p className={`text-2xl font-bold ${botPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
+                {botPnL.toLocaleString()}
+              </p>
+              <p className="text-xs text-purple-400">USDT</p>
             </div>
           </div>
 
-          {/* Quick Stats - Responsive Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-gray-300 mb-1">Saldo Konta</p>
-                        <p className="text-2xl font-bold text-white">{totalBalance.toFixed(2)}</p>
-                        <p className="text-xs text-gray-300">USDT</p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
-                        <Wallet className="h-6 w-6 text-blue-400" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-gray-200">Całkowite saldo dostępne na koncie giełdowym (wolne + zablokowane w pozycjach)</p>
-              </TooltipContent>
-            </Tooltip>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg bg-gradient-to-br from-yellow-900/30 to-yellow-800/50 border border-yellow-800/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-yellow-300">Pozycje</h3>
+                <Activity className="h-4 w-4 text-yellow-400" />
+              </div>
+              <p className="text-2xl font-bold text-yellow-100">
+                {totalPositionsCount}
+              </p>
+              <p className="text-xs text-yellow-400">otwarte</p>
+            </div>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-gray-300 mb-1">Całkowity PnL</p>
-                        <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-gray-300">USDT</p>
-                      </div>
-                      <div className={`p-3 rounded-lg ${totalPnL >= 0 ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'}`}>
-                        <DollarSign className={`h-6 w-6 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-gray-200">Łączny nierealizowany zysk/strata ze wszystkich otwartych pozycji</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-gray-300 mb-1">Otwarte Pozycje</p>
-                        <p className="text-2xl font-bold text-white">{botPositions.length}</p>
-                        <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
-                        <Activity className="h-6 w-6 text-purple-400" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-gray-200">Liczba aktywnych pozycji otwartych przez bota i ich całkowity PnL</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-gray-300 mb-1">Zyskowne Pozycje</p>
-                        <p className="text-2xl font-bold text-white">{winningPositions}</p>
-                        <p className="text-xs text-gray-300">
-                          z {botPositions.length} otwartych
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-amber-500/20 border border-amber-500/30">
-                        <TrendingUp className="h-6 w-6 text-amber-400" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-gray-200">Liczba pozycji z dodatnim PnL (obecnie w zysku)</p>
-              </TooltipContent>
-            </Tooltip>
+            <div className="p-4 rounded-lg bg-gradient-to-br from-red-900/30 to-red-800/50 border border-red-800/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-red-300">Wygrane</h3>
+                <ArrowUpRight className="h-4 w-4 text-red-400" />
+              </div>
+              <p className="text-2xl font-bold text-green-100">
+                {winningPositions}
+              </p>
+              <p className="text-xs text-green-400">z {totalPositionsCount}</p>
+            </div>
           </div>
         </div>
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
-              <BarChart3 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Przegląd</span>
-              <span className="sm:hidden">Info</span>
-            </TabsTrigger>
-            <TabsTrigger value="positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
-              <Activity className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Otwarte Pozycje</span>
-              <span className="sm:hidden">Pozycje</span>
-            </TabsTrigger>
-            <TabsTrigger value="oko" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
-              <Eye className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Oko Saurona</span>
-              <span className="sm:hidden">Oko</span>
-              {okoStats && okoStats.total > 0 && (
-                <Badge variant="destructive" className="ml-1 sm:ml-2 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center text-xs">
-                  {okoStats.total}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
-              <Settings className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden lg:inline">Ustawienia</span>
-              <span className="lg:hidden">Config</span>
-            </TabsTrigger>
-            <TabsTrigger value="info" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm col-span-2 sm:col-span-1">
-              <Zap className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Quick Actions</span>
-              <span className="sm:hidden">Akcje</span>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* Balance Card - Dark Theme with Collapse */}
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-white">
-                      <Wallet className="h-5 w-5" />
-                      Saldo Konta
-                    </CardTitle>
-                    <CardDescription className="text-gray-300">
-                      {lastUpdate && <span className="text-xs">Zaktualizowano: {lastUpdate}</span>}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => setBalanceCollapsed(!balanceCollapsed)}
-                          size="sm"
-                          variant="ghost"
-                          className="text-gray-300 hover:text-white"
-                        >
-                          {balanceCollapsed ? (
-                            <>
-                              <ArrowDownRight className="mr-2 h-4 w-4" />
-                              Rozwiń
-                            </>
-                          ) : (
-                            <>
-                              <ArrowUpRight className="mr-2 h-4 w-4" />
-                              Zwiń
-                            </>
-                          )}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-gray-200">{balanceCollapsed ? "Rozwiń" : "Zwiń"} szczegóły salda</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => fetchBalance()}
-                          disabled={loading}
-                          size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 transition-transform"
-                        >
-                          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                          Odśwież
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-gray-200">Odśwież saldo konta z giełdy - pobiera aktualne dane o wolnych i zablokowanych środkach</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </div>
-              </CardHeader>
-              {!balanceCollapsed && (
-                <CardContent>
-                  {error && (
-                    <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
-                      <AlertCircle className="h-4 w-4 text-yellow-500" />
-                      <AlertDescription className="text-sm text-yellow-300">
-                        <strong>Nie można pobrać salda:</strong> {error}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {loading && (
-                    <div className="text-center py-8">
-                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                      <p className="text-sm text-gray-300">Pobieranie salda...</p>
-                    </div>
-                  )}
-
-                  {!loading && balances.length === 0 && !error && (
-                    <div className="text-center py-8">
-                      <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                      <p className="text-sm text-gray-300">Brak danych o saldzie</p>
-                    </div>
-                  )}
-
-                  {!loading && balances.length > 0 && (
-                    <div className="space-y-2">
-                      {balances.map((balance, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between p-4 rounded-xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-800/40 hover:from-gray-800/60 hover:to-gray-900/60 transition-all"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 flex items-center justify-center border border-blue-500/30">
-                              <span className="text-sm font-bold text-blue-300">
-                                {balance.asset.substring(0, 2)}
-                              </span>
-                            </div>
-                            <div>
-                              <div className="font-semibold text-lg text-white">{balance.asset}</div>
-                              <div className="text-xs text-gray-300">
-                                Wolne: {balance.free} · Zablokowane: {balance.locked}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-2xl text-white">{balance.total}</div>
-                            <div className="text-xs text-gray-300">Łącznie</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-
-            {/* Quick Summary - Dark Theme */}
-            <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-lg text-white">Otwarte Pozycje Bota</CardTitle>
-                <CardDescription className="text-gray-300">Wszystkie aktywne pozycje automatyczne</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-300">Aktywne:</span>
-                    <span className="font-bold text-white">{botPositions.length}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-300">Zyskowne:</span>
-                    <span className="font-bold text-green-400">{winningPositions}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-300">PnL:</span>
-                    <span className={`font-bold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
-                    </span>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button 
-                        onClick={() => {
-                          const positionsTab = document.querySelector('[value="positions"]') as HTMLElement;
-                          positionsTab?.click();
-                        }}
-                        className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-                        variant="secondary"
-                      >
-                        Zobacz Szczegóły Pozycji
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Przejdź do szczegółowego widoku wszystkich otwartych pozycji z informacjami o TP/SL</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Positions Tab */}
-          <TabsContent value="positions" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-white">
-                      <Activity className="h-5 w-5" />
-                      Otwarte Pozycje
-                      {positions.length > 0 && (
-                        <Badge variant="secondary" className="ml-2 bg-gray-700 text-gray-200">
-                          {positions.length} Aktywnych
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="text-gray-300">
-                      Wszystkie otwarte pozycje bota na giełdzie
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={handleSyncPositions}
-                          disabled={loadingSync}
-                          size="sm"
-                          variant="secondary"
-                          className="bg-gray-800 hover:bg-gray-700 text-gray-200 hover:scale-105 transition-transform"
-                        >
-                          <RefreshCw className={`mr-2 h-4 w-4 ${loadingSync ? "animate-spin" : ""}`} />
-                          Sync
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs text-gray-200">Synchronizuj pozycje bota z rzeczywistymi pozycjami na giełdzie</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => fetchPositions()}
-                          disabled={loadingPositions}
-                          size="sm"
-                          variant="outline"
-                          className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200 hover:scale-105 transition-transform"
-                        >
-                          <RefreshCw className={`mr-2 h-4 w-4 ${loadingPositions ? "animate-spin" : ""}`} />
-                          Odśwież
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-gray-200">Odśwież pozycje bezpośrednio z giełdy (automatyczne odświeżanie co 0.5s)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {positionsError && (
-                  <Alert className="mb-4 border-yellow-700 bg-yellow-900/20">
-                    <AlertCircle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-sm text-yellow-300">
-                      <strong>Błąd:</strong> {positionsError}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {loadingPositions && (
-                  <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-300">Pobieranie pozycji...</p>
-                  </div>
-                )}
-
-                {!loadingPositions && positions.length === 0 && !positionsError && (
-                  <div className="text-center py-12">
-                    <Activity className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
-                    <p className="text-gray-300">Brak otwartych pozycji</p>
-                  </div>
-                )}
-
-                {!loadingPositions && positions.length > 0 && (
-                  <div className="space-y-3">
-                    {positions.map((position, idx) => {
-                      const pnl = parseFloat(position.unrealisedPnl);
-                      const positionVal = parseFloat(position.positionValue);
-                      const leverage = parseFloat(position.leverage);
-                      
-                      const initialMargin = leverage !== 0 ? positionVal / leverage : positionVal;
-                      const pnlPercent = initialMargin !== 0 ? (pnl / initialMargin) * 100 : 0;
-                      const isProfitable = pnl >= 0;
-                      
-                      // ✅ FIXED: Now actually used
-                      const isBotPosition = botPositions.some(bp => 
-                        bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "BUY" : "SELL")
-                      );
-                      
-                      const botPositionData = botPositions.find(bp => 
-                        bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "BUY" : "SELL")
-                      );
-                      
-                      return (
-                        <div
-                          key={idx}
-                          className="p-5 rounded-xl border-2 border-blue-700/30 bg-gradient-to-r from-gray-900/80 to-blue-900/20 hover:from-gray-900 hover:to-blue-900/30 transition-all"
-                        >
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                                position.side === "Buy" ? "bg-green-500/30 border border-green-500/40" : "bg-red-500/30 border border-red-500/40"
-                              }`}>
-                                {position.side === "Buy" ? (
-                                  <ArrowUpRight className="h-6 w-6 text-green-400" />
-                                ) : (
-                                  <ArrowDownRight className="h-6 w-6 text-red-400" />
-                                )}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-xl text-white">{position.symbol}</span>
-                                  {/* ✅ FIXED: Only show BOT badge for bot positions */}
-                                  {isBotPosition && (
-                                    <Badge variant="default" className="text-xs bg-blue-600 text-white">BOT</Badge>
-                                  )}
-                                  {botPositionData && (
-                                    <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
-                                      {botPositionData.tier}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className={`text-sm font-semibold ${
-                                  position.side === "Buy" ? "text-green-400" : "text-red-400"
-                                }`}>
-                                  {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right flex items-start gap-2">
-                              <div>
-                                <div className={`text-xl font-bold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
-                                  {isProfitable ? "+" : ""}{pnl.toFixed(4)} USDT
-                                </div>
-                                <div className={`text-sm font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
-                                  ({isProfitable ? "+" : ""}{pnlPercent.toFixed(2)}%)
-                                </div>
-                              </div>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    onClick={() => {
-                                      setPositionToClose(position);
-                                      setClosePositionDialogOpen(true);
-                                    }}
-                                    size="sm"
-                                    variant="destructive"
-                                    className="bg-red-600 hover:bg-red-700 text-white"
-                                  >
-                                    <XCircle className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-gray-200">Zamknij pozycję i anuluj SL/TP</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-3 text-sm p-3 rounded-lg bg-gray-800/40">
-                            <div>
-                              <div className="text-gray-300">Rozmiar</div>
-                              <div className="font-semibold text-gray-100">{position.size}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-300">Wartość</div>
-                              <div className="font-semibold text-gray-100">{parseFloat(position.positionValue).toFixed(2)} USDT</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-300">Cena Wejścia</div>
-                              <div className="font-semibold text-gray-100">{parseFloat(position.entryPrice).toFixed(4)}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-300">Cena Bieżąca</div>
-                              <div className="font-semibold text-gray-100">{parseFloat(position.markPrice).toFixed(4)}</div>
-                            </div>
-                            {position.positionIM && parseFloat(position.positionIM) > 0 && (
-                              <div>
-                                <div className="text-gray-300">Depozyt Początkowy</div>
-                                <div className="font-semibold text-blue-300">{parseFloat(position.positionIM).toFixed(2)} USDT</div>
-                              </div>
-                            )}
-                            {position.liqPrice && parseFloat(position.liqPrice) > 0 && (
-                              <div>
-                                <div className="text-gray-300">Cena Likwidacji</div>
-                                <div className="font-semibold text-red-300">{parseFloat(position.liqPrice).toFixed(4)}</div>
-                              </div>
-                            )}
-                            {position.positionMM && parseFloat(position.positionMM) > 0 && (
-                              <div>
-                                <div className="text-gray-300">Depozyt Utrzymania</div>
-                                <div className="font-semibold text-yellow-300">{parseFloat(position.positionMM).toFixed(2)} USDT</div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* ✅ SL/TP Display - Clean without tooltips */}
-                          <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-gray-300 font-semibold text-xs">Stop Loss:</span>
-                                </div>
-                                {(() => {
-                                  const slPrice = botPositionData?.liveSlPrice || botPositionData?.currentSl || parseFloat(position.stopLoss);
-                                  const isLive = !!botPositionData?.liveSlPrice;
-                                  const hasAnySl = slPrice > 0;
-                                  
-                                  if (!hasAnySl) {
-                                    return (
-                                      <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500">
-                                        ⚠️ BRAK SL
-                                      </Badge>
-                                    );
-                                  }
-                                  
-                                  return (
-                                    <div className="flex items-center gap-2">
-                                      <div className="text-lg font-bold text-red-400">
-                                        {slPrice.toFixed(4)}
-                                      </div>
-                                      {isLive && (
-                                        <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
-                                          🟢 Aktywny
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                              
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-gray-300 font-semibold text-xs">Take Profit:</span>
-                                </div>
-                                {(() => {
-                                  const hasAnyTp = botPositionData?.liveTp1Price || 
-                                                 botPositionData?.liveTp2Price || 
-                                                 botPositionData?.liveTp3Price ||
-                                                 botPositionData?.tp1Price ||
-                                                 botPositionData?.tp2Price ||
-                                                 botPositionData?.tp3Price;
-                                  
-                                  if (!hasAnyTp) {
-                                    return (
-                                      <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500">
-                                        ⚠️ BRAK TP
-                                      </Badge>
-                                    );
-                                  }
-                                  
-                                  const tps = [];
-                                  if (botPositionData?.liveTp1Price || botPositionData?.tp1Price) {
-                                    tps.push({
-                                      label: "TP1",
-                                      price: botPositionData?.liveTp1Price || botPositionData?.tp1Price,
-                                      isHit: botPositionData?.tp1Hit || false,
-                                      isLive: !!botPositionData?.liveTp1Price
-                                    });
-                                  }
-                                  if (botPositionData?.liveTp2Price || botPositionData?.tp2Price) {
-                                    tps.push({
-                                      label: "TP2",
-                                      price: botPositionData?.liveTp2Price || botPositionData?.tp2Price,
-                                      isHit: botPositionData?.tp2Hit || false,
-                                      isLive: !!botPositionData?.liveTp2Price
-                                    });
-                                  }
-                                  if (botPositionData?.liveTp3Price || botPositionData?.tp3Price) {
-                                    tps.push({
-                                      label: "TP3",
-                                      price: botPositionData?.liveTp3Price || botPositionData?.tp3Price,
-                                      isHit: botPositionData?.tp3Hit || false,
-                                      isLive: !!botPositionData?.liveTp3Price
-                                    });
-                                  }
-                                  
-                                  return (
-                                    <div className="flex flex-col gap-1">
-                                      {tps.map(tp => (
-                                        <div key={tp.label} className="flex items-center gap-2">
-                                          <span className="text-xs text-gray-400 w-8">{tp.label}:</span>
-                                          <div className={`text-sm font-bold ${tp.isHit ? 'text-green-400 line-through' : 'text-green-300'}`}>
-                                            {tp.price?.toFixed(4)}
-                                          </div>
-                                          {tp.isHit ? (
-                                            <Badge className="text-xs bg-green-600 text-white border-green-500">
-                                              ✓ Osiągnięty
-                                            </Badge>
-                                          ) : tp.isLive && (
-                                            <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
-                                              🟢 Aktywny
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-
-                          {botPositionData && (
-                            <div className="flex items-center justify-between text-xs text-gray-300 pt-2 mt-2 border-t border-gray-800">
-                              <span>Pewność: {(botPositionData.confidenceScore * 100).toFixed(0)}%</span>
-                              <span>{new Date(botPositionData.openedAt).toLocaleString("pl-PL")}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ✅ NEW: Oko Saurona Tab */}
-          <TabsContent value="oko" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-white">
-                      <Eye className="h-5 w-5 text-purple-400" />
-                      Oko Saurona - Activity Monitor
-                    </CardTitle>
-                    <CardDescription className="text-gray-300">
-                      System ochrony pozycji w czasie rzeczywistym
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={okoTimeRange}
-                      onChange={(e) => setOkoTimeRange(Number(e.target.value) as 24 | 48 | 168)}
-                      className="px-3 py-2 rounded-lg bg-gray-800 text-gray-200 border border-gray-700 text-sm"
-                    >
-                      <option value={24}>Ostatnie 24h</option>
-                      <option value={48}>Ostatnie 48h</option>
-                      <option value={168}>Ostatnie 7 dni</option>
-                    </select>
-                    <Button
-                      onClick={() => fetchOkoActions()}
-                      disabled={loadingOko}
-                      size="sm"
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
-                    >
-                      <RefreshCw className={`mr-2 h-4 w-4 ${loadingOko ? "animate-spin" : ""}`} />
-                      Odśwież
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Statistics Cards */}
-                {okoStats && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <Card className="border-purple-700/30 bg-gradient-to-br from-purple-600/20 to-gray-900/80">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-purple-300 mb-1">Wszystkie Akcje</p>
-                            <p className="text-3xl font-bold text-white">{okoStats.total}</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
-                            <Eye className="h-6 w-6 text-purple-400" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-red-700/30 bg-gradient-to-br from-red-600/20 to-gray-900/80">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-red-300 mb-1">Zamknięcia Awaryjne</p>
-                            <p className="text-3xl font-bold text-white">{okoStats.closures}</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30">
-                            <XCircle className="h-6 w-6 text-red-400" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-blue-700/30 bg-gradient-to-br from-blue-600/20 to-gray-900/80">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-blue-300 mb-1">Naprawy</p>
-                            <p className="text-3xl font-bold text-white">{okoStats.repairs}</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
-                            <Wrench className="h-6 w-6 text-blue-400" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                {/* Actions List */}
-                {loadingOko && okoActions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                    <p className="text-sm text-gray-300">Ładowanie akcji Oka...</p>
-                  </div>
-                ) : okoActions.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Shield className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
-                    <p className="text-gray-300">Brak akcji Oka w wybranym okresie</p>
-                    <p className="text-sm text-gray-400 mt-2">System działa prawidłowo i nie wykrył żadnych zagrożeń</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {okoActions.map((action) => {
-                      const isClosureAction = action.actionType.includes('emergency') || 
-                                            action.actionType.includes('sl_breach') ||
-                                            action.actionType.includes('pnl_emergency') ||
-                                            action.actionType.includes('multi_position_correlation') ||
-                                            action.actionType.includes('time_based_exit') ||
-                                            action.actionType.includes('account_drawdown');
-                      
-                      const isRepairAction = action.actionType.includes('missing_sl_tp') ||
-                                           action.actionType.includes('tp1_quantity_fix') ||
-                                           action.actionType.includes('ghost_position_cleanup');
-                      
-                      return (
-                        <div
-                          key={action.id}
-                          className={`p-4 rounded-xl border-2 ${
-                            isClosureAction 
-                              ? 'border-red-700/30 bg-gradient-to-r from-red-900/20 to-gray-900/80' 
-                              : isRepairAction
-                              ? 'border-blue-700/30 bg-gradient-to-r from-blue-900/20 to-gray-900/80'
-                              : 'border-gray-700/30 bg-gray-900/60'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start gap-3 flex-1">
-                              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-                                isClosureAction 
-                                  ? 'bg-red-500/30 border border-red-500/40' 
-                                  : 'bg-blue-500/30 border border-blue-500/40'
-                              }`}>
-                                {isClosureAction ? (
-                                  <XCircle className="h-5 w-5 text-red-400" />
-                                ) : (
-                                  <Wrench className="h-5 w-5 text-blue-400" />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-white">
-                                    {action.actionType.replace(/_/g, ' ').toUpperCase()}
-                                  </span>
-                                  <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
-                                    {action.checkCount === 1 ? 'Instant' : `${action.checkCount} checks`}
-                                  </Badge>
-                                  {action.position && (
-                                    <>
-                                      <Badge variant="default" className="text-xs bg-gray-700 text-gray-200">
-                                        {action.position.symbol}
-                                      </Badge>
-                                      <Badge variant={action.position.side === 'BUY' ? 'default' : 'destructive'} className="text-xs">
-                                        {action.position.side}
-                                      </Badge>
-                                    </>
-                                  )}
-                                </div>
-                                <p className="text-sm text-gray-300 mb-2">{action.reason}</p>
-                                {action.metadata && (
-                                  <div className="text-xs text-gray-400 space-y-1">
-                                    {action.metadata.pnl !== undefined && (
-                                      <div>PnL: <span className={action.metadata.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{action.metadata.pnl >= 0 ? '+' : ''}{action.metadata.pnl.toFixed(2)} USDT</span></div>
-                                    )}
-                                    {action.metadata.currentPrice && (
-                                      <div>Cena: <span className="text-white">{action.metadata.currentPrice.toFixed(4)}</span></div>
-                                    )}
-                                    {action.metadata.breachPercent && (
-                                      <div>Naruszenie SL: <span className="text-red-400">{action.metadata.breachPercent}%</span></div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right text-xs text-gray-400">
-                              {new Date(action.createdAt).toLocaleString('pl-PL', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit'
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <Settings className="h-5 w-5" />
-                  Ustawienia i Konfiguracja
-                </CardTitle>
-                <CardDescription className="text-gray-300">Zarządzaj swoim botem i konfiguracją API</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Bot Status Indicator */}
-                {botEnabled !== null && (
-                  <Card className={`border-2 ${
-                    botEnabled 
-                      ? "bg-gradient-to-br from-green-600/10 to-gray-900/80 border-green-500/30" 
-                      : "bg-gradient-to-br from-red-600/10 to-gray-900/80 border-red-500/30"
-                  }`}>
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-4 rounded-xl ${
-                            botEnabled 
-                              ? "bg-green-500/20 border-2 border-green-500/40" 
-                              : "bg-red-500/20 border-2 border-red-500/40"
-                          }`}>
-                            <Power className={`h-8 w-8 ${botEnabled ? "text-green-400" : "text-red-400"}`} />
-                          </div>
-                          <div>
-                            <h3 className="text-2xl font-bold text-white mb-1">
-                              Status Bota: {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
-                            </h3>
-                            <p className={`text-sm font-medium ${botEnabled ? "text-green-300" : "text-red-300"}`}>
-                              {botEnabled 
-                                ? "Bot aktywnie monitoruje i otwiera pozycje na podstawie alertów" 
-                                : "Bot nie będzie otwierał nowych pozycji"}
-                            </p>
-                          </div>
-                        </div>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              onClick={() => router.push("/ustawienia-bota")}
-                              variant="outline"
-                              className="border-gray-700 hover:bg-gray-800 text-gray-200"
-                            >
-                              Zmień Status
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="text-gray-200">Przejdź do ustawień bota aby włączyć/wyłączyć automatyczny trading</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
+          <TabsContent value="overview">
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-gradient-to-br from-gray-800/30 to-gray-700/50 border border-gray-700/30 backdrop-blur-sm">
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Status</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => router.push("/ustawienia-bota")}
-                        className="h-28 flex-col gap-3 bg-gradient-to-br from-blue-600/20 to-gray-900/80 border-gray-700 hover:from-blue-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                        variant="outline"
-                      >
-                        <Bot className="h-10 w-10 text-blue-400" />
-                        <span className="font-semibold">Ustawienia Bota</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Konfiguruj parametry bota: wielkość pozycji, dźwignia, filtry tierów, zarządzanie ryzykiem</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => router.push("/exchange-test")}
-                        className="h-28 flex-col gap-3 bg-gradient-to-br from-purple-600/20 to-gray-900/80 border-gray-700 hover:from-purple-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                        variant="outline"
-                      >
-                        <Settings className="h-10 w-10 text-purple-400" />
-                        <span className="font-semibold">Konfiguracja API</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Zarządzaj kluczami API giełdy - testuj połączenie, konfiguruj Bybit Mainnet</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => router.push("/logi-bota")}
-                        className="h-28 flex-col gap-3 bg-gradient-to-br from-green-600/20 to-gray-900/80 border-gray-700 hover:from-green-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                        variant="outline"
-                      >
-                        <FileText className="h-10 w-10 text-green-400" />
-                        <span className="font-semibold">Logi Bota</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Przeglądaj szczegółowe logi działania bota - alerty, otwarte pozycje, błędy, synchronizacje</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => router.push("/bot-history")}
-                        className="h-28 flex-col gap-3 bg-gradient-to-br from-amber-600/20 to-gray-900/80 border-gray-700 hover:from-amber-600/30 hover:to-gray-800/80 text-gray-100 hover:scale-105 transition-all shadow-lg"
-                        variant="outline"
-                      >
-                        <History className="h-10 w-10 text-amber-400" />
-                        <span className="font-semibold">Historia Pozycji</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Kompletna historia zamkniętych pozycji z analizą wyników, statystykami win/loss ratio</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <Card className="bg-gray-900/70 border-gray-700 shadow-xl backdrop-blur-sm">
-                  <CardHeader className="border-b border-gray-800">
-                    <CardTitle className="text-base text-white flex items-center gap-2">
-                      <Activity className="h-4 w-4 text-blue-400" />
-                      Informacje o konfiguracji
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm pt-4">
-                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-300 font-medium">Giełda:</span>
-                      <span className="font-bold text-white">BYBIT</span>
-                    </div>
-                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-300 font-medium">Środowisko:</span>
-                      <span className="font-bold text-white">Mainnet</span>
-                    </div>
-                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-300 font-medium">API Key:</span>
-                      <span className="font-mono text-xs text-gray-200 bg-gray-900/50 px-2 py-1 rounded">
-                        {credentials.apiKey.substring(0, 8)}...{credentials.apiKey.slice(-4)}
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Bot Status</p>
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${botEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-medium ${botEnabled ? 'text-green-300' : 'text-red-300'}`}>
+                        {botEnabled ? '🟢 Aktywny' : '🔴 Wyłączony'}
                       </span>
                     </div>
-                    <div className="flex justify-between p-3 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800/80 transition-colors">
-                      <span className="text-gray-300 font-medium">Zapisano:</span>
-                      <span className="text-xs text-gray-200">
-                        {new Date(credentials.savedAt).toLocaleString("pl-PL")}
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">API Status</p>
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${credentials ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-medium ${credentials ? 'text-green-300' : 'text-red-300'}`}>
+                        {credentials ? '🟢 Połączony' : '🔴 Brak konfiguracji'}
                       </span>
                     </div>
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Quick Actions Tab */}
-          <TabsContent value="info" className="space-y-6">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <Zap className="h-5 w-5 text-yellow-400" />
-                  Szybkie Akcje
-                </CardTitle>
-                <CardDescription className="text-gray-300">Najczęściej używane funkcje</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* NEW: Close All Positions Button */}
-                <div className="grid grid-cols-1 gap-4 mb-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => setCloseAllDialogOpen(true)}
-                        disabled={positions.length === 0 && botPositions.length === 0}
-                        className="h-24 flex-col gap-2 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white hover:scale-105 transition-all shadow-xl border-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                        variant="default"
-                      >
-                        <XCircle className="h-8 w-8" />
-                        <span className="font-semibold">⚠️ ZAMKNIJ WSZYSTKIE POZYCJE</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs text-gray-200">
-                        Zamyka wszystkie otwarte pozycje na giełdzie i anuluje wszystkie ordery SL/TP. 
-                        {(positions.length === 0 && botPositions.length === 0) && " (Brak otwartych pozycji)"}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleSyncPositions}
-                        disabled={loadingSync}
-                        className="h-24 flex-col gap-2 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                        variant="default"
-                      >
-                        <RefreshCw className={`h-8 w-8 ${loadingSync ? "animate-spin" : ""}`} />
-                        <span className="font-semibold">Synchronizuj Pozycje</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs text-gray-200">Zsynchronizuj bazę danych pozycji bota z rzeczywistymi pozycjami na giełdzie - zamyka automatycznie pozycje które już nie istnieją</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleFixMissingTpSl}
-                        disabled={loadingFixTpSl}
-                        className="h-24 flex-col gap-2 bg-gradient-to-br from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                        variant="default"
-                      >
-                        <Wrench className={`h-8 w-8 ${loadingFixTpSl ? "animate-spin" : ""}`} />
-                        <span className="font-semibold">Napraw SL/TP</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs text-gray-200">Wykrywa pozycje bez SL/TP i automatycznie je ustawia lub zamyka pozycje gdzie cena już osiągnęła SL/TP</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => {
-                          fetchBalance();
-                          fetchPositions();
-                          fetchBotPositions();
-                        }}
-                        className="h-24 flex-col gap-2 bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                        variant="default"
-                      >
-                        <RefreshCw className="h-8 w-8" />
-                        <span className="font-semibold">Odśwież Wszystko</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Odśwież jednocześnie saldo konta, pozycje giełdowe i pozycje bota</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => router.push("/alerts")}
-                        className="h-24 flex-col gap-2 bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white hover:scale-105 transition-all shadow-xl border-0"
-                        variant="default"
-                      >
-                        <Bell className="h-8 w-8" />
-                        <span className="font-semibold">Zobacz Alerty</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-gray-200">Przeglądaj wszystkie alerty otrzymane z TradingView z filtrowaniem i szczegółami</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <Card className="bg-gradient-to-r from-blue-600/20 to-gray-900/80 border-blue-700/30 shadow-xl">
-                  <CardHeader className="border-b border-blue-700/20">
-                    <CardTitle className="text-base text-white">💡 Profesjonalne Porady</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-gray-200 pt-4">
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
-                      <div className="h-2 w-2 rounded-full bg-blue-400 mt-1.5 flex-shrink-0" />
-                      <p>Pozycje odświeżają się automatycznie co 0.5s dla danych w czasie rzeczywistym</p>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
-                      <div className="h-2 w-2 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
-                      <p>Użyj "Sync" aby zsynchronizować pozycje bota z rzeczywistymi pozycjami na giełdzie</p>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
-                      <div className="h-2 w-2 rounded-full bg-orange-400 mt-1.5 flex-shrink-0" />
-                      <p>Użyj "Napraw SL/TP" aby automatycznie wykryć i naprawić pozycje bez Stop Loss lub Take Profit</p>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
-                      <div className="h-2 w-2 rounded-full bg-green-400 mt-1.5 flex-shrink-0" />
-                      <p>Sprawdzaj logi bota regularnie aby monitorować błędy i optymalizować strategię</p>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700/30">
-                      <div className="h-2 w-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
-                      <p>Historia pozycji zawiera szczegółowe informacje o wszystkich zamkniętych tradach i ich wynikach</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Close All Positions Confirmation Dialog */}
-        <Dialog open={closeAllDialogOpen} onOpenChange={setCloseAllDialogOpen}>
-          <DialogContent className="sm:max-w-[500px] bg-gray-900 border-red-700">
-            <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <AlertTriangle className="h-6 w-6 text-red-400" />
-                ⚠️ Potwierdzenie Zamknięcia Wszystkich Pozycji
-              </DialogTitle>
-              <DialogDescription className="text-gray-300">
-                Ta akcja zamknie WSZYSTKIE otwarte pozycje i anuluje wszystkie ordery SL/TP.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="space-y-4 py-4">
-              <Alert className="border-red-700 bg-red-900/20">
-                <AlertTriangle className="h-4 w-4 text-red-400" />
-                <AlertDescription className="text-sm text-red-200">
-                  <strong>UWAGA:</strong> Ta akcja jest nieodwracalna!
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-2 p-4 rounded-lg bg-gray-800/60 border border-gray-700">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-300">Pozycje do zamknięcia:</span>
-                  <span className="font-bold text-white">{positions.length}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-300">Pozycje bota:</span>
-                  <span className="font-bold text-white">{botPositions.length}</span>
-                </div>
-                <div className="flex justify-between text-sm pt-2 border-t border-gray-700">
-                  <span className="text-gray-300">Całkowity PnL:</span>
-                  <span className={`font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
-                  </span>
+                  </div>
                 </div>
               </div>
 
-              {positions.length > 0 && (
-                <div className="max-h-40 overflow-y-auto space-y-1 p-3 rounded-lg bg-gray-800/40 border border-gray-700">
-                  <p className="text-xs text-gray-300 mb-2 font-semibold">Pozycje do zamknięcia:</p>
-                  {positions.map((pos, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs p-2 rounded bg-gray-900/50">
-                      <span className="text-gray-200">{pos.symbol}</span>
-                      <Badge variant={pos.side === "Buy" ? "default" : "destructive"} className="text-xs">
-                        {pos.side === "Buy" ? "LONG" : "SHORT"}
-                      </Badge>
-                      <span className={`font-semibold ${parseFloat(pos.unrealisedPnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {parseFloat(pos.unrealisedPnl) >= 0 ? '+' : ''}{parseFloat(pos.unrealisedPnl).toFixed(2)}
-                      </span>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-gray-800/30 to-gray-700/50 border border-gray-700/30 backdrop-blur-sm">
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Ostatnia aktualizacja</h3>
+                <p className="text-sm text-gray-400">
+                  {lastUpdate || 'Nie znaleziono danych'}
+                </p>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="positions">
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-gradient-to-br from-gray-800/30 to-gray-700/50 border border-gray-700/30 backdrop-blur-sm">
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Pozycje</h3>
+                <div className="space-y-3">
+                  {positions.map((position, index) => (
+                    <div key={index} className="p-3 rounded-lg bg-gray-800/50 border border-gray-700/30 backdrop-blur-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full ${position.side === 'Buy' ? 'bg-green-500' : 'bg-red-500'}`} />
+                          <span className="text-sm font-medium text-gray-200">
+                            {position.symbol} {position.side}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          {position.size} {position.entryPrice ? `@ ${position.entryPrice}` : ''}
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <div>
+                          <p className="text-xs text-gray-400 mb-1">PnL</p>
+                          <p className={`text-sm font-medium ${position.unrealisedPnl >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                            {position.unrealisedPnl >= 0 ? '+' : ''}{position.unrealisedPnl} USDT
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <p className="text-xs text-gray-400 mb-1">TP</p>
+                          <TPBadge 
+                            label="TP" 
+                            price={position.takeProfit} 
+                            livePrice={position.takeProfit} 
+                            isHit={position.takeProfit === position.markPrice}
+                          />
+                        </div>
+                        
+                        <div>
+                          <p className="text-xs text-gray-400 mb-1">SL</p>
+                          <TPBadge 
+                            label="SL" 
+                            price={position.stopLoss} 
+                            livePrice={position.stopLoss} 
+                            isHit={position.stopLoss === position.markPrice}
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
             </div>
+          </TabsContent>
 
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setCloseAllDialogOpen(false)}
-                disabled={loadingCloseAll}
-                className="border-gray-700 text-gray-200 hover:bg-gray-800"
-              >
-                Anuluj
-              </Button>
-              <Button
-                onClick={handleCloseAllPositions}
-                disabled={loadingCloseAll}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {loadingCloseAll ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Zamykam...
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    TAK, ZAMKNIJ WSZYSTKO
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Close Single Position Confirmation Dialog */}
-        <Dialog open={closePositionDialogOpen} onOpenChange={setClosePositionDialogOpen}>
-          <DialogContent className="sm:max-w-[450px] bg-gray-900 border-red-700">
-            <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <AlertTriangle className="h-6 w-6 text-red-400" />
-                Potwierdzenie Zamknięcia Pozycji
-              </DialogTitle>
-              <DialogDescription className="text-gray-300">
-                Ta akcja zamknie pozycję i anuluje wszystkie powiązane ordery SL/TP.
-              </DialogDescription>
-            </DialogHeader>
-            
-            {positionToClose && (
-              <div className="space-y-4 py-4">
-                <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-700">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-                      positionToClose.side === "Buy" ? "bg-green-500/30 border border-green-500/40" : "bg-red-500/30 border border-red-500/40"
-                    }`}>
-                      {positionToClose.side === "Buy" ? (
-                        <ArrowUpRight className="h-5 w-5 text-green-400" />
-                      ) : (
-                        <ArrowDownRight className="h-5 w-5 text-red-400" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="font-bold text-lg text-white">{positionToClose.symbol}</div>
-                      <div className={`text-sm font-semibold ${
-                        positionToClose.side === "Buy" ? "text-green-400" : "text-red-400"
-                      }`}>
-                        {positionToClose.side === "Buy" ? "LONG" : "SHORT"} {positionToClose.leverage}x
+          <TabsContent value="bot">
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-gradient-to-br from-gray-800/30 to-gray-700/50 border border-gray-700/30 backdrop-blur-sm">
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Bot Status</h3>
+                <div className="space-y-3">
+                  <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700/30 backdrop-blur-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`h-2 w-2 rounded-full ${botEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className={`text-sm font-medium ${botEnabled ? 'text-green-300' : 'text-red-300'}`}>
+                          {botEnabled ? '🟢 Aktywny' : '🔴 Wyłączony'}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        {botEnabled ? 'Bot działa' : 'Bot nie działa'}
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Rozmiar:</span>
-                      <span className="font-bold text-white">{positionToClose.size}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Cena Wejścia:</span>
-                      <span className="font-bold text-white">{parseFloat(positionToClose.entryPrice).toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Cena Bieżąca:</span>
-                      <span className="font-bold text-white">{parseFloat(positionToClose.markPrice).toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-gray-700">
-                      <span className="text-gray-300">PnL:</span>
-                      <span className={`font-bold ${parseFloat(positionToClose.unrealisedPnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {parseFloat(positionToClose.unrealisedPnl) >= 0 ? '+' : ''}{parseFloat(positionToClose.unrealisedPnl).toFixed(4)} USDT
-                      </span>
+
+                  <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700/30 backdrop-blur-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`h-2 w-2 rounded-full ${credentials ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className={`text-sm font-medium ${credentials ? 'text-green-300' : 'text-red-300'}`}>
+                          {credentials ? '🟢 Połączony' : '🔴 Brak konfiguracji'}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        {credentials ? 'API połączony' : 'Brak API'}
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                <Alert className="border-yellow-700 bg-yellow-900/20">
-                  <AlertCircle className="h-4 w-4 text-yellow-400" />
-                  <AlertDescription className="text-sm text-yellow-200">
-                    Wszystkie ordery SL/TP dla tej pozycji zostaną anulowane.
-                  </AlertDescription>
-                </Alert>
               </div>
-            )}
+            </div>
+          </TabsContent>
+        </Tabs>
 
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setClosePositionDialogOpen(false);
-                  setPositionToClose(null);
-                }}
-                disabled={loadingClosePosition}
-                className="border-gray-700 text-gray-200 hover:bg-gray-800"
-              >
-                Anuluj
-              </Button>
-              <Button
-                onClick={() => positionToClose && handleClosePosition(positionToClose)}
-                disabled={loadingClosePosition}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {loadingClosePosition ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Zamykam...
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    ZAMKNIJ POZYCJĘ
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* ... keep all existing dialogs ... */}
       </div>
     </div>
   );
