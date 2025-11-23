@@ -960,6 +960,7 @@ export async function POST(request: Request) {
       let adjustedQuantity: number;
       let actualPositionSize: number;
       let adjustmentReason: string;
+      let symbolInfo: any;
       
       try {
         // Get current market price
@@ -979,13 +980,14 @@ export async function POST(request: Request) {
         adjustedQuantity = validation.adjustedQuantity;
         actualPositionSize = validation.adjustedPositionSize;
         adjustmentReason = validation.reason;
+        symbolInfo = validation.symbolInfo;
         
         // Log symbol info
         console.log(`\n📋 Symbol Requirements (${symbol}):`);
-        console.log(`   Min Quantity: ${validation.symbolInfo.minOrderQty}`);
-        console.log(`   Qty Step: ${validation.symbolInfo.qtyStep}`);
-        console.log(`   Precision: ${validation.symbolInfo.precision} decimals`);
-        console.log(`   Min Notional: $${validation.symbolInfo.minNotional}`);
+        console.log(`   Min Quantity: ${symbolInfo.minOrderQty}`);
+        console.log(`   Qty Step: ${symbolInfo.qtyStep}`);
+        console.log(`   Precision: ${symbolInfo.precision} decimals`);
+        console.log(`   Min Notional: $${symbolInfo.minNotional}`);
         
         // Log adjustment details
         if (actualPositionSize !== positionSizeUsd) {
@@ -993,7 +995,7 @@ export async function POST(request: Request) {
           console.log(`   Original: $${positionSizeUsd} → ${(positionSizeUsd / marketPrice).toFixed(6)} ${symbol}`);
           console.log(`   Adjusted: $${actualPositionSize.toFixed(2)} → ${adjustedQuantity} ${symbol}`);
           console.log(`   Reason: ${adjustmentReason}`);
-          console.log(`   Min Margin Required: $${(validation.symbolInfo.minOrderQty * marketPrice / leverage).toFixed(2)}`);
+          console.log(`   Min Margin Required: $${(symbolInfo.minOrderQty * marketPrice / leverage).toFixed(2)}`);
           
           await logToBot('warning', 'position_size_adjusted', adjustmentReason, {
             symbol,
@@ -1001,7 +1003,7 @@ export async function POST(request: Request) {
             adjustedSize: actualPositionSize,
             originalQuantity: positionSizeUsd / marketPrice,
             adjustedQuantity,
-            minRequired: validation.symbolInfo.minOrderQty,
+            minRequired: symbolInfo.minOrderQty,
             leverage
           }, alert.id);
         } else {
@@ -1039,6 +1041,88 @@ export async function POST(request: Request) {
       
       console.log(`${'='.repeat(50)}\n`);
 
+      // ============================================
+      // 🆕 OPCJA 2: DYNAMICZNA REDUKCJA TP
+      // ============================================
+      
+      console.log(`\n🎯 ========== DYNAMIC TP REDUCTION (OPCJA 2) ==========`);
+      console.log(`   Adjusted Quantity: ${adjustedQuantity}`);
+      console.log(`   Min Order Qty: ${symbolInfo.minOrderQty}`);
+      console.log(`   Configured TP Count: ${botConfig.tpCount || 3}`);
+      
+      // Calculate how many TP levels are possible
+      const minQty = symbolInfo.minOrderQty;
+      const canUse3TP = adjustedQuantity >= (minQty * 3);
+      const canUse2TP = adjustedQuantity >= (minQty * 2);
+      
+      let finalTpCount = 1; // Default to 1 TP
+      let finalTp1Price = tp1Price;
+      let finalTp2Price: number | null = null;
+      let finalTp3Price: number | null = null;
+      
+      if (canUse3TP && (botConfig.tpCount || 3) >= 3) {
+        // Use all 3 TPs with configured percentages
+        finalTpCount = 3;
+        finalTp1Price = tp1Price;
+        finalTp2Price = tp2Price;
+        finalTp3Price = tp3Price;
+        
+        console.log(`   ✅ Quantity allows 3 TP levels`);
+        console.log(`      TP1 (${botConfig.tp1Percent || 50}%): ${finalTp1Price?.toFixed(4)}`);
+        console.log(`      TP2 (${botConfig.tp2Percent || 30}%): ${finalTp2Price?.toFixed(4)}`);
+        console.log(`      TP3 (${botConfig.tp3Percent || 20}%): ${finalTp3Price?.toFixed(4)}`);
+        
+      } else if (canUse2TP && (botConfig.tpCount || 3) >= 2) {
+        // Use 2 TPs: TP1 with configured %, remaining on TP2
+        finalTpCount = 2;
+        finalTp1Price = tp1Price;
+        finalTp2Price = tp2Price;
+        finalTp3Price = null;
+        
+        const tp1Percent = botConfig.tp1Percent || 50;
+        const remainingPercent = 100 - tp1Percent;
+        
+        console.log(`   ⚠️ Quantity too small for 3 TP - reducing to 2 TP`);
+        console.log(`      TP1 (${tp1Percent}%): ${finalTp1Price?.toFixed(4)}`);
+        console.log(`      TP2 (${remainingPercent}%): ${finalTp2Price?.toFixed(4)}`);
+        console.log(`      TP3: DISABLED (insufficient quantity)`);
+        
+        await logToBot('warning', 'tp_reduced_to_2', `Quantity ${adjustedQuantity} < minQty×3 (${minQty * 3}) - using 2 TP instead of 3`, {
+          symbol,
+          adjustedQuantity,
+          minQtyRequired: minQty * 3,
+          originalTpCount: botConfig.tpCount || 3,
+          reducedTpCount: 2
+        }, alert.id);
+        
+      } else {
+        // Use only 1 TP at TP1 level (100% of position)
+        finalTpCount = 1;
+        finalTp1Price = tp1Price;
+        finalTp2Price = null;
+        finalTp3Price = null;
+        
+        console.log(`   ⚠️ Quantity too small for multiple TP - using 1 TP only`);
+        console.log(`      TP1 (100%): ${finalTp1Price?.toFixed(4)}`);
+        console.log(`      TP2: DISABLED (insufficient quantity)`);
+        console.log(`      TP3: DISABLED (insufficient quantity)`);
+        
+        await logToBot('warning', 'tp_reduced_to_1', `Quantity ${adjustedQuantity} < minQty×2 (${minQty * 2}) - using 1 TP instead of ${botConfig.tpCount || 3}`, {
+          symbol,
+          adjustedQuantity,
+          minQtyRequired: minQty * 2,
+          originalTpCount: botConfig.tpCount || 3,
+          reducedTpCount: 1
+        }, alert.id);
+      }
+      
+      console.log(`\n✅ Final TP Configuration:`);
+      console.log(`   Active TP Levels: ${finalTpCount}`);
+      console.log(`   TP1: ${finalTp1Price?.toFixed(4) || 'N/A'}`);
+      console.log(`   TP2: ${finalTp2Price?.toFixed(4) || 'N/A (disabled)'}`);
+      console.log(`   TP3: ${finalTp3Price?.toFixed(4) || 'N/A (disabled)'}`);
+      console.log(`${'='.repeat(50)}\n`);
+
       let orderId: string;
       
       try {
@@ -1049,7 +1133,7 @@ export async function POST(request: Request) {
           leverage,
           apiKey,
           apiSecret,
-          tp1Price || undefined,
+          finalTp1Price || undefined,
           slPrice || undefined
         );
         
@@ -1109,10 +1193,10 @@ export async function POST(request: Request) {
           quantity: adjustedQuantity,
           leverage,
           stopLoss: slPrice || 0,
-          tp1Price,
-          tp2Price,
-          tp3Price,
-          mainTpPrice: tp1Price || 0,
+          tp1Price: finalTp1Price,
+          tp2Price: finalTp2Price,
+          tp3Price: finalTp3Price,
+          mainTpPrice: finalTp1Price || 0,
           tier: data.tier,
           confidenceScore: data.strength || 0.5,
           confirmationCount: 1,
@@ -1147,16 +1231,16 @@ export async function POST(request: Request) {
           details: JSON.stringify({ 
             orderId, 
             exchange: "bybit",
-            tpLevels: botConfig.tpCount,
-            tp1Price,
-            tp2Price,
-            tp3Price
+            tpLevels: finalTpCount,
+            tp1Price: finalTp1Price,
+            tp2Price: finalTp2Price,
+            tp3Price: finalTp3Price
           }),
           success: true,
           createdAt: new Date().toISOString(),
         });
 
-        await logToBot('success', 'position_opened', `Position opened: ${symbol} ${side} ${leverage}x`, {
+        await logToBot('success', 'position_opened', `Position opened: ${symbol} ${side} ${leverage}x with ${finalTpCount} TP level(s)`, {
           positionId: botPosition.id,
           orderId,
           symbol,
@@ -1165,7 +1249,10 @@ export async function POST(request: Request) {
           quantity: adjustedQuantity,
           entryPrice,
           sl: slPrice,
-          tp1: tp1Price
+          tp1: finalTp1Price,
+          tp2: finalTp2Price,
+          tp3: finalTp3Price,
+          tpLevelsUsed: finalTpCount
         }, alert.id, botPosition.id);
 
         // Verify position
@@ -1179,9 +1266,9 @@ export async function POST(request: Request) {
               quantity: adjustedQuantity,
               entryPrice,
               slPrice,
-              tp1Price,
-              tp2Price,
-              tp3Price,
+              tp1Price: finalTp1Price,
+              tp2Price: finalTp2Price,
+              tp3Price: finalTp3Price,
               leverage
             },
             orderId,
@@ -1286,7 +1373,7 @@ export async function POST(request: Request) {
           success: true,
           alert_id: alert.id,
           position_id: botPosition.id,
-          message: `Position opened`,
+          message: `Position opened with ${finalTpCount} TP level(s)`,
           exchange: "bybit",
           position: { 
             symbol, 
@@ -1294,7 +1381,10 @@ export async function POST(request: Request) {
             entry: entryPrice, 
             quantity: adjustedQuantity, 
             sl: slPrice, 
-            tp1: tp1Price
+            tp1: finalTp1Price,
+            tp2: finalTp2Price,
+            tp3: finalTp3Price,
+            tpLevels: finalTpCount
           },
           monitorRan: true
         });
