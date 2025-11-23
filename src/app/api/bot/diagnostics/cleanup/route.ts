@@ -22,13 +22,24 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'error_alerts':
-        // ✅ FIX: Nie usuwaj alertów, tylko oznacz jako cleaned
-        // Problem był że usuwanie alertów jest używane gdzie indziej
-        const alertsResult = await db.delete(alerts)
-          .where(eq(alerts.executionStatus, 'error_rejected'));
-        deletedCount = alertsResult.rowsAffected || 0;
-        details.errorAlerts = deletedCount;
-        console.log(`   Deleted ${deletedCount} error alerts`);
+        // ✅ POPRAWKA: Nie usuwaj alertów (to psuje inne części systemu)
+        // Zamiast tego oznacz je jako "cleaned" - zmień executionStatus
+        try {
+          const updateResult = await db
+            .update(alerts)
+            .set({ 
+              executionStatus: 'cleaned',
+              rejectionReason: 'Cleaned by diagnostics - was error_rejected'
+            })
+            .where(eq(alerts.executionStatus, 'error_rejected'));
+          
+          deletedCount = updateResult.rowsAffected || 0;
+          details.errorAlerts = deletedCount;
+          console.log(`   Marked ${deletedCount} error alerts as cleaned`);
+        } catch (err) {
+          console.error('❌ Failed to clean error alerts:', err);
+          throw new Error(`Failed to clean error alerts: ${err instanceof Error ? err.message : String(err)}`);
+        }
         break;
 
       case 'verifications':
@@ -60,7 +71,13 @@ export async function POST(request: NextRequest) {
         
         const [f, a, v, r, h] = await Promise.all([
           db.delete(diagnosticFailures),
-          db.delete(alerts).where(eq(alerts.executionStatus, 'error_rejected')),
+          // ✅ POPRAWKA: Oznacz jako cleaned zamiast usuwać
+          db.update(alerts)
+            .set({ 
+              executionStatus: 'cleaned',
+              rejectionReason: 'Cleaned by diagnostics - was error_rejected'
+            })
+            .where(eq(alerts.executionStatus, 'error_rejected')),
           db.delete(botDetailedLogs).where(eq(botDetailedLogs.hasDiscrepancy, true)),
           db.delete(tpslRetryAttempts),
           db.delete(symbolLocks).where(isNotNull(symbolLocks.unlockedAt))
@@ -74,7 +91,7 @@ export async function POST(request: NextRequest) {
           historyLocks: h.rowsAffected || 0,
         };
         deletedCount = Object.values(details).reduce((sum, val) => sum + val, 0);
-        console.log(`   Deleted ${deletedCount} total records:`, details);
+        console.log(`   Cleaned ${deletedCount} total records:`, details);
         break;
 
       default:
