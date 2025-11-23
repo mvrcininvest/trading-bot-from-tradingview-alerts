@@ -34,9 +34,21 @@ export async function GET(request: NextRequest) {
       filteredResults = results.filter(r => r.action.actionType === actionType);
     }
 
+    // Calculate position stats (winning/losing/stale)
+    const positionsWithStats = filteredResults
+      .filter(r => r.position !== null)
+      .map(r => r.position!);
+    
+    const winning = positionsWithStats.filter(p => p.unrealisedPnl > 0).length;
+    const losing = positionsWithStats.filter(p => p.unrealisedPnl < 0).length;
+    const stale = positionsWithStats.filter(p => p.unrealisedPnl === 0).length;
+
     // Calculate statistics
     const stats = {
       total: filteredResults.length,
+      winning,
+      losing,
+      stale,
       closures: filteredResults.filter(r => 
         r.action.actionType.includes('emergency') || 
         r.action.actionType.includes('sl_breach') ||
