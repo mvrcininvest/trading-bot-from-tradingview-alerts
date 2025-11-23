@@ -1026,8 +1026,8 @@ export default function BotSettingsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div>
-                    <h3 className="text-xl font-bold text-white">Zabezpieczenie SL/TP</h3>
-                    <p className="text-sm text-gray-200">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
+                    <h3 className="text-xl font-bold text-white">Domyślny Stop Loss (% od Entry)</h3>
+                    <p className="text-sm text-gray-200">Użyj domyślnego SL gdy alert nie zawiera wartości SL</p>
                   </div>
                   {slAsMarginPercent && (
                     <Tooltip>
@@ -1035,7 +1035,7 @@ export default function BotSettingsPage() {
                         <Info className="h-4 w-4 text-orange-400 cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Wykluczenie: "SL jako % Margin" jest włączone, więc domyślny SL z zabezpieczenia jest ignorowany.</p>
+                        <p className="text-xs">Wykluczenie: "SL jako % Margin" jest włączone, więc domyślny SL z tej sekcji jest ignorowany.</p>
                       </TooltipContent>
                     </Tooltip>
                   )}
@@ -1052,8 +1052,8 @@ export default function BotSettingsPage() {
               <Alert className="border-orange-700 bg-orange-900/20">
                 <AlertTriangle className="h-4 w-4 text-orange-400" />
                 <AlertDescription className="text-sm text-orange-200">
-                  <strong>Wykluczenie aktywne:</strong> Zabezpieczenie SL/TP jest wyłączone ponieważ używasz "SL jako % Margin". 
-                  Jeśli chcesz użyć zabezpieczenia, najpierw wyłącz "SL jako % Margin" w sekcji poniżej.
+                  <strong>Wykluczenie aktywne:</strong> Domyślny SL jest wyłączony ponieważ używasz "SL jako % Margin". 
+                  Jeśli chcesz użyć domyślnego SL, najpierw wyłącz "SL jako % Margin" w sekcji poniżej.
                 </AlertDescription>
               </Alert>
             )}
@@ -1065,8 +1065,8 @@ export default function BotSettingsPage() {
                 <Alert className="border-blue-700 bg-blue-900/20">
                   <Info className="h-4 w-4 text-blue-400" />
                   <AlertDescription className="text-sm text-blue-200">
-                    <strong>Priorytet ustawień:</strong> Bot użyje domyślnego SL z tej sekcji gdy alert nie zawiera wartości SL. 
-                    TP będzie brany z sekcji "Strategia Take Profit".
+                    <strong>Kiedy używany:</strong> Gdy alert nie zawiera wartości SL, bot użyje domyślnego SL ustawionego poniżej. 
+                    TP zawsze będzie brany z sekcji "Strategia Take Profit".
                   </AlertDescription>
                 </Alert>
 
@@ -1090,13 +1090,13 @@ export default function BotSettingsPage() {
                   </div>
 
                   <div className="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/30 rounded-lg p-4">
-                    <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład kalkulacji SL jako % od entry:</h5>
+                    <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład kalkulacji:</h5>
                     <div className="space-y-3 text-xs text-gray-200">
                       <div className="p-3 bg-gray-900/60 rounded">
-                        <p className="text-gray-300 mb-2">Jeśli ustawisz <strong className="text-white">{defaultSlRR}%</strong> i entry price to <strong className="text-white">$40,000</strong>:</p>
+                        <p className="text-gray-300 mb-2">Entry price: <strong className="text-white">$40,000</strong> | Domyślny SL: <strong className="text-white">{defaultSlRR}%</strong></p>
                         <div className="space-y-1 ml-3">
-                          <p>• <strong className="text-green-300">LONG:</strong> SL = $40,000 × (1 - {(defaultSlRR/100).toFixed(3)}) = <strong className="text-white">${(40000 * (1 - defaultSlRR/100)).toFixed(2)}</strong> ({defaultSlRR}% poniżej)</p>
-                          <p>• <strong className="text-red-300">SHORT:</strong> SL = $40,000 × (1 + {(defaultSlRR/100).toFixed(3)}) = <strong className="text-white">${(40000 * (1 + defaultSlRR/100)).toFixed(2)}</strong> ({defaultSlRR}% powyżej)</p>
+                          <p>• <strong className="text-green-300">LONG:</strong> SL = $40,000 × (1 - {(defaultSlRR/100).toFixed(3)}) = <strong className="text-white">${(40000 * (1 - defaultSlRR/100)).toFixed(2)}</strong></p>
+                          <p>• <strong className="text-red-300">SHORT:</strong> SL = $40,000 × (1 + {(defaultSlRR/100).toFixed(3)}) = <strong className="text-white">${(40000 * (1 + defaultSlRR/100)).toFixed(2)}</strong></p>
                         </div>
                       </div>
                     </div>
