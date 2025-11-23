@@ -657,13 +657,13 @@ export default function StatystykiPage() {
                       </div>
                       <p className="text-sm text-gray-300 mb-2">Najlepsza Liczba Potwierdzeń</p>
                       <p className="text-2xl font-bold text-blue-100">
-                        {aiStats.winRateByConfirmation?.reduce((best, curr) => 
+                        {aiStats.winRateByConfirmation?.reduce((best: any, curr: any) => 
                           curr.winRate > best.winRate ? curr : best, 
                           aiStats.winRateByConfirmation[0]
                         )?.confirmationCount || 'N/A'}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {aiStats.winRateByConfirmation?.reduce((best, curr) => 
+                        {aiStats.winRateByConfirmation?.reduce((best: any, curr: any) => 
                           curr.winRate > best.winRate ? curr : best, 
                           aiStats.winRateByConfirmation[0]
                         )?.winRate.toFixed(1)}% Win Rate
