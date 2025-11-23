@@ -121,12 +121,19 @@ async function closePositionPartial(
   const timestamp = Date.now().toString();
   const recvWindow = "5000";
   
+  // ✅ FIX: Round quantity to 3 decimal places to prevent signing errors
+  const roundedQuantity = Math.floor(quantity * 1000) / 1000;
+  
+  console.log(`🔧 Quantity adjustment for partial close:`);
+  console.log(`   Original: ${quantity}`);
+  console.log(`   Rounded (3 decimals): ${roundedQuantity}`);
+  
   const payload = {
     category: 'linear',
     symbol: symbol,
     side: side === "BUY" ? "Sell" : "Buy",
     orderType: 'Market',
-    qty: quantity.toString(),
+    qty: roundedQuantity.toFixed(3), // ✅ FIX: Use .toFixed(3) for consistent precision
     positionIdx: 0,
     timeInForce: 'GTC'
   };

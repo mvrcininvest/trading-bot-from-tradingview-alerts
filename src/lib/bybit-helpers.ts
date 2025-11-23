@@ -158,6 +158,14 @@ export async function openBybitPosition(
   console.log(`   Take Profit: ${takeProfit || 'N/A'}`);
   console.log(`   Stop Loss: ${stopLoss || 'N/A'}`);
 
+  // ✅ FIX: Round quantity to 3 decimal places to prevent signing errors
+  // Bybit API has issues with excessive precision (e.g., 0.011894849530153443)
+  const roundedQuantity = Math.floor(quantity * 1000) / 1000;
+  
+  console.log(`\n🔧 Quantity adjustment:`);
+  console.log(`   Original: ${quantity}`);
+  console.log(`   Rounded (3 decimals): ${roundedQuantity}`);
+
   // Step 1: Set leverage
   console.log(`\n📏 Setting leverage to ${leverage}x...`);
   try {
@@ -187,17 +195,17 @@ export async function openBybitPosition(
     symbol: symbol,
     side: side === 'BUY' ? 'Buy' : 'Sell',
     orderType: 'Market',
-    qty: quantity.toString(),
+    qty: roundedQuantity.toFixed(3), // ✅ FIX: Use .toFixed(3) for consistent precision
     timeInForce: 'GTC',
     positionIdx: 0
   };
 
   // Add TP/SL if provided
   if (takeProfit) {
-    orderPayload.takeProfit = takeProfit.toString();
+    orderPayload.takeProfit = takeProfit.toFixed(2); // ✅ FIX: Round prices too
   }
   if (stopLoss) {
-    orderPayload.stopLoss = stopLoss.toString();
+    orderPayload.stopLoss = stopLoss.toFixed(2); // ✅ FIX: Round prices too
   }
 
   console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
@@ -218,14 +226,14 @@ export async function openBybitPosition(
   console.log(`   Order ID: ${orderId}`);
   console.log(`   Symbol: ${symbol}`);
   console.log(`   Side: ${side}`);
-  console.log(`   Quantity: ${quantity}`);
+  console.log(`   Quantity: ${roundedQuantity.toFixed(3)}`);
   console.log(`${'='.repeat(60)}\n`);
 
   return {
     orderId,
     symbol,
     side,
-    quantity
+    quantity: roundedQuantity
   };
 }
 

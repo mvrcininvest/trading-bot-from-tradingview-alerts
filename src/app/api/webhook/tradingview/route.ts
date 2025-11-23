@@ -831,7 +831,19 @@ export async function POST(request: Request) {
 
       // Get current market price to calculate quantity
       const marketPrice = await getCurrentMarketPrice(symbol, apiKey, apiSecret);
-      const quantity = positionSizeUsd / marketPrice;
+      
+      // ✅ FIX: Calculate quantity with proper precision
+      const rawQuantity = positionSizeUsd / marketPrice;
+      
+      // Round to 3 decimal places for safety (Bybit usually accepts 3-4 decimals)
+      // This prevents "minimum limit" errors and signing issues
+      const quantity = Math.floor(rawQuantity * 1000) / 1000;
+      
+      console.log(`💰 Position sizing:`);
+      console.log(`   Market Price: ${marketPrice}`);
+      console.log(`   Position Size: $${positionSizeUsd}`);
+      console.log(`   Raw Quantity: ${rawQuantity}`);
+      console.log(`   Rounded Quantity: ${quantity} (3 decimals)`);
 
       let orderId: string;
       
