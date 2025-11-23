@@ -1227,22 +1227,116 @@ export async function monitorAndManagePositions(silent = true) {
       
       console.log(`   ⏱️ Position age: ${positionAgeSeconds.toFixed(0)}s`);
 
+      // 🚨 CRITICAL SAFETY CHECK: If position is older than 30s and still missing SL/TP, FORCE CLOSE
+      if ((!hasSL || !hasTP) && positionAgeSeconds > 30) {
+        console.error(`   🚨🚨🚨 CRITICAL: Position ${symbol} missing ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} for ${positionAgeSeconds.toFixed(0)}s!`);
+        console.error(`   ⚠️ SAFETY PROTOCOL: This position will be CLOSED if SL/TP cannot be set within 3 attempts`);
+        
+        // Log critical alert to Oko actions
+        await logOkoAction(
+          dbPos.id,
+          'CRITICAL_MISSING_SLTP',
+          'missing_sl_tp_critical',
+          `Position ${symbol} missing ${!hasSL ? 'SL' : ''}${!hasSL && !hasTP ? ' and ' : ''}${!hasTP ? 'TP' : ''} for ${positionAgeSeconds.toFixed(0)}s - attempting emergency repair`,
+          1,
+          {
+            symbol,
+            age: positionAgeSeconds,
+            hasSL,
+            hasTP,
+            entryPrice: dbPos.entryPrice,
+            currentPrice,
+            unrealisedPnl: livePnl
+          }
+        );
+      }
+
       if (!hasSL || !hasTP) {
         console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
         
-        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
-        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
+        // 🆕 INCREASED REPAIR LIMITS: 5 attempts instead of 3 for critical safety
+        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
+        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
         
         if (!shouldAttemptSlRepair && !hasSL) {
-          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached (3/3) - skipping repair`);
+          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached (5/5) - EMERGENCY CLOSE REQUIRED`);
+          
+          // 🚨 SAFETY PROTOCOL: If we can't set SL after 5 attempts, CLOSE THE POSITION
+          if (positionAgeSeconds > 30) {
+            console.error(`   🚨 EMERGENCY: Closing position ${symbol} - cannot set SL after 5 attempts!`);
+            
+            try {
+              const closeOrderId = await closePositionPartial(symbol, side, quantity, apiKey, apiSecret);
+              
+              await db.update(botPositions)
+                .set({
+                  status: "closed",
+                  closeReason: "emergency_no_sl",
+                  closedAt: new Date().toISOString(),
+                })
+                .where(eq(botPositions.id, dbPos.id));
+
+              await savePositionToHistory(dbPos, currentPrice, 'emergency_no_sl', closeOrderId, apiKey, apiSecret);
+              await cleanupOrphanedOrders(symbol, apiKey, apiSecret, 3);
+              
+              emergencyClosed++;
+              okoActions++;
+              
+              await logOkoAction(
+                dbPos.id,
+                'EMERGENCY_CLOSE',
+                'no_sl_emergency_close',
+                `Position closed after failing to set SL (5 attempts failed)`,
+                1,
+                { symbol, attempts: 5, pnl: livePnl }
+              );
+              
+              details.push({
+                symbol,
+                side,
+                action: "emergency_no_sl",
+                reason: "Failed to set SL after 5 attempts - closed for safety"
+              });
+              
+              console.log(`   ✅ Position CLOSED for safety`);
+              continue;
+            } catch (error: any) {
+              console.error(`   ❌ CRITICAL: Failed to close position without SL: ${error.message}`);
+              errors.push(`CRITICAL: ${symbol} - Failed to close position without SL`);
+              
+              // Ban symbol immediately
+              await banSymbol(
+                symbol,
+                `Critical safety failure: Cannot close position without SL`,
+                48 // 48 hour ban
+              );
+            }
+          }
         }
         
         if (!shouldAttemptTpRepair && !hasTP) {
-          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached (3/3) - skipping repair`);
+          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached (5/5) - continuing without TP`);
+          // TP is less critical than SL, so we don't force close
         }
 
         if (!shouldAttemptSlRepair && !shouldAttemptTpRepair) {
-          console.log(`   ⏭️ Skipping position - waiting for cooldown period`);
+          console.log(`   ⏭️ Skipping repair - waiting for cooldown period`);
+          
+          // 🚨 But if position is old and missing SL, this is critical
+          if (!hasSL && positionAgeSeconds > 60) {
+            console.error(`   🚨 CRITICAL: Position ${symbol} has been without SL for ${positionAgeSeconds.toFixed(0)}s!`);
+            console.error(`   ⚠️ This position is at HIGH RISK - manual intervention may be required`);
+            
+            await logOkoAction(
+              dbPos.id,
+              'HIGH_RISK',
+              'no_sl_high_risk',
+              `Position without SL for ${positionAgeSeconds.toFixed(0)}s - all repair attempts exhausted`,
+              1,
+              { symbol, age: positionAgeSeconds, unrealisedPnl: livePnl }
+            );
+          }
+          
           continue;
         }
         
@@ -1253,7 +1347,7 @@ export async function monitorAndManagePositions(silent = true) {
         const slAttempts = retryAttempts.filter(r => r.orderType === 'sl' && !r.success).length;
         const tpAttempts = retryAttempts.filter(r => r.orderType === 'tp1' && !r.success).length;
         
-        console.log(`   📊 Repair attempts so far: SL=${slAttempts}, TP=${tpAttempts}`);
+        console.log(`   📊 Repair attempts so far: SL=${slAttempts}/5, TP=${tpAttempts}/5`);
         
         const slRR = config.defaultSlRR || 1.0;
         const nextTpRR = !dbPos.tp1Hit ? (config.tp1RR || 1.0) 
@@ -1295,6 +1389,17 @@ export async function monitorAndManagePositions(silent = true) {
 
             await savePositionToHistory(dbPos, currentPrice, 'sl_hit', closeOrderId, apiKey, apiSecret);
             await cleanupOrphanedOrders(symbol, apiKey, apiSecret, 3);
+            
+            emergencyClosed++;
+            
+            await logOkoAction(
+              dbPos.id,
+              'SL_HIT',
+              'sl_already_hit',
+              `Position closed - SL already hit before order could be placed`,
+              1,
+              { symbol, slPrice: newSL, currentPrice, pnl: livePnl }
+            );
             
             continue;
           } catch (error: any) {
@@ -1347,8 +1452,9 @@ export async function monitorAndManagePositions(silent = true) {
           }
         }
         
+        // 🚨 PRIORITY: Set SL first (critical for safety)
         if (!hasSL && !slAlreadyHit && shouldAttemptSlRepair) {
-          console.log(`   🔧 Attempting to fix SL (attempt ${slAttempts + 1}/5)...`);
+          console.log(`   🔧 [PRIORITY] Setting SL (attempt ${slAttempts + 1}/5) - CRITICAL FOR SAFETY...`);
           
           const slAlgoId = await setAlgoOrderWithRetry(
             symbol,
@@ -1359,20 +1465,39 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            3
+            5 // 🆕 Increased from 3 to 5 attempts per monitor cycle
           );
           
           if (slAlgoId) {
             console.log(`   ✅ SL FIXED @ ${newSL.toFixed(4)}`);
             slTpFixed++;
             clearRepairAttempts(dbPos.id, 'missing_sl_tp');
+            
+            await logOkoAction(
+              dbPos.id,
+              'SL_REPAIRED',
+              'sl_repair_success',
+              `SL successfully set @ ${newSL.toFixed(4)} after ${slAttempts + 1} attempts`,
+              1,
+              { symbol, slPrice: newSL, attempts: slAttempts + 1 }
+            );
           } else {
-            console.error(`   ⚠️ Failed to set SL - will retry on next monitor cycle`);
+            console.error(`   ⚠️ Failed to set SL (attempt ${slAttempts + 1}/5) - will retry on next monitor cycle`);
+            
+            await logOkoAction(
+              dbPos.id,
+              'SL_REPAIR_FAILED',
+              'sl_repair_attempt_failed',
+              `Failed to set SL (attempt ${slAttempts + 1}/5)`,
+              0,
+              { symbol, slPrice: newSL, attempts: slAttempts + 1 }
+            );
           }
         }
         
+        // Set TP (less critical but still important)
         if (!hasTP && !tpAlreadyHit && shouldAttemptTpRepair) {
-          console.log(`   🔧 Attempting to fix TP (attempt ${tpAttempts + 1}/5)...`);
+          console.log(`   🔧 Setting TP (attempt ${tpAttempts + 1}/5)...`);
           
           const tpAlgoId = await setAlgoOrderWithRetry(
             symbol,
@@ -1383,20 +1508,53 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            3
+            5 // 🆕 Increased from 3 to 5 attempts per monitor cycle
           );
           
           if (tpAlgoId) {
             console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)}`);
             slTpFixed++;
             clearRepairAttempts(dbPos.id, 'missing_sl_tp');
+            
+            await logOkoAction(
+              dbPos.id,
+              'TP_REPAIRED',
+              'tp_repair_success',
+              `TP successfully set @ ${newTP.toFixed(4)} after ${tpAttempts + 1} attempts`,
+              1,
+              { symbol, tpPrice: newTP, attempts: tpAttempts + 1 }
+            );
           } else {
-            console.error(`   ⚠️ Failed to set TP - will retry on next monitor cycle`);
+            console.error(`   ⚠️ Failed to set TP (attempt ${tpAttempts + 1}/5) - will retry on next monitor cycle`);
           }
         }
       } else {
         console.log(`   ✅ Position has both SL and TP - OK`);
         clearRepairAttempts(dbPos.id, 'missing_sl_tp');
+        
+        // 🆕 VERIFY SL/TP are at correct levels (detect if they were modified/removed externally)
+        const expectedSL = dbPos.currentSl || dbPos.stopLoss;
+        const actualSL = parseFloat(bybitPos.stopLoss);
+        const slDifference = Math.abs(actualSL - expectedSL);
+        const slDifferencePercent = (slDifference / expectedSL) * 100;
+        
+        if (slDifferencePercent > 0.1) { // More than 0.1% difference
+          console.warn(`   ⚠️ SL MISMATCH: Expected ${expectedSL.toFixed(4)}, Actual ${actualSL.toFixed(4)} (${slDifferencePercent.toFixed(2)}% diff)`);
+          
+          await logOkoAction(
+            dbPos.id,
+            'SL_MISMATCH',
+            'sl_price_mismatch',
+            `SL price mismatch detected: Expected ${expectedSL.toFixed(4)}, Actual ${actualSL.toFixed(4)}`,
+            1,
+            { symbol, expectedSL, actualSL, difference: slDifference }
+          );
+          
+          // Update DB with actual SL
+          await db.update(botPositions)
+            .set({ currentSl: actualSL })
+            .where(eq(botPositions.id, dbPos.id));
+        }
       }
 
       const symbolLock = activeLocks.find(lock => lock.symbol === symbol);
