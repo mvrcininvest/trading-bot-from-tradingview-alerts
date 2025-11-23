@@ -726,8 +726,8 @@ export default function DashboardPage() {
 
   if (!credentials) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
-        <Card className="max-w-2xl border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm">
+      <div className="min-h-screen flex items-center justify-center p-4 md:p-6">
+        <Card className="max-w-2xl w-full border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-red-300">
               <AlertCircle className="h-6 w-6" />
@@ -774,21 +774,21 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* ✅ NEW: Symbol Locks Alert */}
+      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
+        {/* Symbol Locks Alert */}
         {symbolLocks.length > 0 && (
           <Alert className="border-2 border-red-600/50 bg-gradient-to-r from-red-600/20 to-orange-600/20 backdrop-blur-sm animate-pulse">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <AlertDescription className="text-sm text-red-200">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex-1 w-full">
                   <strong className="text-red-100 text-base">🚫 UWAGA: {symbolLocks.length} zablokowanych symboli!</strong>
                   <div className="mt-2 space-y-2">
                     <p className="font-medium text-gray-100">
                       Bot nie będzie otwierał pozycji na następujących symbolach: {" "}
                       <strong className="text-red-100">{symbolLocks.map(l => l.symbol).join(", ")}</strong>
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
                       {symbolLocks.map(lock => (
                         <div key={lock.id} className="bg-red-900/30 border border-red-700/50 rounded-lg p-2">
                           <div className="flex items-center justify-between">
@@ -810,7 +810,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-                <div className="ml-4 flex flex-col gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     onClick={() => router.push("/diagnostyka")}
                     className="bg-red-600 hover:bg-red-700 text-white"
@@ -834,13 +834,13 @@ export default function DashboardPage() {
           </Alert>
         )}
 
-        {/* ✅ FIXED: Oko Saurona Activity Summary */}
+        {/* Oko Saurona Activity Summary */}
         {okoStats && okoStats.total > 0 && (
           <Alert className="border-2 border-purple-600/50 bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-sm">
             <Eye className="h-5 w-5 text-purple-400" />
             <AlertDescription className="text-sm text-purple-200">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex-1 w-full">
                   <strong className="text-purple-100 text-base">👁️ Oko Saurona: {okoStats.total} akcji w ostatnich {okoTimeRange}h</strong>
                   <div className="mt-2 flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
@@ -853,7 +853,6 @@ export default function DashboardPage() {
                         {okoStats.repairs} napraw
                       </Badge>
                     </div>
-                    {/* ✅ NEW: Show breakdown by type */}
                     {Object.keys(okoStats.byType).length > 0 && (
                       <div className="flex items-center gap-1 flex-wrap text-xs text-purple-200">
                         <span className="opacity-70">Typy:</span>
@@ -868,7 +867,7 @@ export default function DashboardPage() {
                 </div>
                 <Button
                   onClick={() => setActiveTab('oko')}
-                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  className="bg-purple-600 hover:bg-purple-700 text-white w-full sm:w-auto"
                 >
                   <Eye className="mr-2 h-4 w-4" />
                   Zobacz Szczegóły
@@ -879,17 +878,17 @@ export default function DashboardPage() {
         )}
 
         {/* Header with Quick Stats */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
+        <div className="space-y-4 md:space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600/30 to-blue-900/20 border border-blue-500/30">
-                <TrendingUp className="h-8 w-8 text-blue-400" />
+                <TrendingUp className="h-6 w-6 md:h-8 md:w-8 text-blue-400" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                   Dashboard Tradingowy
                 </h1>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                   <p className="text-sm text-gray-200 flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                     BYBIT MAINNET
@@ -923,8 +922,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Quick Stats - Dark Theme */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Quick Stats - Responsive Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all cursor-help">
@@ -1021,33 +1020,38 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Main Content with Tabs - Dark Theme */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Przegląd
+        {/* Main Content with Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 md:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
+              <BarChart3 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Przegląd</span>
+              <span className="sm:hidden">Info</span>
             </TabsTrigger>
-            <TabsTrigger value="positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <Activity className="mr-2 h-4 w-4" />
-              Otwarte Pozycje
+            <TabsTrigger value="positions" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
+              <Activity className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Otwarte Pozycje</span>
+              <span className="sm:hidden">Pozycje</span>
             </TabsTrigger>
-            <TabsTrigger value="oko" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <Eye className="mr-2 h-4 w-4" />
-              Oko Saurona
+            <TabsTrigger value="oko" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
+              <Eye className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Oko Saurona</span>
+              <span className="sm:hidden">Oko</span>
               {okoStats && okoStats.total > 0 && (
-                <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                <Badge variant="destructive" className="ml-1 sm:ml-2 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center text-xs">
                   {okoStats.total}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <Settings className="mr-2 h-4 w-4" />
-              Ustawienia
+            <TabsTrigger value="settings" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm">
+              <Settings className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden lg:inline">Ustawienia</span>
+              <span className="lg:hidden">Config</span>
             </TabsTrigger>
-            <TabsTrigger value="info" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <Zap className="mr-2 h-4 w-4" />
-              Quick Actions
+            <TabsTrigger value="info" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300 text-xs sm:text-sm col-span-2 sm:col-span-1">
+              <Zap className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Quick Actions</span>
+              <span className="sm:hidden">Akcje</span>
             </TabsTrigger>
           </TabsList>
 
