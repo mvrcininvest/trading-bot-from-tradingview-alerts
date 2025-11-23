@@ -69,6 +69,31 @@ interface BotPosition {
   alertData?: string | null;
 }
 
+// ✅ NOWE: Interfejs dla zamkniętych pozycji z historii
+interface HistoryPosition {
+  id: number;
+  positionId: number | null;
+  symbol: string;
+  side: string;
+  tier: string;
+  entryPrice: number;
+  closePrice: number;
+  quantity: number;
+  leverage: number;
+  pnl: number;
+  pnlPercent: number;
+  closeReason: string;
+  tp1Hit: boolean;
+  tp2Hit: boolean;
+  tp3Hit: boolean;
+  confirmationCount: number;
+  openedAt: string;
+  closedAt: string;
+  durationMinutes: number;
+  status?: string;
+  alertData?: string | null;
+}
+
 interface SymbolLock {
   id: number;
   symbol: string;
@@ -84,6 +109,7 @@ export default function DashboardPage() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [botPositions, setBotPositions] = useState<BotPosition[]>([]);
+  const [historyPositions, setHistoryPositions] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPositions, setLoadingPositions] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +150,23 @@ export default function DashboardPage() {
       console.error("Failed to fetch bot positions:", err);
     } finally {
       if (!silent) setLoadingPositions(false);
+    }
+  }, []);
+
+  // ✅ NOWA FUNKCJA: Fetch history positions
+  const fetchHistoryPositions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/bot/history?limit=10");
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.history)) {
+        const closedOnly = data.history.filter((p: HistoryPosition) => 
+          !p.status || p.status !== 'open'
+        );
+        setHistoryPositions(closedOnly);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
     }
   }, []);
 
@@ -209,6 +252,7 @@ export default function DashboardPage() {
       fetchBalance(creds);
       fetchPositions(creds);
       fetchBotPositions();
+      fetchHistoryPositions(); // ✅ DODANO
       fetchBotStatus();
       fetchSymbolLocks();
     }
@@ -221,10 +265,11 @@ export default function DashboardPage() {
       fetchBotPositions(true);
       fetchPositions(credentials, true);
       fetchBotStatus(true);
+      fetchHistoryPositions(); // ✅ DODANO - odświeżaj historię co 2s
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [credentials, fetchBotPositions, fetchPositions]);
+  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
 
   const fetchSymbolLocks = async () => {
     try {
@@ -424,6 +469,45 @@ export default function DashboardPage() {
       toast.error("Nie można odczytać danych alertu");
       console.error("Failed to parse alert data:", error);
     }
+  };
+
+  // ✅ NOWA FUNKCJA: Etykiety powodów zamknięcia
+  const getCloseReasonLabel = (reason: string) => {
+    const closeReasonLabels: Record<string, string> = {
+      sl_hit: "🛑 Stop Loss",
+      tp_main_hit: "🎯 Take Profit (Main)",
+      tp1_hit: "🎯 TP1",
+      tp2_hit: "🎯 TP2", 
+      tp3_hit: "🎯 TP3",
+      manual_close: "👤 Ręczne zamknięcie",
+      manual_close_all: "👤 Ręczne zamknięcie wszystkich",
+      closed_on_exchange: "🔄 Zamknięte na giełdzie",
+      emergency_override: "⚠️ Emergency Override",
+      opposite_direction: "🔄 Odwrócenie kierunku",
+      oko_emergency: "👁️ Oko Saurona - Emergency",
+      oko_sl_breach: "👁️ Oko - SL Breach",
+      oko_account_drawdown: "👁️ Oko - Drawdown",
+      oko_time_based_exit: "👁️ Oko - Time Exit",
+      ghost_position_cleanup: "👻 Ghost Cleanup",
+      emergency_verification_failure: "⚠️ Verification Failure",
+      migrated: "🔄 Migracja",
+    };
+    return closeReasonLabels[reason] || `❓ ${reason}`;
+  };
+
+  // ✅ NOWA FUNKCJA: Format czasu trwania
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) {
+      return `${Math.round(minutes)} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    if (hours < 24) {
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    }
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
   };
 
   // ✅ POPRAWIONE STATYSTYKI - dodane całkowity PnL
@@ -1202,6 +1286,161 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ✅ NOWA SEKCJA: Historia Pozycji (ostatnie 10) */}
+        <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/80 backdrop-blur-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-amber-400" />
+                  Historia Pozycji
+                  <Badge variant="secondary" className="bg-gray-700 text-gray-200">{historyPositions.length}</Badge>
+                </CardTitle>
+                <CardDescription className="text-gray-300">
+                  Ostatnie 10 zamkniętych pozycji
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => router.push("/bot-history")}
+                variant="outline"
+                size="sm"
+                className="border-amber-700 text-amber-300 hover:bg-amber-900/20"
+              >
+                Zobacz Wszystkie
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {historyPositions.length === 0 && (
+              <div className="text-center py-8">
+                <FileText className="h-12 w-12 mx-auto mb-3 text-gray-600" />
+                <p className="text-sm text-gray-300">Brak zamkniętych pozycji</p>
+              </div>
+            )}
+
+            {historyPositions.length > 0 && (
+              <div className="space-y-3">
+                {historyPositions.map((position) => {
+                  const isProfitable = position.pnl > 0;
+
+                  const tierColors: Record<string, string> = {
+                    Platinum: "bg-purple-500/10 text-purple-300 border-purple-500/50",
+                    Premium: "bg-blue-500/10 text-blue-300 border-blue-500/50",
+                    Standard: "bg-green-500/10 text-green-300 border-green-500/50",
+                    Quick: "bg-orange-500/10 text-orange-300 border-orange-500/50",
+                    Emergency: "bg-red-500/10 text-red-300 border-red-500/50",
+                  };
+
+                  return (
+                    <div
+                      key={position.id}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        isProfitable
+                          ? "border-green-500/20 bg-green-500/5"
+                          : "border-red-500/20 bg-red-500/5"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-bold text-lg text-white">{position.symbol}</span>
+                            <Badge variant="outline" className={tierColors[position.tier] || ""}>
+                              {position.tier}
+                            </Badge>
+                            <Badge
+                              variant={position.side === "Buy" ? "default" : "secondary"}
+                              className={
+                                position.side === "Buy"
+                                  ? "bg-green-500"
+                                  : "bg-red-500"
+                              }
+                            >
+                              {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-gray-300 mb-1">
+                            {getCloseReasonLabel(position.closeReason)}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            Zamknięto: {new Date(position.closedAt).toLocaleString("pl-PL")}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div
+                              className={`text-xl font-bold ${
+                                isProfitable ? "text-green-500" : "text-red-500"
+                              }`}
+                            >
+                              {isProfitable ? "+" : ""}
+                              {position.pnl.toFixed(4)} USDT
+                            </div>
+                            <div
+                              className={`text-sm font-semibold ${
+                                isProfitable ? "text-green-500" : "text-red-500"
+                              }`}
+                            >
+                              ({isProfitable ? "+" : ""}
+                              {position.pnlPercent.toFixed(2)}%)
+                            </div>
+                          </div>
+
+                          {/* ✅ PRZYCISK "ZOBACZ ALERT" */}
+                          {position.alertData ? (
+                            <Button
+                              onClick={() => handleShowAlertData(position.alertData)}
+                              size="sm"
+                              variant="outline"
+                              className="h-9 border-blue-600 text-blue-400 hover:bg-blue-600/20"
+                            >
+                              <FileText className="h-4 w-4 mr-1" />
+                              Zobacz Alert
+                            </Button>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-gray-500 border-gray-600">
+                              Brak alertu
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div>
+                          <div className="text-gray-300">Wejście</div>
+                          <div className="font-semibold text-white">{position.entryPrice.toFixed(4)}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-300">Wyjście</div>
+                          <div className="font-semibold text-white">
+                            {position.closePrice && position.closePrice > 0 
+                              ? position.closePrice.toFixed(4) 
+                              : "N/A"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-300">Rozmiar</div>
+                          <div className="font-semibold text-white">
+                            {position.quantity && position.quantity > 0 
+                              ? position.quantity.toFixed(4) 
+                              : "N/A"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-300">Czas</div>
+                          <div className="font-semibold text-white">
+                            {formatDuration(position.durationMinutes)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
                 })}
               </div>
             )}
