@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Download, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CalendarIcon, Download, Loader2, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ExportDialogProps {
   open: boolean;
@@ -23,6 +25,47 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
   const [loading, setLoading] = useState(false);
+  
+  // ✅ Advanced Filters
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [selectedTiers, setSelectedTiers] = useState<string[]>([]);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [selectedSide, setSelectedSide] = useState<string>("all");
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+
+  const tiers = ["Platinum", "Premium", "Standard", "Quick", "Emergency"];
+
+  // Fetch available symbols from history
+  useEffect(() => {
+    const fetchSymbols = async () => {
+      try {
+        const response = await fetch("/api/bot/history?limit=1000");
+        const data = await response.json();
+        if (data.success && data.history) {
+          const symbols = Array.from(new Set(data.history.map((h: any) => h.symbol))).sort();
+          setAvailableSymbols(symbols as string[]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch symbols:", error);
+      }
+    };
+    
+    if (open) {
+      fetchSymbols();
+    }
+  }, [open]);
+
+  const toggleTier = (tier: string) => {
+    setSelectedTiers(prev => 
+      prev.includes(tier) ? prev.filter(t => t !== tier) : [...prev, tier]
+    );
+  };
+
+  const toggleSymbol = (symbol: string) => {
+    setSelectedSymbols(prev => 
+      prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]
+    );
+  };
 
   const handleExport = async () => {
     setLoading(true);
@@ -44,6 +87,19 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         params.append("to", dateTo.toISOString());
       } else {
         params.append("days", period);
+      }
+      
+      // ✅ Add advanced filters
+      if (selectedTiers.length > 0) {
+        params.append("tier", selectedTiers.join(","));
+      }
+      
+      if (selectedSymbols.length > 0) {
+        params.append("symbol", selectedSymbols.join(","));
+      }
+      
+      if (selectedSide !== "all") {
+        params.append("side", selectedSide);
       }
       
       const url = `/api/export/positions?${params.toString()}`;
@@ -103,11 +159,11 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] bg-gray-900 border-gray-800">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gray-900 border-gray-800">
         <DialogHeader>
           <DialogTitle className="text-white">Eksportuj Dane Pozycji</DialogTitle>
           <DialogDescription className="text-gray-400">
-            Wybierz format i zakres dat dla eksportu danych z historii pozycji
+            Wybierz format, zakres dat i filtry dla eksportu danych z historii pozycji
           </DialogDescription>
         </DialogHeader>
 
@@ -224,6 +280,108 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                   </PopoverContent>
                 </Popover>
               </div>
+            </div>
+          )}
+
+          {/* Advanced Filters Toggle */}
+          <div className="border-t border-gray-800 pt-4">
+            <Button
+              variant="ghost"
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="w-full justify-start text-gray-300 hover:text-white hover:bg-gray-800"
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              {showAdvancedFilters ? "Ukryj" : "Pokaż"} zaawansowane filtry
+            </Button>
+          </div>
+
+          {/* Advanced Filters */}
+          {showAdvancedFilters && (
+            <div className="space-y-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+              {/* Tier Filter */}
+              <div className="space-y-3">
+                <Label className="text-white">Filtry Tier</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {tiers.map(tier => (
+                    <div key={tier} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`tier-${tier}`}
+                        checked={selectedTiers.includes(tier)}
+                        onCheckedChange={() => toggleTier(tier)}
+                      />
+                      <Label
+                        htmlFor={`tier-${tier}`}
+                        className="text-gray-300 cursor-pointer text-sm"
+                      >
+                        {tier}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {selectedTiers.length > 0 && (
+                  <p className="text-xs text-blue-400">
+                    Wybrane: {selectedTiers.join(", ")}
+                  </p>
+                )}
+              </div>
+
+              {/* Symbol Filter */}
+              <div className="space-y-3">
+                <Label className="text-white">Filtry Symbol</Label>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                  {availableSymbols.map(symbol => (
+                    <div key={symbol} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`symbol-${symbol}`}
+                        checked={selectedSymbols.includes(symbol)}
+                        onCheckedChange={() => toggleSymbol(symbol)}
+                      />
+                      <Label
+                        htmlFor={`symbol-${symbol}`}
+                        className="text-gray-300 cursor-pointer text-sm"
+                      >
+                        {symbol}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {selectedSymbols.length > 0 && (
+                  <p className="text-xs text-blue-400">
+                    Wybrane: {selectedSymbols.join(", ")}
+                  </p>
+                )}
+              </div>
+
+              {/* Side Filter */}
+              <div className="space-y-3">
+                <Label className="text-white">Filtr Side (kierunek)</Label>
+                <Select value={selectedSide} onValueChange={setSelectedSide}>
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 border-gray-700">
+                    <SelectItem value="all">Wszystkie</SelectItem>
+                    <SelectItem value="Buy">Buy (Long)</SelectItem>
+                    <SelectItem value="Sell">Sell (Short)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Clear Filters */}
+              {(selectedTiers.length > 0 || selectedSymbols.length > 0 || selectedSide !== "all") && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTiers([]);
+                    setSelectedSymbols([]);
+                    setSelectedSide("all");
+                  }}
+                  className="w-full border-gray-700 text-gray-300 hover:bg-gray-700"
+                >
+                  Wyczyść wszystkie filtry
+                </Button>
+              )}
             </div>
           )}
         </div>

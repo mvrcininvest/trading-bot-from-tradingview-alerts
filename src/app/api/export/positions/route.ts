@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { positionHistory } from '@/db/schema';
-import { and, gte, lte, desc } from 'drizzle-orm';
+import { and, gte, lte, desc, eq, inArray } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,45 +13,75 @@ export async function GET(request: NextRequest) {
     const daysParam = searchParams.get('days');
     const allParam = searchParams.get('all');
     
-    // Build date filter
-    let dateFilter: any[] = [];
+    // ✅ NEW: Advanced Filters
+    const tierParam = searchParams.get('tier'); // e.g., "Platinum" or "Platinum,Premium"
+    const symbolParam = searchParams.get('symbol'); // e.g., "BTCUSDT" or "BTCUSDT,ETHUSDT"
+    const sideParam = searchParams.get('side'); // "Buy" or "Sell"
     
+    // Build filter conditions
+    let filters: any[] = [];
+    
+    // Date filter
     if (allParam === 'true') {
-      // No date filter - get all positions
       console.log('[Export] Exporting ALL positions');
     } else if (daysParam) {
-      // Last N days
       const days = parseInt(daysParam);
       const fromDate = new Date();
       fromDate.setDate(fromDate.getDate() - days);
-      dateFilter.push(gte(positionHistory.closedAt, fromDate.toISOString()));
+      filters.push(gte(positionHistory.closedAt, fromDate.toISOString()));
       console.log(`[Export] Exporting last ${days} days`);
     } else if (fromParam && toParam) {
-      // Custom date range
-      dateFilter.push(gte(positionHistory.closedAt, fromParam));
-      dateFilter.push(lte(positionHistory.closedAt, toParam));
+      filters.push(gte(positionHistory.closedAt, fromParam));
+      filters.push(lte(positionHistory.closedAt, toParam));
       console.log(`[Export] Exporting range: ${fromParam} to ${toParam}`);
     } else if (fromParam) {
-      // From date only
-      dateFilter.push(gte(positionHistory.closedAt, fromParam));
+      filters.push(gte(positionHistory.closedAt, fromParam));
       console.log(`[Export] Exporting from: ${fromParam}`);
     } else if (toParam) {
-      // To date only
-      dateFilter.push(lte(positionHistory.closedAt, toParam));
+      filters.push(lte(positionHistory.closedAt, toParam));
       console.log(`[Export] Exporting to: ${toParam}`);
     } else {
-      // Default: last 30 days
       const fromDate = new Date();
       fromDate.setDate(fromDate.getDate() - 30);
-      dateFilter.push(gte(positionHistory.closedAt, fromDate.toISOString()));
+      filters.push(gte(positionHistory.closedAt, fromDate.toISOString()));
       console.log('[Export] Exporting last 30 days (default)');
+    }
+    
+    // ✅ Advanced Filters: Tier
+    if (tierParam) {
+      const tiers = tierParam.split(',').map(t => t.trim());
+      if (tiers.length === 1) {
+        filters.push(eq(positionHistory.tier, tiers[0]));
+        console.log(`[Export] Filtering by tier: ${tiers[0]}`);
+      } else {
+        filters.push(inArray(positionHistory.tier, tiers));
+        console.log(`[Export] Filtering by tiers: ${tiers.join(', ')}`);
+      }
+    }
+    
+    // ✅ Advanced Filters: Symbol
+    if (symbolParam) {
+      const symbols = symbolParam.split(',').map(s => s.trim());
+      if (symbols.length === 1) {
+        filters.push(eq(positionHistory.symbol, symbols[0]));
+        console.log(`[Export] Filtering by symbol: ${symbols[0]}`);
+      } else {
+        filters.push(inArray(positionHistory.symbol, symbols));
+        console.log(`[Export] Filtering by symbols: ${symbols.join(', ')}`);
+      }
+    }
+    
+    // ✅ Advanced Filters: Side
+    if (sideParam && (sideParam === 'Buy' || sideParam === 'Sell')) {
+      filters.push(eq(positionHistory.side, sideParam));
+      console.log(`[Export] Filtering by side: ${sideParam}`);
     }
     
     // Fetch positions
     const positions = await db
       .select()
       .from(positionHistory)
-      .where(dateFilter.length > 0 ? and(...dateFilter) : undefined)
+      .where(filters.length > 0 ? and(...filters) : undefined)
       .orderBy(desc(positionHistory.closedAt));
     
     console.log(`[Export] Found ${positions.length} positions to export`);
@@ -59,7 +89,7 @@ export async function GET(request: NextRequest) {
     if (positions.length === 0) {
       return NextResponse.json({
         success: false,
-        message: 'No positions found for the selected date range',
+        message: 'No positions found for the selected filters',
         count: 0
       });
     }
@@ -265,7 +295,10 @@ export async function GET(request: NextRequest) {
           from: fromParam,
           to: toParam,
           days: daysParam,
-          all: allParam === 'true'
+          all: allParam === 'true',
+          tier: tierParam,
+          symbol: symbolParam,
+          side: sideParam
         },
         positions: enrichedPositions
       });
