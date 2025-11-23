@@ -133,7 +133,7 @@ async function closePositionPartial(
     symbol: symbol,
     side: side === "BUY" ? "Sell" : "Buy",
     orderType: 'Market',
-    qty: roundedQuantity.toFixed(3), // ✅ FIX: Use .toFixed(3) for consistent precision
+    qty: roundedQuantity.toFixed(3),
     positionIdx: 0,
     timeInForce: 'GTC'
   };
@@ -163,6 +163,125 @@ async function closePositionPartial(
   }
 
   return data.result?.orderId || "unknown";
+}
+
+// ============================================
+// 🛡️ RE-VERIFY AND RESTORE SL/TP AFTER PARTIAL CLOSE
+// ============================================
+
+async function restoreSlTpAfterPartialClose(
+  symbol: string,
+  side: string,
+  remainingQty: number,
+  expectedSL: number,
+  expectedTP: number | null,
+  positionId: number,
+  apiKey: string,
+  apiSecret: string
+): Promise<{ slRestored: boolean; tpRestored: boolean }> {
+  console.log(`\n🛡️ CRITICAL: Verifying SL/TP after partial close...`);
+  
+  // Wait for Bybit to process the partial close
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  try {
+    // Get current position state
+    const positions = await getBybitPositions(apiKey, apiSecret);
+    const position = positions.find((p: any) => p.symbol === symbol && parseFloat(p.size) > 0);
+    
+    if (!position) {
+      console.error(`   ❌ Position not found after partial close!`);
+      return { slRestored: false, tpRestored: false };
+    }
+    
+    const actualSL = position.stopLoss && parseFloat(position.stopLoss) > 0 ? parseFloat(position.stopLoss) : null;
+    const actualTP = position.takeProfit && parseFloat(position.takeProfit) > 0 ? parseFloat(position.takeProfit) : null;
+    
+    console.log(`   📊 Current state:`);
+    console.log(`      SL: ${actualSL ? actualSL.toFixed(4) : 'MISSING'} (expected: ${expectedSL.toFixed(4)})`);
+    console.log(`      TP: ${actualTP ? actualTP.toFixed(4) : 'MISSING'} (expected: ${expectedTP ? expectedTP.toFixed(4) : 'N/A'})`);
+    
+    let slRestored = true;
+    let tpRestored = true;
+    
+    // Restore SL if missing or wrong
+    if (!actualSL || Math.abs(actualSL - expectedSL) > 0.0001) {
+      console.error(`   🚨 SL MISSING/WRONG - Restoring immediately...`);
+      
+      const slAlgoId = await setAlgoOrderWithRetry(
+        symbol,
+        side,
+        remainingQty,
+        expectedSL,
+        "sl",
+        positionId,
+        apiKey,
+        apiSecret,
+        5 // More aggressive retry for critical SL restoration
+      );
+      
+      if (slAlgoId) {
+        console.log(`   ✅ SL RESTORED @ ${expectedSL.toFixed(4)}`);
+        
+        await logOkoAction(
+          positionId,
+          'SL_RESTORED',
+          'sl_restored_after_partial_close',
+          `SL restored after partial close @ ${expectedSL.toFixed(4)}`,
+          1,
+          { symbol, slPrice: expectedSL }
+        );
+      } else {
+        console.error(`   ❌ FAILED TO RESTORE SL!`);
+        slRestored = false;
+        
+        await logOkoAction(
+          positionId,
+          'SL_RESTORE_FAILED',
+          'sl_restore_failed_critical',
+          `CRITICAL: Failed to restore SL after partial close - position at risk!`,
+          1,
+          { symbol, expectedSL }
+        );
+      }
+    } else {
+      console.log(`   ✅ SL intact @ ${actualSL.toFixed(4)}`);
+    }
+    
+    // Restore TP if expected and missing/wrong
+    if (expectedTP) {
+      if (!actualTP || Math.abs(actualTP - expectedTP) > 0.0001) {
+        console.error(`   ⚠️ TP MISSING/WRONG - Restoring...`);
+        
+        const tpAlgoId = await setAlgoOrderWithRetry(
+          symbol,
+          side,
+          remainingQty,
+          expectedTP,
+          "tp",
+          positionId,
+          apiKey,
+          apiSecret,
+          3
+        );
+        
+        if (tpAlgoId) {
+          console.log(`   ✅ TP RESTORED @ ${expectedTP.toFixed(4)}`);
+        } else {
+          console.error(`   ⚠️ Failed to restore TP (less critical)`);
+          tpRestored = false;
+        }
+      } else {
+        console.log(`   ✅ TP intact @ ${actualTP.toFixed(4)}`);
+      }
+    }
+    
+    return { slRestored, tpRestored };
+    
+  } catch (error: any) {
+    console.error(`   ❌ Error during SL/TP restoration:`, error.message);
+    return { slRestored: false, tpRestored: false };
+  }
 }
 
 // ============================================
@@ -995,10 +1114,12 @@ export async function monitorAndManagePositions(silent = true) {
             
             console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
             
+            const remainingQty = quantity - closeQty;
+            
             await db.update(botPositions)
               .set({
                 tp1Hit: true,
-                quantity: quantity - closeQty,
+                quantity: remainingQty,
                 lastUpdated: new Date().toISOString(),
               })
               .where(eq(botPositions.id, dbPos.id));
@@ -1011,9 +1132,14 @@ export async function monitorAndManagePositions(silent = true) {
               reason: `Closed ${closePercent}% @ ${currentPrice}`
             });
             
+            // 🛡️ CRITICAL: Determine expected SL after TP1
+            let expectedSL = dbPos.currentSl || dbPos.stopLoss;
+            let expectedTP: number | null = dbPos.tp2Price;
+            
             // Adjust SL based on strategy
             if (config.slManagementAfterTp1 === "breakeven") {
               console.log(`   📈 Moving SL to breakeven @ ${entryPrice}`);
+              expectedSL = entryPrice;
               
               const slAlgos = algoOrders.filter((a: any) => 
                 a.symbol === symbol && a.stopLoss
@@ -1026,7 +1152,7 @@ export async function monitorAndManagePositions(silent = true) {
               await setAlgoOrder(
                 symbol,
                 side,
-                quantity - closeQty,
+                remainingQty,
                 entryPrice,
                 "sl",
                 apiKey,
@@ -1045,6 +1171,7 @@ export async function monitorAndManagePositions(silent = true) {
                 : currentPrice * (1 + trailingDist / 100);
               
               console.log(`   📈 Trailing SL to ${newSl.toFixed(4)}`);
+              expectedSL = newSl;
               
               const slAlgos = algoOrders.filter((a: any) => 
                 a.symbol === symbol && a.stopLoss
@@ -1057,7 +1184,7 @@ export async function monitorAndManagePositions(silent = true) {
               await setAlgoOrder(
                 symbol,
                 side,
-                quantity - closeQty,
+                remainingQty,
                 newSl,
                 "sl",
                 apiKey,
@@ -1069,6 +1196,56 @@ export async function monitorAndManagePositions(silent = true) {
                 .where(eq(botPositions.id, dbPos.id));
               
               slAdjustments++;
+            }
+            
+            // 🛡️🛡️🛡️ CRITICAL FIX: RE-VERIFY AND RESTORE SL/TP AFTER PARTIAL CLOSE
+            console.log(`\n🛡️ CRITICAL SAFETY: Re-verifying SL/TP after TP1 partial close...`);
+            const restoreResult = await restoreSlTpAfterPartialClose(
+              symbol,
+              side,
+              remainingQty,
+              expectedSL,
+              expectedTP,
+              dbPos.id,
+              apiKey,
+              apiSecret
+            );
+            
+            if (!restoreResult.slRestored) {
+              console.error(`   🚨🚨🚨 CRITICAL FAILURE: Could not restore SL after TP1!`);
+              // Emergency close the remaining position
+              try {
+                console.error(`   🚨 EMERGENCY: Closing remaining position - cannot guarantee SL protection!`);
+                const emergencyCloseId = await closePositionPartial(symbol, side, remainingQty, apiKey, apiSecret);
+                
+                await db.update(botPositions)
+                  .set({
+                    status: "closed",
+                    closeReason: "emergency_no_sl_after_tp1",
+                    closedAt: new Date().toISOString(),
+                  })
+                  .where(eq(botPositions.id, dbPos.id));
+
+                await savePositionToHistory(dbPos, currentPrice, 'emergency_no_sl_after_tp1', emergencyCloseId, apiKey, apiSecret);
+                
+                emergencyClosed++;
+                okoActions++;
+                
+                await logOkoAction(
+                  dbPos.id,
+                  'EMERGENCY_CLOSE',
+                  'no_sl_after_tp1_emergency',
+                  `Emergency close after TP1 - could not restore SL protection`,
+                  1,
+                  { symbol, pnl: livePnl }
+                );
+              } catch (emergencyError: any) {
+                console.error(`   ❌❌❌ EMERGENCY CLOSE FAILED: ${emergencyError.message}`);
+                // Ban symbol immediately
+                await banSymbol(symbol, `Critical: Cannot restore SL after TP1`, 48);
+              }
+            } else {
+              console.log(`   ✅✅✅ SL/TP protection restored successfully after TP1`);
             }
             
           } catch (error: any) {
@@ -1103,10 +1280,12 @@ export async function monitorAndManagePositions(silent = true) {
             
             console.log(`   ✅ Closed ${closePercent}% (${closeQty}) @ market - Order: ${orderId}`);
             
+            const remainingQty = currentQty - closeQty;
+            
             await db.update(botPositions)
               .set({
                 tp2Hit: true,
-                quantity: currentQty - closeQty,
+                quantity: remainingQty,
                 lastUpdated: new Date().toISOString(),
               })
               .where(eq(botPositions.id, dbPos.id));
@@ -1118,6 +1297,59 @@ export async function monitorAndManagePositions(silent = true) {
               action: "tp2_hit",
               reason: `Closed ${closePercent}% @ ${currentPrice}`
             });
+            
+            // 🛡️🛡️🛡️ CRITICAL FIX: RE-VERIFY AND RESTORE SL/TP AFTER PARTIAL CLOSE
+            const expectedSL = dbPos.currentSl || dbPos.stopLoss;
+            const expectedTP: number | null = dbPos.tp3Price;
+            
+            console.log(`\n🛡️ CRITICAL SAFETY: Re-verifying SL/TP after TP2 partial close...`);
+            const restoreResult = await restoreSlTpAfterPartialClose(
+              symbol,
+              side,
+              remainingQty,
+              expectedSL,
+              expectedTP,
+              dbPos.id,
+              apiKey,
+              apiSecret
+            );
+            
+            if (!restoreResult.slRestored) {
+              console.error(`   🚨🚨🚨 CRITICAL FAILURE: Could not restore SL after TP2!`);
+              // Emergency close the remaining position
+              try {
+                console.error(`   🚨 EMERGENCY: Closing remaining position - cannot guarantee SL protection!`);
+                const emergencyCloseId = await closePositionPartial(symbol, side, remainingQty, apiKey, apiSecret);
+                
+                await db.update(botPositions)
+                  .set({
+                    status: "closed",
+                    closeReason: "emergency_no_sl_after_tp2",
+                    closedAt: new Date().toISOString(),
+                  })
+                  .where(eq(botPositions.id, dbPos.id));
+
+                await savePositionToHistory(dbPos, currentPrice, 'emergency_no_sl_after_tp2', emergencyCloseId, apiKey, apiSecret);
+                
+                emergencyClosed++;
+                okoActions++;
+                
+                await logOkoAction(
+                  dbPos.id,
+                  'EMERGENCY_CLOSE',
+                  'no_sl_after_tp2_emergency',
+                  `Emergency close after TP2 - could not restore SL protection`,
+                  1,
+                  { symbol, pnl: livePnl }
+                );
+              } catch (emergencyError: any) {
+                console.error(`   ❌❌❌ EMERGENCY CLOSE FAILED: ${emergencyError.message}`);
+                // Ban symbol immediately
+                await banSymbol(symbol, `Critical: Cannot restore SL after TP2`, 48);
+              }
+            } else {
+              console.log(`   ✅✅✅ SL/TP protection restored successfully after TP2`);
+            }
             
           } catch (error: any) {
             const errMsg = `Failed to close TP2 for ${symbol}: ${error.message}`;

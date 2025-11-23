@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '100');
     
-    // ✅ FIX: Use createdAt instead of timestamp (column doesn't exist in schema)
     const okoActions = await db.select()
       .from(botActions)
       .where(
