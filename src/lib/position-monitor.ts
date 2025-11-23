@@ -420,6 +420,7 @@ async function savePositionToHistory(
 ): Promise<void> {
   try {
     console.log(`💾 Saving position ${dbPos.id} to history...`);
+    console.log(`   Close reason: ${closeReason}`);
 
     const openedAt = new Date(dbPos.openedAt);
     const closedAt = new Date();
@@ -457,9 +458,10 @@ async function savePositionToHistory(
 
     const pnlPercent = (realizedPnl / dbPos.initialMargin) * 100;
 
-    // Insert to positionHistory
+    // ✅ CRITICAL: ALWAYS insert to positionHistory
     await db.insert(positionHistory).values({
       positionId: dbPos.id,
+      alertId: dbPos.alertId,
       symbol: dbPos.symbol,
       side: dbPos.side,
       tier: dbPos.tier,
@@ -477,9 +479,10 @@ async function savePositionToHistory(
       openedAt: dbPos.openedAt,
       closedAt: closedAt.toISOString(),
       durationMinutes,
+      alertData: dbPos.alertData,
     });
 
-    console.log(`✅ Position saved to history: PnL ${realizedPnl.toFixed(2)} USD (${pnlPercent.toFixed(2)}%), Duration: ${durationMinutes}min`);
+    console.log(`✅ Position saved to history: PnL ${realizedPnl.toFixed(2)} USD (${pnlPercent.toFixed(2)}%), Duration: ${durationMinutes}min, Reason: ${closeReason}`);
   } catch (error: any) {
     console.error(`❌ Failed to save position to history:`, error.message);
     // Don't throw - position is already closed, just log error
@@ -902,6 +905,7 @@ export async function monitorAndManagePositions(silent = true) {
             })
             .where(eq(botPositions.id, dbPos.id));
 
+          // ✅ CRITICAL: Save to history with specific Oko close reason
           await savePositionToHistory(
             dbPos,
             currentPrice,
@@ -1163,6 +1167,7 @@ export async function monitorAndManagePositions(silent = true) {
               reason: `Closed remaining @ ${currentPrice}`
             });
 
+            // ✅ CRITICAL: Save to history with correct close reason
             await savePositionToHistory(
               dbPos,
               currentPrice,

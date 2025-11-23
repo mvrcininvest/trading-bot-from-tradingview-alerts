@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { alerts } from '@/db/schema';
-import { lt } from 'drizzle-orm';
+import { lt, sql } from 'drizzle-orm';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -12,25 +12,27 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`[Cleanup] Deleting alerts older than ${todayStart}`);
 
-    // Delete all alerts where createdAt < today's start
-    const deletedRecords = await db.delete(alerts)
-      .where(lt(alerts.createdAt, todayStart))
-      .returning();
+    // ✅ FIX: Use execute() instead of returning() for better compatibility
+    const result = await db.delete(alerts)
+      .where(lt(alerts.createdAt, todayStart));
 
-    const deletedCount = deletedRecords.length;
+    // Get count using separate query
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(alerts);
 
-    console.log(`[Cleanup] Successfully deleted ${deletedCount} old alerts`);
+    const totalRemaining = countResult[0]?.count || 0;
+
+    console.log(`[Cleanup] Successfully deleted old alerts. Remaining: ${totalRemaining}`);
 
     return NextResponse.json({
       success: true,
-      deleted: deletedCount,
-      message: `Usunięto ${deletedCount} starych alertów (sprzed dzisiaj)`
+      message: `Wyczyszczono stare alerty (pozostało: ${totalRemaining})`,
+      remainingCount: totalRemaining
     }, { status: 200 });
 
   } catch (error) {
     console.error('[Cleanup] DELETE error:', error);
     
-    // ✅ POPRAWKA: Bezpieczne wydobycie szczegółów błędu
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
     
