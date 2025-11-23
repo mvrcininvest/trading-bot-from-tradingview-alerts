@@ -30,6 +30,11 @@ interface Position {
   takeProfit: string;
   stopLoss: string;
   positionValue: string;
+  liqPrice?: string;
+  positionIM?: string;
+  positionMM?: string;
+  cumRealisedPnl?: string;
+  bustPrice?: string;
 }
 
 interface ExchangeCredentials {
@@ -218,7 +223,12 @@ export default function DashboardPage() {
             unrealisedPnl: p.unrealisedPnl,
             takeProfit: p.takeProfit || "0",
             stopLoss: p.stopLoss || "0",
-            positionValue: p.positionValue
+            positionValue: p.positionValue,
+            liqPrice: p.liqPrice || "0",
+            positionIM: p.positionIM || "0",
+            positionMM: p.positionMM || "0",
+            cumRealisedPnl: p.cumRealisedPnl || "0",
+            bustPrice: p.bustPrice || "0"
           }));
         
         setPositions(openPositions);
@@ -1435,93 +1445,146 @@ export default function DashboardPage() {
                               <div className="text-gray-300">Cena Bieżąca</div>
                               <div className="font-semibold text-gray-100">{parseFloat(position.markPrice).toFixed(4)}</div>
                             </div>
+                            {position.positionIM && parseFloat(position.positionIM) > 0 && (
+                              <div>
+                                <div className="text-gray-300">Initial Margin</div>
+                                <div className="font-semibold text-blue-300">{parseFloat(position.positionIM).toFixed(2)} USDT</div>
+                              </div>
+                            )}
+                            {position.liqPrice && parseFloat(position.liqPrice) > 0 && (
+                              <div>
+                                <div className="text-gray-300">Cena Likwidacji</div>
+                                <div className="font-semibold text-red-300">{parseFloat(position.liqPrice).toFixed(4)}</div>
+                              </div>
+                            )}
+                            {position.positionMM && parseFloat(position.positionMM) > 0 && (
+                              <div>
+                                <div className="text-gray-300">Maintenance Margin</div>
+                                <div className="font-semibold text-yellow-300">{parseFloat(position.positionMM).toFixed(2)} USDT</div>
+                              </div>
+                            )}
+                            {position.cumRealisedPnl && parseFloat(position.cumRealisedPnl) !== 0 && (
+                              <div>
+                                <div className="text-gray-300">Realized PnL</div>
+                                <div className={`font-semibold ${parseFloat(position.cumRealisedPnl) >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                                  {parseFloat(position.cumRealisedPnl) >= 0 ? '+' : ''}{parseFloat(position.cumRealisedPnl).toFixed(2)} USDT
+                                </div>
+                              </div>
+                            )}
                           </div>
 
-                          {/* ✅ IMPROVED: SL/TP Display with better logic */}
+                          {/* ✅ IMPROVED: SL/TP Display with correct colors */}
                           <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-gray-300 font-semibold">Stop Loss:</span>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-gray-300 font-semibold text-xs">Stop Loss:</span>
+                                </div>
                                 {(() => {
-                                  // Priority: liveSlPrice (from exchange) > currentSl (from DB) > stopLoss (original)
                                   const slPrice = botPositionData?.liveSlPrice || botPositionData?.currentSl || parseFloat(position.stopLoss);
                                   const isLive = !!botPositionData?.liveSlPrice;
                                   const hasAnySl = slPrice > 0;
                                   
                                   if (!hasAnySl) {
                                     return (
-                                      <Badge variant="destructive" className="text-xs">
+                                      <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500">
                                         ⚠️ BRAK SL
                                       </Badge>
                                     );
                                   }
                                   
                                   return (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Badge variant="outline" className={
-                                          isLive 
-                                            ? "border-green-700 text-green-300" 
-                                            : "border-yellow-700 text-yellow-300"
-                                        }>
-                                          {slPrice.toFixed(4)} 
-                                          {isLive ? " 🟢" : " 🟡"}
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-lg font-bold text-red-400">
+                                        {slPrice.toFixed(4)}
+                                      </div>
+                                      {isLive ? (
+                                        <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
+                                          🟢 Live
                                         </Badge>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-gray-200">
-                                          {isLive 
-                                            ? "🟢 Aktywny na giełdzie (live)" 
-                                            : "🟡 Z bazy danych - weryfikuj na giełdzie"}
-                                        </p>
-                                      </TooltipContent>
-                                    </Tooltip>
+                                      ) : (
+                                        <Badge className="text-xs bg-yellow-600/30 text-yellow-300 border-yellow-500">
+                                          🟡 Cache
+                                        </Badge>
+                                      )}
+                                    </div>
                                   );
                                 })()}
                               </div>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs flex-wrap">
-                              <span className="text-gray-300 font-semibold">Take Profit:</span>
-                              {(() => {
-                                // Check if we have ANY TP data
-                                const hasAnyTp = botPositionData?.liveTp1Price || 
-                                               botPositionData?.liveTp2Price || 
-                                               botPositionData?.liveTp3Price ||
-                                               botPositionData?.tp1Price ||
-                                               botPositionData?.tp2Price ||
-                                               botPositionData?.tp3Price;
-                                
-                                if (!hasAnyTp) {
+                              
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-gray-300 font-semibold text-xs">Take Profit:</span>
+                                </div>
+                                {(() => {
+                                  const hasAnyTp = botPositionData?.liveTp1Price || 
+                                                 botPositionData?.liveTp2Price || 
+                                                 botPositionData?.liveTp3Price ||
+                                                 botPositionData?.tp1Price ||
+                                                 botPositionData?.tp2Price ||
+                                                 botPositionData?.tp3Price;
+                                  
+                                  if (!hasAnyTp) {
+                                    return (
+                                      <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500">
+                                        ⚠️ BRAK TP
+                                      </Badge>
+                                    );
+                                  }
+                                  
+                                  const tps = [];
+                                  if (botPositionData?.liveTp1Price || botPositionData?.tp1Price) {
+                                    tps.push({
+                                      label: "TP1",
+                                      price: botPositionData?.liveTp1Price || botPositionData?.tp1Price,
+                                      isHit: botPositionData?.tp1Hit || false,
+                                      isLive: !!botPositionData?.liveTp1Price
+                                    });
+                                  }
+                                  if (botPositionData?.liveTp2Price || botPositionData?.tp2Price) {
+                                    tps.push({
+                                      label: "TP2",
+                                      price: botPositionData?.liveTp2Price || botPositionData?.tp2Price,
+                                      isHit: botPositionData?.tp2Hit || false,
+                                      isLive: !!botPositionData?.liveTp2Price
+                                    });
+                                  }
+                                  if (botPositionData?.liveTp3Price || botPositionData?.tp3Price) {
+                                    tps.push({
+                                      label: "TP3",
+                                      price: botPositionData?.liveTp3Price || botPositionData?.tp3Price,
+                                      isHit: botPositionData?.tp3Hit || false,
+                                      isLive: !!botPositionData?.liveTp3Price
+                                    });
+                                  }
+                                  
                                   return (
-                                    <Badge variant="destructive" className="text-xs">
-                                      ⚠️ BRAK TP
-                                    </Badge>
+                                    <div className="flex flex-col gap-1">
+                                      {tps.map(tp => (
+                                        <div key={tp.label} className="flex items-center gap-2">
+                                          <span className="text-xs text-gray-400 w-8">{tp.label}:</span>
+                                          <div className={`text-sm font-bold ${tp.isHit ? 'text-green-400 line-through' : 'text-green-300'}`}>
+                                            {tp.price?.toFixed(4)}
+                                          </div>
+                                          {tp.isHit ? (
+                                            <Badge className="text-xs bg-green-600 text-white border-green-500">
+                                              ✓ Hit
+                                            </Badge>
+                                          ) : tp.isLive ? (
+                                            <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
+                                              🟢
+                                            </Badge>
+                                          ) : (
+                                            <Badge className="text-xs bg-yellow-600/30 text-yellow-300 border-yellow-500">
+                                              🟡
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
                                   );
-                                }
-                                
-                                return (
-                                  <>
-                                    <TPBadge 
-                                      label="TP1"
-                                      price={botPositionData?.tp1Price || null}
-                                      livePrice={botPositionData?.liveTp1Price}
-                                      isHit={botPositionData?.tp1Hit || false}
-                                    />
-                                    <TPBadge 
-                                      label="TP2"
-                                      price={botPositionData?.tp2Price || null}
-                                      livePrice={botPositionData?.liveTp2Price}
-                                      isHit={botPositionData?.tp2Hit || false}
-                                    />
-                                    <TPBadge 
-                                      label="TP3"
-                                      price={botPositionData?.tp3Price || null}
-                                      livePrice={botPositionData?.liveTp3Price}
-                                      isHit={botPositionData?.tp3Hit || false}
-                                    />
-                                  </>
-                                );
-                              })()}
+                                })()}
+                              </div>
                             </div>
                           </div>
 
