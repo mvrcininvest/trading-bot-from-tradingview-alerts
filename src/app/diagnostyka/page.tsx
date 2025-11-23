@@ -382,7 +382,7 @@ export default function DiagnosticsPage() {
 
         {/* Summary Cards */}
         {summary && (
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -455,6 +455,21 @@ export default function DiagnosticsPage() {
                   </div>
                   <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
                     <Clock className="h-6 w-6 text-blue-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/60 backdrop-blur-sm hover:border-red-700 transition-all cursor-pointer" onClick={() => document.querySelector('[value="oko"]')?.click()}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-red-300 mb-1">👁️ Oko Saurona</p>
+                    <p className="text-2xl font-bold text-white">{okoActions.length}</p>
+                    <p className="text-xs text-red-300">akcji</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-red-500/30 border border-red-500/40">
+                    <Eye className="h-6 w-6 text-red-400 animate-pulse" />
                   </div>
                 </div>
               </CardContent>

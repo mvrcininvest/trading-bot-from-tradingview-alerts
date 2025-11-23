@@ -33,7 +33,7 @@ interface HistoryPosition {
   openedAt: string;
   closedAt: string;
   durationMinutes: number;
-  status?: string; // ✅ ADDED: to check for open positions
+  status?: string;
 }
 
 export default function BotHistoryPage() {
@@ -49,13 +49,10 @@ export default function BotHistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // ✅ NAPRAWIONE: API zwraca TYLKO closed positions z positionHistory
       const positionsResponse = await fetch("/api/bot/history");
       const positionsData = await positionsResponse.json();
 
       if (positionsData.success && Array.isArray(positionsData.history)) {
-        // ✅ DODATKOWA OCHRONA: Filtruj tylko pozycje bez status='open'
-        // (positionHistory nie powinno mieć otwartych pozycji, ale dla pewności)
         const closedOnly = positionsData.history.filter((p: HistoryPosition) => 
           !p.status || p.status !== 'open'
         );
@@ -92,26 +89,38 @@ export default function BotHistoryPage() {
   // Get unique close reasons
   const closeReasons = Array.from(new Set(positions.map((p) => p.closeReason)));
 
-  // ✅ POPRAWIONE ETYKIETY - bardziej zrozumiałe
+  // ✅ ULEPSZONE ETYKIETY - dokładniejszy opis
   const closeReasonLabels: Record<string, string> = {
+    // TP/SL Reasons
     sl_hit: "🛑 Stop Loss",
     tp_main_hit: "🎯 Take Profit (Main)",
     tp1_hit: "🎯 TP1",
     tp2_hit: "🎯 TP2", 
     tp3_hit: "🎯 TP3",
+    
+    // Manual Closes
     manual_close: "👤 Ręczne zamknięcie",
-    emergency_override: "⚠️ Alert Emergency Override (lepszy sygnał)",
-    opposite_direction: "🔄 Alert w przeciwnym kierunku (odwrócenie)",
-    auto_sync: "🔄 Zamknięte na giełdzie (auto-sync)",
-    closed_on_exchange: "🔄 Zamknięte na giełdzie (auto-sync)",
+    manual_close_all: "👤 Ręczne zamknięcie wszystkich",
+    closed_on_exchange: "🔄 Zamknięte na giełdzie (ręcznie)",
+    
+    // Alert-driven Closes
+    emergency_override: "⚠️ Emergency Override (silniejszy alert przejął kontrolę)",
+    opposite_direction: "🔄 Odwrócenie kierunku (alert w przeciwną stronę)",
+    
+    // Oko Saurona Actions
     oko_emergency: "👁️ Oko Saurona - Emergency Close",
     oko_sl_breach: "👁️ Oko Saurona - SL Breach Detection",
     oko_account_drawdown: "👁️ Oko Saurona - Account Drawdown Protection",
+    oko_time_based_exit: "👁️ Oko Saurona - Time-Based Exit",
+    
+    // System Actions
     ghost_position_cleanup: "👻 Ghost Position Cleanup",
+    emergency_verification_failure: "⚠️ Emergency Verification Failure",
+    migrated: "🔄 Migracja danych",
   };
 
   const getCloseReasonLabel = (reason: string) => {
-    return closeReasonLabels[reason] || reason;
+    return closeReasonLabels[reason] || `❓ ${reason}`;
   };
 
   // ✅ POPRAWIONY FORMAT CZASU
@@ -121,10 +130,18 @@ export default function BotHistoryPage() {
     }
     const hours = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
-    if (mins > 0) {
-      return `${hours}h ${mins}min`;
+    if (hours < 24) {
+      if (mins > 0) {
+        return `${hours}h ${mins}min`;
+      }
+      return `${hours}h`;
     }
-    return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    if (remainingHours > 0) {
+      return `${days}d ${remainingHours}h`;
+    }
+    return `${days}d`;
   };
 
   return (
@@ -326,8 +343,12 @@ export default function BotHistoryPage() {
                               {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
                             </Badge>
                           </div>
-                          <div className="text-sm text-gray-200">
+                          <div className="text-sm text-gray-300 mb-1">
                             {getCloseReasonLabel(position.closeReason)}
+                          </div>
+                          {/* ✅ NOWE: Czas otwarcia */}
+                          <div className="text-xs text-gray-400">
+                            Otwarto: {new Date(position.openedAt).toLocaleString("pl-PL")}
                           </div>
                         </div>
 
@@ -382,8 +403,7 @@ export default function BotHistoryPage() {
 
                       <div className="flex items-center justify-between text-xs text-gray-300">
                         <span>
-                          {new Date(position.openedAt).toLocaleString("pl-PL")} →{" "}
-                          {new Date(position.closedAt).toLocaleString("pl-PL")}
+                          Zamknięto: {new Date(position.closedAt).toLocaleString("pl-PL")}
                         </span>
                       </div>
                     </div>

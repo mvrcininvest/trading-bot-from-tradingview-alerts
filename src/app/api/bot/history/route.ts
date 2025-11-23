@@ -5,7 +5,7 @@ import { eq, like, desc, and, gte, lte, gt, lt, sql } from 'drizzle-orm';
 import { getBybitPositionsHistory, convertSymbolFromBybit } from '@/lib/bybit-helpers';
 
 // ============================================
-// 🔥 SMART CLOSE REASON CLASSIFIER
+// 🔥 ENHANCED CLOSE REASON CLASSIFIER
 // ============================================
 
 function classifyCloseReason(position: any): string {
@@ -13,30 +13,62 @@ function classifyCloseReason(position: any): string {
   const pnl = typeof position.pnl === 'number' ? position.pnl : parseFloat(position.pnl || "0");
   
   // ============================================
-  // 1️⃣ KEEP SPECIFIC CLOSE REASONS AS-IS
+  // 1️⃣ PRESERVE SPECIFIC CLOSE REASONS AS-IS
   // ============================================
-  const keepAsIs = [
-    'manual_close',           // ✅ User manually closed (any PnL)
-    'emergency_override',     // ✅ Emergency alert override
-    'opposite_direction',     // ✅ Reversed by opposite alert
-    'oko_emergency',          // ✅ Oko emergency close
-    'oko_sl_breach',          // ✅ Oko detected SL breach
-    'oko_account_drawdown',   // ✅ Oko account-level close
-    'ghost_position_cleanup', // ✅ Ghost position cleanup
-    'tp1_hit',                // ✅ Specific TP level
-    'tp2_hit',                // ✅ Specific TP level
-    'tp3_hit',                // ✅ Specific TP level
-    'sl_hit',                 // ✅ Specific SL hit
+  const specificReasons = [
+    'manual_close',              // ✅ User manually closed
+    'manual_close_all',          // ✅ User closed all positions
+    'emergency_override',        // ✅ Emergency alert override (stronger signal took over)
+    'opposite_direction',        // ✅ Reversed by opposite direction alert
+    'oko_emergency',             // ✅ Oko emergency close
+    'oko_sl_breach',             // ✅ Oko detected SL breach
+    'oko_account_drawdown',      // ✅ Oko account-level protection
+    'oko_time_based_exit',       // ✅ Oko time-based exit
+    'ghost_position_cleanup',    // ✅ Ghost position cleanup
+    'tp1_hit',                   // ✅ Specific TP level
+    'tp2_hit',                   // ✅ Specific TP level
+    'tp3_hit',                   // ✅ Specific TP level
+    'tp_main_hit',               // ✅ Main TP hit
+    'sl_hit',                    // ✅ Stop Loss hit
+    'closed_on_exchange',        // ✅ Manually closed on exchange
+    'emergency_verification_failure', // ✅ Emergency close due to verification failure
   ];
   
-  if (closeReason && keepAsIs.includes(closeReason)) {
+  if (closeReason && specificReasons.includes(closeReason)) {
     return closeReason;
   }
 
   // ============================================
-  // 2️⃣ CLASSIFY BY TP FLAGS FIRST (most specific)
+  // 2️⃣ CLASSIFY AUTO_SYNC BASED ON PNL
   // ============================================
-  // If position has TP flags set, use them to determine exact TP level
+  // "auto_sync" means position was closed on exchange but we don't know exact reason
+  // We can infer based on PnL and TP flags
+  
+  if (closeReason === 'auto_sync') {
+    // Check if any TP was hit before sync
+    if (position.tp3Hit) {
+      return 'tp3_hit'; // Most likely TP3 closed the position
+    }
+    if (position.tp2Hit) {
+      return 'tp2_hit'; // Most likely TP2 closed the position
+    }
+    if (position.tp1Hit) {
+      return 'tp1_hit'; // Most likely TP1 closed remaining position
+    }
+    
+    // No TP flags - classify by PnL
+    if (pnl > 0) {
+      return 'tp_main_hit'; // Positive PnL = likely TP
+    } else if (pnl < 0) {
+      return 'sl_hit'; // Negative PnL = likely SL
+    } else {
+      return 'closed_on_exchange'; // PnL = 0 = manually closed on exchange
+    }
+  }
+
+  // ============================================
+  // 3️⃣ CLASSIFY BY TP FLAGS (most specific)
+  // ============================================
   if (pnl > 0) {
     // Check which TP was hit based on flags
     if (position.tp3Hit) return 'tp3_hit';
@@ -48,22 +80,20 @@ function classifyCloseReason(position: any): string {
   }
 
   // ============================================
-  // 3️⃣ CLASSIFY NEGATIVE PNL
+  // 4️⃣ CLASSIFY NEGATIVE PNL
   // ============================================
   if (pnl < 0) {
     return 'sl_hit';
   }
 
   // ============================================
-  // 4️⃣ CLASSIFY PNL = 0
+  // 5️⃣ CLASSIFY PNL = 0 or UNKNOWN
   // ============================================
-  // For "closed_on_exchange" or "auto_sync" with PnL=0:
-  // This likely means the position was closed on exchange (not manually)
-  if (closeReason === 'closed_on_exchange' || closeReason === 'auto_sync') {
-    return 'closed_on_exchange';
+  if (closeReason === 'migrated') {
+    return 'migrated'; // Keep migration reason
   }
   
-  // Unknown reason with PnL=0 → assume auto-sync
+  // Unknown reason with PnL=0 → assume manually closed
   return 'closed_on_exchange';
 }
 
@@ -110,9 +140,6 @@ export async function GET(request: NextRequest) {
     const profitOnly = searchParams.get('profitOnly') === 'true';
     const lossOnly = searchParams.get('lossOnly') === 'true';
     const includeBybitHistory = searchParams.get('includeBybitHistory') === 'true';
-
-    // ✅ NOWE: Status filter (nie używany w historii, ale dostępny)
-    // Frontend nie powinien tego używać - historia to ZAWSZE closed
 
     // Validate side parameter
     if (side && side !== 'Buy' && side !== 'Sell') {
@@ -189,8 +216,6 @@ export async function GET(request: NextRequest) {
     const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
 
     // Get paginated results with conditional where clause
-    // ✅ NOTE: positionHistory table ONLY contains closed positions (status='closed')
-    // No need to filter by status - the table design ensures this
     const history = whereCondition
       ? await db.select()
           .from(positionHistory)

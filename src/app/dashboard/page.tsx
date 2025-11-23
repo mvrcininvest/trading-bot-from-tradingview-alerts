@@ -52,6 +52,11 @@ interface BotPosition {
   confirmationCount: number;
   openedAt: string;
   status: string;
+  // ✅ NOWE: Live SL/TP z Bybit
+  liveSlPrice?: number | null;
+  liveTp1Price?: number | null;
+  liveTp2Price?: number | null;
+  liveTp3Price?: number | null;
 }
 
 interface SymbolLock {

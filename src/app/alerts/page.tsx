@@ -141,10 +141,16 @@ export default function AlertsPage() {
         toast.success(data.message);
         fetchAlerts();
       } else {
-        toast.error("Nie udało się wyczyścić alertów");
+        // ✅ POPRAWKA: Pokazuj szczegółowy komunikat błędu
+        const errorMsg = data.message || data.error || "Nie udało się wyczyścić alertów";
+        toast.error(`❌ ${errorMsg}`);
+        console.error("[Cleanup Error]", data);
       }
     } catch (error) {
-      toast.error("Błąd czyszczenia alertów");
+      // ✅ POPRAWKA: Lepsze komunikaty błędów
+      console.error("[Cleanup Error]", error);
+      const errorMsg = error instanceof Error ? error.message : "Błąd czyszczenia alertów";
+      toast.error(`❌ ${errorMsg}`);
     } finally {
       setCleaningOld(false);
     }
