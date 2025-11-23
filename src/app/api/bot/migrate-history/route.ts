@@ -89,6 +89,7 @@ export async function POST() {
           openedAt: pos.openedAt,
           closedAt: closedAt.toISOString(),
           durationMinutes: durationMinutes,
+          alertData: pos.alertData, // ✅ FIXED: Preserve alert data during migration
         });
 
         console.log(`  ✅ Migrated position ${pos.id} (${pos.symbol} ${pos.side}): PnL ${pnl.toFixed(2)} USDT`);

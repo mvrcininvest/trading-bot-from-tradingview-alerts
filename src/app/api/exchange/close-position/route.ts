@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
         openedAt: position.openedAt,
         closedAt: closedAt.toISOString(),
         durationMinutes,
+        alertData: position.alertData, // ✅ FIXED: Preserve alert data
       });
 
       console.log(`✅ Position saved to history: PnL ${realizedPnl.toFixed(2)} USD (${pnlPercent.toFixed(2)}%)`);
