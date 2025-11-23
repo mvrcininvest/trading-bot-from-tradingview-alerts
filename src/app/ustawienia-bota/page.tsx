@@ -590,6 +590,11 @@ export default function BotSettingsPage() {
                           {slManagementAfterTp1 === "no_change" && "🔒 Bez zmian"}
                         </p>
                       </div>
+                      <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 rounded">
+                        <p className="text-xs text-blue-200">
+                          💡 <strong>Ważne:</strong> TP1 i TP2 zamykają część pozycji (nie zapisują do historii). Dopiero TP3 lub ręczne zamknięcie pozostałej części zapisze pozycję do historii.
+                        </p>
+                      </div>
                     </div>
                   </div>
 

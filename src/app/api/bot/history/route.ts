@@ -10,36 +10,61 @@ import { getBybitPositionsHistory, convertSymbolFromBybit } from '@/lib/bybit-he
 
 function classifyCloseReason(position: any): string {
   const closeReason = position.closeReason;
+  const pnl = typeof position.pnl === 'number' ? position.pnl : parseFloat(position.pnl || "0");
   
-  // ✅ Only keep these specific close reasons (they are already correct)
+  // ============================================
+  // 1️⃣ KEEP SPECIFIC CLOSE REASONS AS-IS
+  // ============================================
   const keepAsIs = [
-    'sl_hit', 'tp_main_hit', 'tp1_hit', 'tp2_hit', 'tp3_hit',
-    'manual_close', 'emergency_override', 'opposite_direction',
-    'oko_emergency', 'oko_sl_breach', 'ghost_position_cleanup'
+    'manual_close',           // ✅ User manually closed (any PnL)
+    'emergency_override',     // ✅ Emergency alert override
+    'opposite_direction',     // ✅ Reversed by opposite alert
+    'oko_emergency',          // ✅ Oko emergency close
+    'oko_sl_breach',          // ✅ Oko detected SL breach
+    'oko_account_drawdown',   // ✅ Oko account-level close
+    'ghost_position_cleanup', // ✅ Ghost position cleanup
+    'tp1_hit',                // ✅ Specific TP level
+    'tp2_hit',                // ✅ Specific TP level
+    'tp3_hit',                // ✅ Specific TP level
+    'sl_hit',                 // ✅ Specific SL hit
   ];
   
   if (closeReason && keepAsIs.includes(closeReason)) {
     return closeReason;
   }
 
-  // 🔥 For "closed_on_exchange", "auto_sync", "unknown", or null → classify by PnL
-  const pnl = typeof position.pnl === 'number' ? position.pnl : parseFloat(position.pnl || "0");
-
-  // If PnL is positive → must be TP hit
+  // ============================================
+  // 2️⃣ CLASSIFY BY TP FLAGS FIRST (most specific)
+  // ============================================
+  // If position has TP flags set, use them to determine exact TP level
   if (pnl > 0) {
+    // Check which TP was hit based on flags
     if (position.tp3Hit) return 'tp3_hit';
     if (position.tp2Hit) return 'tp2_hit';
     if (position.tp1Hit) return 'tp1_hit';
+    
+    // No TP flags but positive PnL → generic TP
     return 'tp_main_hit';
   }
 
-  // If PnL is negative → must be SL hit
+  // ============================================
+  // 3️⃣ CLASSIFY NEGATIVE PNL
+  // ============================================
   if (pnl < 0) {
     return 'sl_hit';
   }
 
-  // If PnL is exactly 0 → probably manual close
-  return 'manual_close';
+  // ============================================
+  // 4️⃣ CLASSIFY PNL = 0
+  // ============================================
+  // For "closed_on_exchange" or "auto_sync" with PnL=0:
+  // This likely means the position was closed on exchange (not manually)
+  if (closeReason === 'closed_on_exchange' || closeReason === 'auto_sync') {
+    return 'closed_on_exchange';
+  }
+  
+  // Unknown reason with PnL=0 → assume auto-sync
+  return 'closed_on_exchange';
 }
 
 export async function GET(request: NextRequest) {
