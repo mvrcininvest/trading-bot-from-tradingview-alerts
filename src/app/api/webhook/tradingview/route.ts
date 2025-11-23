@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { alerts, botSettings, botPositions, botActions, botLogs, symbolLocks, botDetailedLogs, diagnosticFailures } from '@/db/schema';
+import { alerts, botSettings, botPositions, botActions, botLogs, symbolLocks, botDetailedLogs, diagnosticFailures, positionHistory } from '@/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { monitorAndManagePositions } from '@/lib/position-monitor';
 import { classifyError } from '@/lib/error-classifier';
@@ -15,7 +15,8 @@ import {
   closeBybitPosition,
   getCurrentMarketPrice,
   getBybitPositions,
-  modifyBybitTpSl
+  modifyBybitTpSl,
+  getRealizedPnlFromBybit
 } from '@/lib/bybit-helpers';
 import { validateAndAdjustPositionSize } from '@/lib/bybit-symbol-info';
 
@@ -634,6 +635,9 @@ export async function POST(request: Request) {
       console.log(`🔄 Reversing position on ${data.symbol}`);
       
       try {
+        // Get current market price before closing
+        const currentPrice = await getCurrentMarketPrice(data.symbol, apiKey, apiSecret);
+        
         const closeOrderId = await closeBybitPosition(
           data.symbol,
           conflictAnalysis.existingPosition.side,
@@ -641,11 +645,60 @@ export async function POST(request: Request) {
           apiSecret
         );
 
+        // Calculate PnL
+        const isLong = conflictAnalysis.existingPosition.side === 'BUY';
+        const priceDiff = isLong 
+          ? (currentPrice - conflictAnalysis.existingPosition.entryPrice) 
+          : (conflictAnalysis.existingPosition.entryPrice - currentPrice);
+        
+        let realizedPnl = priceDiff * conflictAnalysis.existingPosition.quantity;
+
+        // Try to get realized PnL from Bybit
+        const pnlData = await getRealizedPnlFromBybit(closeOrderId, data.symbol, apiKey, apiSecret);
+        if (pnlData) {
+          realizedPnl = pnlData.realizedPnl;
+          console.log(`✅ Got realized PnL from Bybit: ${realizedPnl.toFixed(2)} USD`);
+        } else {
+          console.log(`⚠️ Using estimated PnL: ${realizedPnl.toFixed(2)} USD`);
+        }
+
+        const pnlPercent = (realizedPnl / conflictAnalysis.existingPosition.initialMargin) * 100;
+
+        // Calculate duration
+        const openedAt = new Date(conflictAnalysis.existingPosition.openedAt);
+        const closedAt = new Date();
+        const durationMinutes = Math.floor((closedAt.getTime() - openedAt.getTime()) / 60000);
+
+        // Update position status in DB
         await db.update(botPositions).set({ 
           status: "closed",
-          closeReason: "market_reversal",
-          closedAt: new Date().toISOString(),
+          closeReason: "opposite_direction",
+          closedAt: closedAt.toISOString(),
         }).where(eq(botPositions.id, conflictAnalysis.existingPosition.id));
+
+        // ✅ CRITICAL FIX: Save to positionHistory
+        await db.insert(positionHistory).values({
+          positionId: conflictAnalysis.existingPosition.id,
+          symbol: conflictAnalysis.existingPosition.symbol,
+          side: conflictAnalysis.existingPosition.side,
+          tier: conflictAnalysis.existingPosition.tier,
+          entryPrice: conflictAnalysis.existingPosition.entryPrice,
+          closePrice: currentPrice,
+          quantity: conflictAnalysis.existingPosition.quantity,
+          leverage: conflictAnalysis.existingPosition.leverage,
+          pnl: realizedPnl,
+          pnlPercent,
+          closeReason: "opposite_direction",
+          tp1Hit: conflictAnalysis.existingPosition.tp1Hit || false,
+          tp2Hit: conflictAnalysis.existingPosition.tp2Hit || false,
+          tp3Hit: conflictAnalysis.existingPosition.tp3Hit || false,
+          confirmationCount: conflictAnalysis.existingPosition.confirmationCount || 1,
+          openedAt: conflictAnalysis.existingPosition.openedAt,
+          closedAt: closedAt.toISOString(),
+          durationMinutes,
+        });
+
+        console.log(`✅ Position saved to history: PnL ${realizedPnl.toFixed(2)} USD (${pnlPercent.toFixed(2)}%), Duration: ${durationMinutes}min`);
 
         await db.insert(botActions).values({
           actionType: "position_closed",
@@ -653,16 +706,18 @@ export async function POST(request: Request) {
           side: conflictAnalysis.existingPosition.side,
           tier: conflictAnalysis.existingPosition.tier,
           positionId: conflictAnalysis.existingPosition.id,
-          reason: "market_reversal",
-          details: JSON.stringify({ closeOrderId }),
+          reason: "opposite_direction",
+          details: JSON.stringify({ closeOrderId, pnl: realizedPnl, pnlPercent, durationMinutes }),
           success: true,
           createdAt: new Date().toISOString(),
         });
 
         console.log("✅ Opposite position closed, proceeding with new trade");
-        await logToBot('success', 'reversal_complete', `Position reversed: ${data.symbol}`, {
+        await logToBot('success', 'reversal_complete', `Position reversed: ${data.symbol} (PnL: ${realizedPnl.toFixed(2)} USD)`, {
           closedPositionId: conflictAnalysis.existingPosition.id,
-          closeOrderId
+          closeOrderId,
+          pnl: realizedPnl,
+          pnlPercent
         }, alert.id);
         
       } catch (error: any) {
