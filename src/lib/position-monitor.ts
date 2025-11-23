@@ -251,14 +251,13 @@ async function setAlgoOrder(
   const timestamp = Date.now().toString();
   const recvWindow = "5000";
   
+  // ✅ CRITICAL FIX: Use /v5/position/trading-stop endpoint instead of /v5/order/create
+  // This endpoint is specifically designed for setting SL/TP on positions
+  // and returns success without needing an orderId
   const payload: any = {
     category: 'linear',
     symbol: symbol,
-    side: side === "BUY" ? "Sell" : "Buy",
-    orderType: 'Market',
-    qty: quantity.toString(),
-    positionIdx: 0,
-    timeInForce: 'GTC'
+    positionIdx: 0
   };
 
   if (orderType === "sl") {
@@ -282,7 +281,7 @@ async function setAlgoOrder(
   console.error(`🔧 [SET_ALGO] Setting ${orderType.toUpperCase()} for ${symbol}`);
   console.error(`   Payload: ${JSON.stringify(payload, null, 2)}`);
 
-  const response = await fetch(`https://api.bybit.com/v5/order/create`, {
+  const response = await fetch(`https://api.bybit.com/v5/position/trading-stop`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -300,16 +299,13 @@ async function setAlgoOrder(
     return null;
   }
 
-  const algoId = data.result?.orderId || null;
-  
-  if (!algoId) {
-    console.error(`❌ [SET_ALGO] Success code but no orderId returned!`);
-    console.error(`   Result object: ${JSON.stringify(data.result, null, 2)}`);
-  } else {
-    console.error(`✅ [SET_ALGO] Successfully set ${orderType.toUpperCase()} - Order ID: ${algoId}`);
-  }
+  // ✅ SUCCESS: /v5/position/trading-stop doesn't return orderId, but operation succeeded
+  // Return a synthetic identifier to indicate success
+  const syntheticId = `${symbol}-${orderType}-${Date.now()}`;
+  console.error(`✅ [SET_ALGO] Successfully set ${orderType.toUpperCase()} @ ${triggerPrice.toFixed(4)}`);
+  console.error(`   Synthetic ID: ${syntheticId}`);
 
-  return algoId;
+  return syntheticId;
 }
 
 // ============================================
@@ -333,35 +329,9 @@ async function setAlgoOrderWithRetry(
     try {
       console.log(`🔧 [RETRY ${attempt}/${maxRetries}] Setting ${orderType.toUpperCase()} @ ${triggerPrice.toFixed(4)}...`);
 
-      // ✅ CRITICAL FIX: Cancel ALL existing orders of this type BEFORE setting new one
-      // This prevents duplicate TP/SL orders from accumulating
-      if (attempt === 1) {
-        console.log(`🧹 [CLEANUP] Cancelling all existing ${orderType.toUpperCase()} orders for ${symbol}...`);
-        const existingOrders = await getAlgoOrders(apiKey, apiSecret);
-        const ordersToCancel = existingOrders.filter((order: any) => {
-          const matchesSymbol = order.symbol === symbol;
-          const matchesType = orderType === 'sl' ? !!order.stopLoss : !!order.takeProfit;
-          return matchesSymbol && matchesType;
-        });
-        
-        console.log(`   Found ${ordersToCancel.length} existing ${orderType.toUpperCase()} orders to cancel`);
-        
-        for (const order of ordersToCancel) {
-          const cancelled = await cancelAlgoOrderWithRetry(
-            order.orderId,
-            symbol,
-            apiKey,
-            apiSecret,
-            2
-          );
-          
-          if (cancelled) {
-            console.log(`   ✅ Cancelled old ${orderType.toUpperCase()} order: ${order.orderId}`);
-          } else {
-            console.warn(`   ⚠️ Failed to cancel ${order.orderId}, continuing anyway...`);
-          }
-        }
-      }
+      // ✅ REMOVED: No need to cancel old orders anymore
+      // When using /v5/position/trading-stop, we're updating SL/TP directly on the position
+      // Previous values are automatically overwritten
 
       const algoId = await setAlgoOrder(
         symbol,
@@ -1240,11 +1210,12 @@ export async function monitorAndManagePositions(silent = true) {
       // 🛡️ CHECK AND FIX MISSING SL/TP WITH LIMITER
       // ============================================
 
-      const positionAlgos = algoOrders.filter((a: any) => a.symbol === symbol);
-      const hasSL = positionAlgos.some((a: any) => a.stopLoss && a.stopLoss !== '' && parseFloat(a.stopLoss) > 0);
-      const hasTP = positionAlgos.some((a: any) => a.takeProfit && a.takeProfit !== '' && parseFloat(a.takeProfit) > 0);
+      // ✅ CRITICAL FIX: Check SL/TP from position data, not from algo orders
+      // Because we use /v5/position/trading-stop, SL/TP are stored on position, not as separate orders
+      const hasSL = bybitPos.stopLoss && bybitPos.stopLoss !== '' && parseFloat(bybitPos.stopLoss) > 0;
+      const hasTP = bybitPos.takeProfit && bybitPos.takeProfit !== '' && parseFloat(bybitPos.takeProfit) > 0;
 
-      console.log(`   🔍 Algo Orders: SL=${hasSL}, TP=${hasTP} (Total: ${positionAlgos.length})`);
+      console.log(`   🔍 Position SL/TP: SL=${hasSL ? bybitPos.stopLoss : 'MISSING'}, TP=${hasTP ? bybitPos.takeProfit : 'MISSING'}`);
 
       const positionAge = Date.now() - new Date(dbPos.openedAt).getTime();
       const positionAgeSeconds = positionAge / 1000;
