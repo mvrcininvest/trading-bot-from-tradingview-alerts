@@ -94,33 +94,34 @@ export async function checkMissingSlTp(
   try {
     console.log(`   🔍 [OKO] Missing SL/TP Check (synchronized with Bybit)...`);
 
-    // Get real algo orders from Bybit
-    const algoOrders = await getBybitAlgoOrders(credentials.apiKey, credentials.apiSecret);
+    // ✅ FIX: Get SL/TP directly from position data (not from algo orders)
+    // In Bybit V5, TP/SL are stored in position object, not as separate orders
+    const bybitPositions = await getBybitPositions(credentials.apiKey, credentials.apiSecret);
     const symbol = convertSymbolToBybit(position.symbol);
     
-    // Filter orders for this symbol
-    const positionAlgos = algoOrders.filter((a: any) => a.symbol === symbol);
+    // Find the actual position on Bybit
+    const bybitPos = bybitPositions.find((p: any) => p.symbol === symbol);
     
-    console.log(`   📊 Found ${positionAlgos.length} algo orders for ${symbol}`);
+    if (!bybitPos) {
+      console.log(`   ⚠️ Position not found on Bybit for ${symbol}`);
+      return {
+        shouldClose: false,
+        shouldFix: false,
+        action: 'none',
+        reason: 'Position not found on exchange',
+        checkCount: 0,
+      };
+    }
     
-    // Check for valid SL/TP
-    const hasRealSL = positionAlgos.some((a: any) => {
-      const valid = a.stopLoss && a.stopLoss !== '' && parseFloat(a.stopLoss) > 0;
-      if (a.stopLoss) {
-        console.log(`      SL order: ${a.stopLoss} (valid: ${valid})`);
-      }
-      return valid;
-    });
-    
-    const hasRealTP = positionAlgos.some((a: any) => {
-      const valid = a.takeProfit && a.takeProfit !== '' && parseFloat(a.takeProfit) > 0;
-      if (a.takeProfit) {
-        console.log(`      TP order: ${a.takeProfit} (valid: ${valid})`);
-      }
-      return valid;
-    });
+    // Check TP/SL from position data
+    const hasRealSL = bybitPos.stopLoss && bybitPos.stopLoss !== '' && parseFloat(bybitPos.stopLoss) > 0;
+    const hasRealTP = bybitPos.takeProfit && bybitPos.takeProfit !== '' && parseFloat(bybitPos.takeProfit) > 0;
 
-    console.log(`   📊 Bybit Sync: SL=${hasRealSL}, TP=${hasRealTP} (Total algos: ${positionAlgos.length})`);
+    console.log(`   📊 Bybit Position Data:`);
+    console.log(`      Symbol: ${bybitPos.symbol}`);
+    console.log(`      Stop Loss: ${bybitPos.stopLoss || 'NONE'} (valid: ${hasRealSL})`);
+    console.log(`      Take Profit: ${bybitPos.takeProfit || 'NONE'} (valid: ${hasRealTP})`);
+    console.log(`      Size: ${bybitPos.size}`);
 
     if (!hasRealSL || !hasRealTP) {
       const missing = [];
@@ -136,12 +137,9 @@ export async function checkMissingSlTp(
         metadata: {
           missingSL: !hasRealSL,
           missingTP: !hasRealTP,
-          currentAlgoCount: positionAlgos.length,
-          algoOrders: positionAlgos.map((a: any) => ({
-            orderId: a.orderId,
-            stopLoss: a.stopLoss || 'none',
-            takeProfit: a.takeProfit || 'none',
-          })),
+          currentSL: bybitPos.stopLoss || 'none',
+          currentTP: bybitPos.takeProfit || 'none',
+          positionSize: bybitPos.size,
         }
       };
     }
