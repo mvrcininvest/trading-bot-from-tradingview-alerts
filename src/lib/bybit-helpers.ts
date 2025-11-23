@@ -134,7 +134,7 @@ export async function getCurrentMarketPrice(
 }
 
 // ============================================
-// 📈 OPEN BYBIT POSITION
+// 📈 OPEN BYBIT POSITION (WITH SL/TP GUARANTEE)
 // ============================================
 
 export async function openBybitPosition(
@@ -241,8 +241,9 @@ export async function openBybitPosition(
     console.warn(`⚠️ Leverage setting: ${error.message}`);
   }
 
-  // Step 2: Place order with TP/SL
-  console.log(`\n📈 Placing market order...`);
+  // Step 2: Place order WITHOUT TP/SL (we'll set them separately for guarantee)
+  console.log(`\n📈 Placing market order (without TP/SL in payload)...`);
+  console.log(`   ⚠️ NOTE: TP/SL will be set SEPARATELY to guarantee they are applied`);
   
   const orderPayload: any = {
     category: 'linear',
@@ -254,15 +255,11 @@ export async function openBybitPosition(
     positionIdx: 0
   };
 
-  // Add TP/SL if provided
-  if (takeProfit) {
-    orderPayload.takeProfit = takeProfit.toFixed(2);
-  }
-  if (stopLoss) {
-    orderPayload.stopLoss = stopLoss.toFixed(2);
-  }
+  // 🚨 CRITICAL: DO NOT add TP/SL to order payload
+  // Bybit can silently ignore them if invalid, leaving position without protection
+  // We'll set them separately after position is open
 
-  console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
+  console.log(`📤 Order payload (NO TP/SL):`, JSON.stringify(orderPayload, null, 2));
 
   const data = await makeBybitRequest(
     'POST',
@@ -275,12 +272,163 @@ export async function openBybitPosition(
 
   const orderId = data.result?.orderId || 'unknown';
 
+  console.log(`\n✅ ORDER PLACED - Order ID: ${orderId}`);
+
+  // 🚨 CRITICAL: IMMEDIATE VERIFICATION & SL/TP SETUP
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`✅ POSITION OPENED SUCCESSFULLY`);
+  console.log(`🛡️ CRITICAL SAFETY CHECK - SETTING SL/TP`);
+  console.log(`${'='.repeat(60)}`);
+
+  // Wait for position to open (Bybit needs ~500ms)
+  console.log(`⏳ Waiting 1s for position to settle...`);
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  let slTpSetSuccess = false;
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`\n🔄 Attempt ${attempt}/${maxAttempts} to set SL/TP...`);
+
+    try {
+      // Get actual position to check entry price
+      const positions = await getBybitPositions(apiKey, apiSecret, symbol);
+      const actualPosition = positions.find((p: any) => 
+        p.symbol === symbol && parseFloat(p.size) > 0
+      );
+
+      if (!actualPosition) {
+        console.error(`   ❌ Position not found on exchange!`);
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        throw new Error('Position not found on exchange after opening');
+      }
+
+      const actualEntry = parseFloat(actualPosition.avgPrice);
+      const actualSide = actualPosition.side;
+
+      console.log(`   📊 Actual position data:`);
+      console.log(`      Entry: ${actualEntry}`);
+      console.log(`      Side: ${actualSide}`);
+      console.log(`      Size: ${actualPosition.size}`);
+
+      // Recalculate TP/SL based on ACTUAL entry (not estimated)
+      let finalTP = takeProfit;
+      let finalSL = stopLoss;
+
+      if (finalTP) {
+        // Ensure TP is in correct direction relative to ACTUAL entry
+        if (actualSide === 'Buy' && finalTP <= actualEntry) {
+          console.warn(`      ⚠️ TP too close/wrong - adjusting to 0.5% above actual entry`);
+          finalTP = actualEntry * 1.005;
+        } else if (actualSide === 'Sell' && finalTP >= actualEntry) {
+          console.warn(`      ⚠️ TP too close/wrong - adjusting to 0.5% below actual entry`);
+          finalTP = actualEntry * 0.995;
+        }
+      }
+
+      if (finalSL) {
+        // Ensure SL is in correct direction relative to ACTUAL entry
+        if (actualSide === 'Buy' && finalSL >= actualEntry) {
+          console.warn(`      ⚠️ SL too close/wrong - adjusting to 1% below actual entry`);
+          finalSL = actualEntry * 0.99;
+        } else if (actualSide === 'Sell' && finalSL <= actualEntry) {
+          console.warn(`      ⚠️ SL too close/wrong - adjusting to 1% above actual entry`);
+          finalSL = actualEntry * 1.01;
+        }
+      }
+
+      console.log(`   🎯 Final TP/SL (adjusted to actual entry):`);
+      console.log(`      TP: ${finalTP?.toFixed(4) || 'N/A'}`);
+      console.log(`      SL: ${finalSL?.toFixed(4) || 'N/A'}`);
+
+      // Set TP/SL using trading-stop endpoint
+      const tpslPayload: any = {
+        category: 'linear',
+        symbol: symbol,
+        positionIdx: 0
+      };
+
+      if (finalTP) tpslPayload.takeProfit = finalTP.toString();
+      if (finalSL) tpslPayload.stopLoss = finalSL.toString();
+
+      console.log(`   📤 Setting TP/SL via trading-stop...`);
+      
+      await makeBybitRequest(
+        'POST',
+        '/v5/position/trading-stop',
+        apiKey,
+        apiSecret,
+        {},
+        tpslPayload
+      );
+
+      console.log(`   ✅ TP/SL SET SUCCESSFULLY`);
+
+      // VERIFY they were actually set
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const verifyPositions = await getBybitPositions(apiKey, apiSecret, symbol);
+      const verifyPosition = verifyPositions.find((p: any) => 
+        p.symbol === symbol && parseFloat(p.size) > 0
+      );
+
+      if (verifyPosition) {
+        const hasSL = verifyPosition.stopLoss && parseFloat(verifyPosition.stopLoss) > 0;
+        const hasTP = verifyPosition.takeProfit && parseFloat(verifyPosition.takeProfit) > 0;
+
+        console.log(`\n   🔍 VERIFICATION:`);
+        console.log(`      SL on exchange: ${hasSL ? verifyPosition.stopLoss : 'NOT SET'}`);
+        console.log(`      TP on exchange: ${hasTP ? verifyPosition.takeProfit : 'NOT SET'}`);
+
+        if (finalSL && !hasSL) {
+          throw new Error('SL was not set on exchange!');
+        }
+        if (finalTP && !hasTP) {
+          throw new Error('TP was not set on exchange!');
+        }
+
+        console.log(`   ✅✅✅ VERIFIED - SL/TP ARE SET ON EXCHANGE!`);
+        slTpSetSuccess = true;
+        break;
+      }
+
+    } catch (error: any) {
+      console.error(`   ❌ Attempt ${attempt} failed: ${error.message}`);
+      
+      if (attempt < maxAttempts) {
+        console.log(`   ⏳ Waiting ${1000 * attempt}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+  }
+
+  if (!slTpSetSuccess) {
+    console.error(`\n🚨🚨🚨 CRITICAL FAILURE: COULD NOT SET SL/TP AFTER ${maxAttempts} ATTEMPTS!`);
+    console.error(`   This position is UNPROTECTED - EMERGENCY CLOSE REQUIRED!`);
+    
+    // Emergency close
+    try {
+      console.log(`   🚨 Executing emergency close...`);
+      await closeBybitPosition(symbol, side, apiKey, apiSecret);
+      console.error(`   ✅ Position emergency closed - funds protected`);
+      
+      throw new Error(`EMERGENCY: Position opened but SL/TP could not be set - position was closed for safety`);
+    } catch (closeError: any) {
+      console.error(`   ❌❌❌ EMERGENCY CLOSE FAILED: ${closeError.message}`);
+      console.error(`   🚨 MANUAL INTERVENTION REQUIRED - POSITION WITHOUT SL/TP!`);
+      throw new Error(`CRITICAL: Position opened without SL/TP and emergency close failed - manual intervention required!`);
+    }
+  }
+
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`✅ POSITION OPENED SUCCESSFULLY WITH SL/TP GUARANTEE`);
   console.log(`   Order ID: ${orderId}`);
   console.log(`   Symbol: ${symbol}`);
   console.log(`   Side: ${side}`);
   console.log(`   Quantity: ${roundedQuantity.toFixed(3)}`);
+  console.log(`   SL/TP: VERIFIED AND SET`);
   console.log(`${'='.repeat(60)}\n`);
 
   return {

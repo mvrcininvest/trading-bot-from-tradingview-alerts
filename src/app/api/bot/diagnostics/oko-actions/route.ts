@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '100');
     
-    // Pobierz akcje Oka Saurona (wszystkie które zawierają "oko" w action_type)
+    // ✅ FIX: Use createdAt instead of timestamp (column doesn't exist in schema)
     const okoActions = await db.select()
       .from(botActions)
       .where(
         like(botActions.actionType, '%oko%')
       )
-      .orderBy(desc(botActions.timestamp))
+      .orderBy(desc(botActions.createdAt))
       .limit(limit);
 
     console.log(`[Oko Actions API] Found ${okoActions.length} Oko Saurona actions`);

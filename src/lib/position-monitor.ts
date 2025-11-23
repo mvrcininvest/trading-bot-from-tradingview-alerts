@@ -1254,16 +1254,16 @@ export async function monitorAndManagePositions(silent = true) {
       if (!hasSL || !hasTP) {
         console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
         
-        // 🆕 INCREASED REPAIR LIMITS: 5 attempts instead of 3 for critical safety
-        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
-        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 5, 10);
+        // ✅ REPAIR LIMITS: 3 attempts per 10 minutes (original safe value)
+        const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
+        const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
         
         if (!shouldAttemptSlRepair && !hasSL) {
-          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached (5/5) - EMERGENCY CLOSE REQUIRED`);
+          console.log(`   ⛔ [LIMITER] Max SL repair attempts reached (3/3) - EMERGENCY CLOSE REQUIRED`);
           
-          // 🚨 SAFETY PROTOCOL: If we can't set SL after 5 attempts, CLOSE THE POSITION
+          // 🚨 SAFETY PROTOCOL: If we can't set SL after 3 attempts, CLOSE THE POSITION
           if (positionAgeSeconds > 30) {
-            console.error(`   🚨 EMERGENCY: Closing position ${symbol} - cannot set SL after 5 attempts!`);
+            console.error(`   🚨 EMERGENCY: Closing position ${symbol} - cannot set SL after 3 attempts!`);
             
             try {
               const closeOrderId = await closePositionPartial(symbol, side, quantity, apiKey, apiSecret);
@@ -1286,16 +1286,16 @@ export async function monitorAndManagePositions(silent = true) {
                 dbPos.id,
                 'EMERGENCY_CLOSE',
                 'no_sl_emergency_close',
-                `Position closed after failing to set SL (5 attempts failed)`,
+                `Position closed after failing to set SL (3 attempts failed)`,
                 1,
-                { symbol, attempts: 5, pnl: livePnl }
+                { symbol, attempts: 3, pnl: livePnl }
               );
               
               details.push({
                 symbol,
                 side,
                 action: "emergency_no_sl",
-                reason: "Failed to set SL after 5 attempts - closed for safety"
+                reason: "Failed to set SL after 3 attempts - closed for safety"
               });
               
               console.log(`   ✅ Position CLOSED for safety`);
@@ -1315,7 +1315,7 @@ export async function monitorAndManagePositions(silent = true) {
         }
         
         if (!shouldAttemptTpRepair && !hasTP) {
-          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached (5/5) - continuing without TP`);
+          console.log(`   ⛔ [LIMITER] Max TP repair attempts reached (3/3) - continuing without TP`);
           // TP is less critical than SL, so we don't force close
         }
 
@@ -1347,7 +1347,7 @@ export async function monitorAndManagePositions(silent = true) {
         const slAttempts = retryAttempts.filter(r => r.orderType === 'sl' && !r.success).length;
         const tpAttempts = retryAttempts.filter(r => r.orderType === 'tp1' && !r.success).length;
         
-        console.log(`   📊 Repair attempts so far: SL=${slAttempts}/5, TP=${tpAttempts}/5`);
+        console.log(`   📊 Repair attempts so far: SL=${slAttempts}/3, TP=${tpAttempts}/3`);
         
         const slRR = config.defaultSlRR || 1.0;
         const nextTpRR = !dbPos.tp1Hit ? (config.tp1RR || 1.0) 
@@ -1454,7 +1454,7 @@ export async function monitorAndManagePositions(silent = true) {
         
         // 🚨 PRIORITY: Set SL first (critical for safety)
         if (!hasSL && !slAlreadyHit && shouldAttemptSlRepair) {
-          console.log(`   🔧 [PRIORITY] Setting SL (attempt ${slAttempts + 1}/5) - CRITICAL FOR SAFETY...`);
+          console.log(`   🔧 [PRIORITY] Setting SL (attempt ${slAttempts + 1}/3) - CRITICAL FOR SAFETY...`);
           
           const slAlgoId = await setAlgoOrderWithRetry(
             symbol,
@@ -1465,7 +1465,7 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            5 // 🆕 Increased from 3 to 5 attempts per monitor cycle
+            3 // 🆕 Increased from 3 to 5 attempts per monitor cycle
           );
           
           if (slAlgoId) {
@@ -1482,13 +1482,13 @@ export async function monitorAndManagePositions(silent = true) {
               { symbol, slPrice: newSL, attempts: slAttempts + 1 }
             );
           } else {
-            console.error(`   ⚠️ Failed to set SL (attempt ${slAttempts + 1}/5) - will retry on next monitor cycle`);
+            console.error(`   ⚠️ Failed to set SL (attempt ${slAttempts + 1}/3) - will retry on next monitor cycle`);
             
             await logOkoAction(
               dbPos.id,
               'SL_REPAIR_FAILED',
               'sl_repair_attempt_failed',
-              `Failed to set SL (attempt ${slAttempts + 1}/5)`,
+              `Failed to set SL (attempt ${slAttempts + 1}/3)`,
               0,
               { symbol, slPrice: newSL, attempts: slAttempts + 1 }
             );
@@ -1497,7 +1497,7 @@ export async function monitorAndManagePositions(silent = true) {
         
         // Set TP (less critical but still important)
         if (!hasTP && !tpAlreadyHit && shouldAttemptTpRepair) {
-          console.log(`   🔧 Setting TP (attempt ${tpAttempts + 1}/5)...`);
+          console.log(`   🔧 Setting TP (attempt ${tpAttempts + 1}/3)...`);
           
           const tpAlgoId = await setAlgoOrderWithRetry(
             symbol,
@@ -1508,7 +1508,7 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            5 // 🆕 Increased from 3 to 5 attempts per monitor cycle
+            3 // 🆕 Increased from 3 to 5 attempts per monitor cycle
           );
           
           if (tpAlgoId) {
@@ -1525,7 +1525,7 @@ export async function monitorAndManagePositions(silent = true) {
               { symbol, tpPrice: newTP, attempts: tpAttempts + 1 }
             );
           } else {
-            console.error(`   ⚠️ Failed to set TP (attempt ${tpAttempts + 1}/5) - will retry on next monitor cycle`);
+            console.error(`   ⚠️ Failed to set TP (attempt ${tpAttempts + 1}/3) - will retry on next monitor cycle`);
           }
         }
       } else {
