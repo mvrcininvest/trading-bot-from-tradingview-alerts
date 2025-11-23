@@ -3,7 +3,6 @@ import path from "node:path";
 
 const LOADER = path.resolve(__dirname, 'src/visual-edits/component-tagger-loader.js');
 
-
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
@@ -24,11 +23,11 @@ const nextConfig: NextConfig = {
       }
     }
   },
-  // Force cache invalidation
+  // Force cache invalidation - Vercel rebuild v2
   generateBuildId: async () => {
-    return `build-${Date.now()}`;
+    return `build-v2-${Date.now()}`;
   },
 };
 
 export default nextConfig;
-// Orchids restart: 1763930318697
+// Orchids rebuild: 2025-11-23T21:00:00.000Z
