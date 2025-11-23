@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { positionHistory } from '@/db/schema';
 import { and, gte, lte, desc } from 'drizzle-orm';
-import { createClient } from '@supabase/supabase-js';
+// TEMPORARILY DISABLED: Supabase integration commented out to fix Vercel deployment
+// Uncomment when you want to enable Supabase Storage archiving
+// import { createClient } from '@supabase/supabase-js';
 
 /**
  * 📦 AUTOMATED MONTHLY ARCHIVE
+ * 
+ * ⚠️ CURRENTLY DISABLED - Supabase Storage integration is commented out
  * 
  * Auto-exports old position data to Supabase Storage.
  * This endpoint can be called manually or via a cron job.
@@ -19,6 +23,14 @@ import { createClient } from '@supabase/supabase-js';
  */
 
 export async function GET(request: NextRequest) {
+  // FEATURE TEMPORARILY DISABLED
+  return NextResponse.json({
+    success: false,
+    error: 'Archive feature is currently disabled. Supabase Storage integration needs to be configured.',
+    message: 'To enable: Uncomment Supabase import in src/app/api/archive/monthly-export/route.ts and configure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY'
+  }, { status: 503 });
+
+  /* ORIGINAL CODE - COMMENTED OUT TO FIX DEPLOYMENT
   try {
     const { searchParams } = new URL(request.url);
     
