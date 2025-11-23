@@ -33,6 +33,7 @@ export const alerts = sqliteTable('alerts', {
   executionStatus: text('execution_status').notNull().default('pending'),
   rejectionReason: text('rejection_reason'),
   errorType: text('error_type'),
+  retentionDays: integer('retention_days').notNull().default(30),
   createdAt: text('created_at').notNull(),
 });
 
@@ -127,6 +128,8 @@ export const botPositions = sqliteTable('bot_positions', {
   closedAt: text('closed_at'),
   closeReason: text('close_reason'),
   status: text('status').notNull().default('open'),
+  alertData: text('alert_data'),
+  receivedAt: text('received_at'),
 });
 
 export const botActions = sqliteTable('bot_actions', {
@@ -147,6 +150,7 @@ export const botActions = sqliteTable('bot_actions', {
 export const positionHistory = sqliteTable('position_history', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   positionId: integer('position_id').references(() => botPositions.id).notNull(),
+  alertId: integer('alert_id').references(() => alerts.id),
   symbol: text('symbol').notNull(),
   side: text('side').notNull(),
   tier: text('tier').notNull(),
@@ -164,6 +168,7 @@ export const positionHistory = sqliteTable('position_history', {
   openedAt: text('opened_at').notNull(),
   closedAt: text('closed_at').notNull(),
   durationMinutes: integer('duration_minutes'),
+  alertData: text('alert_data'),
 });
 
 export const botLogs = sqliteTable('bot_logs', {

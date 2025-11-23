@@ -1254,6 +1254,8 @@ export async function POST(request: Request) {
           status: "open",
           alertId: alert.id,
           bybitOrderId: orderId,
+          alertData: JSON.stringify(data),
+          receivedAt: new Date(receivedAt).toISOString(),
           openedAt: new Date().toISOString(),
           lastUpdated: new Date().toISOString(),
         }).returning();

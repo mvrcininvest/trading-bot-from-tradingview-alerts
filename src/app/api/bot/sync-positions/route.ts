@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
           // Save to position_history
           await db.insert(positionHistory).values({
             positionId: dbPos.id,
+            alertId: dbPos.alertId,
             symbol: dbPos.symbol,
             side: dbPos.side,
             tier: dbPos.tier,
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
             openedAt: dbPos.openedAt,
             closedAt: closedAt.toISOString(),
             durationMinutes,
+            alertData: dbPos.alertData,
           });
 
           // Update position status to closed

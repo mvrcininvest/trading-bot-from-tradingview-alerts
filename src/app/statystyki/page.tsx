@@ -17,11 +17,16 @@ import {
   Percent,
   Clock,
   Award,
-  XCircle
+  XCircle,
+  Download,
+  Brain,
+  Zap,
+  TrendingUp as TrendUp
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { ExportDialog } from "@/components/ExportDialog";
 
 interface HistoricalPosition {
   id: number;
@@ -111,6 +116,9 @@ export default function StatystykiPage() {
   const [tierStats, setTierStats] = useState<TierStats[]>([]);
   const [symbolStats, setSymbolStats] = useState<SymbolStats[]>([]);
   const [timeStats, setTimeStats] = useState<TimeStats[]>([]);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [aiStats, setAiStats] = useState<any>(null);
+  const [loadingAiStats, setLoadingAiStats] = useState(false);
 
   useEffect(() => {
     fetchAllData();
@@ -139,10 +147,29 @@ export default function StatystykiPage() {
 
       // Calculate statistics
       calculateStatistics(closedPositions, openPositions, alertsData.alerts || []);
+      
+      // Fetch AI stats
+      fetchAiStats();
     } catch (error) {
       console.error("Failed to fetch statistics data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAiStats = async () => {
+    setLoadingAiStats(true);
+    try {
+      const response = await fetch("/api/analytics/ai-stats");
+      const data = await response.json();
+      
+      if (data.success) {
+        setAiStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch AI stats:", error);
+    } finally {
+      setLoadingAiStats(false);
     }
   };
 
@@ -374,14 +401,23 @@ export default function StatystykiPage() {
               <p className="text-sm text-gray-200">Kompleksowa analiza wydajności tradingowej</p>
             </div>
           </div>
-          <Button
-            onClick={fetchAllData}
-            disabled={loading}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Odśwież
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setExportDialogOpen(true)}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Eksportuj Dane
+            </Button>
+            <Button
+              onClick={fetchAllData}
+              disabled={loading}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Odśwież
+            </Button>
+          </div>
         </div>
 
         {/* Key Metrics */}
@@ -514,7 +550,7 @@ export default function StatystykiPage() {
 
         {/* Detailed Statistics Tabs */}
         <Tabs defaultValue="time" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+          <TabsList className="grid w-full grid-cols-4 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
             <TabsTrigger value="time" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Calendar className="mr-2 h-4 w-4" />
               Czasowe
@@ -526,6 +562,10 @@ export default function StatystykiPage() {
             <TabsTrigger value="symbols" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Activity className="mr-2 h-4 w-4" />
               Według Symboli
+            </TabsTrigger>
+            <TabsTrigger value="ai" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
+              <Brain className="mr-2 h-4 w-4" />
+              Analiza AI
             </TabsTrigger>
           </TabsList>
 
@@ -682,6 +722,336 @@ export default function StatystykiPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* AI Analysis Tab */}
+          <TabsContent value="ai" className="space-y-4">
+            {loadingAiStats ? (
+              <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                <CardContent className="p-12">
+                  <div className="text-center">
+                    <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-400" />
+                    <p className="text-gray-300">Ładowanie analizy AI...</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : aiStats ? (
+              <>
+                {/* Win Rate by Confirmation Count */}
+                <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Zap className="h-5 w-5 text-yellow-400" />
+                      Win Rate według Liczby Potwierdzeń
+                    </CardTitle>
+                    <CardDescription className="text-gray-400">
+                      Jak liczba confirmations wpływa na skuteczność
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {aiStats.winRateByConfirmation?.map((item: any, idx: number) => (
+                        <div key={idx} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <h3 className="text-lg font-bold text-white">
+                                {item.confirmationCount} {item.confirmationCount === 1 ? 'Potwierdzenie' : 'Potwierdzenia'}
+                              </h3>
+                              <p className="text-sm text-gray-400">{item.totalTrades} trades</p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)} USDT
+                              </p>
+                              <p className="text-sm text-gray-400">{item.winRate.toFixed(1)}% WR</p>
+                            </div>
+                          </div>
+                          <Progress value={item.winRate} className="h-2" />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* PnL by Alert Strength */}
+                {aiStats.pnlByStrength && aiStats.pnlByStrength.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <TrendUp className="h-5 w-5 text-blue-400" />
+                        PnL według Siły Sygnału (Strength)
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Jak siła alertu wpływa na wyniki
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {aiStats.pnlByStrength.map((item: any, idx: number) => (
+                          <div key={idx} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <h3 className="text-lg font-bold text-white">Strength: {item.strengthRange}</h3>
+                                <p className="text-sm text-gray-400">{item.totalTrades} trades · {item.winRate.toFixed(1)}% WR</p>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)} USDT
+                                </p>
+                                <p className="text-sm text-gray-400">Avg: {item.avgPnL.toFixed(2)}</p>
+                              </div>
+                            </div>
+                            <Progress value={item.winRate} className="h-2" />
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Win Rate by Session */}
+                {aiStats.winRateBySession && aiStats.winRateBySession.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-purple-400" />
+                        Win Rate według Sesji (NY, London, Asian)
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Najlepsze i najgorsze sesje tradingowe
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {aiStats.winRateBySession.map((item: any, idx: number) => (
+                          <div key={idx} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <h3 className="text-lg font-bold text-white mb-2">{item.session}</h3>
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Trades:</span>
+                                <span className="text-white font-semibold">{item.totalTrades}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Win Rate:</span>
+                                <span className="text-white font-semibold">{item.winRate.toFixed(1)}%</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">PnL:</span>
+                                <span className={`font-semibold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)}
+                                </span>
+                              </div>
+                              <Progress value={item.winRate} className="h-2 mt-2" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Win Rate by Regime */}
+                {aiStats.winRateByRegime && aiStats.winRateByRegime.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-orange-400" />
+                        Win Rate według Reżimu Rynkowego
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Uptrend vs Downtrend vs Sideways
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {aiStats.winRateByRegime.map((item: any, idx: number) => (
+                          <div key={idx} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <h3 className="text-lg font-bold text-white">{item.regime}</h3>
+                                <p className="text-sm text-gray-400">{item.totalTrades} trades · {item.winRate.toFixed(1)}% WR</p>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)} USDT
+                                </p>
+                              </div>
+                            </div>
+                            <Progress value={item.winRate} className="h-2" />
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* MTF Agreement Analysis */}
+                {aiStats.winRateByMTF && aiStats.winRateByMTF.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5 text-cyan-400" />
+                        Win Rate według MTF Agreement
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Jak zgodność multi-timeframe wpływa na wyniki
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {aiStats.winRateByMTF.map((item: any, idx: number) => (
+                          <div key={idx} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <h3 className="text-lg font-bold text-white">MTF: {item.mtfRange}</h3>
+                                <p className="text-sm text-gray-400">{item.totalTrades} trades · {item.winRate.toFixed(1)}% WR</p>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)} USDT
+                                </p>
+                              </div>
+                            </div>
+                            <Progress value={item.winRate} className="h-2" />
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Duration Analysis */}
+                {aiStats.durationAnalysis && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-green-400" />
+                        Analiza Czasu Trwania Pozycji
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Średni czas trwania wygranych vs przegranych pozycji
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 rounded-lg bg-green-900/20 border border-green-700">
+                          <h3 className="text-sm font-medium text-green-300 mb-2">Wygrane Pozycje</h3>
+                          <p className="text-3xl font-bold text-green-400">
+                            {aiStats.durationAnalysis.winDurationHours.toFixed(1)}h
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            ({aiStats.durationAnalysis.avgWinDurationMinutes.toFixed(0)} minut)
+                          </p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-red-900/20 border border-red-700">
+                          <h3 className="text-sm font-medium text-red-300 mb-2">Przegrane Pozycje</h3>
+                          <p className="text-3xl font-bold text-red-400">
+                            {aiStats.durationAnalysis.lossDurationHours.toFixed(1)}h
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            ({aiStats.durationAnalysis.avgLossDurationMinutes.toFixed(0)} minut)
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* TP Hit Stats */}
+                {aiStats.tpHitStats && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Target className="h-5 w-5 text-yellow-400" />
+                        Analiza Osiągania TP
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Rozkład osiągania poziomów Take Profit
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                          <h4 className="text-xs text-gray-400 mb-1">Tylko TP1</h4>
+                          <p className="text-2xl font-bold text-white">{aiStats.tpHitStats.tp1Only}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Avg: {aiStats.tpHitStats.avgPnlTp1Only.toFixed(2)} USDT
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                          <h4 className="text-xs text-gray-400 mb-1">TP1 + TP2</h4>
+                          <p className="text-2xl font-bold text-white">{aiStats.tpHitStats.tp1AndTp2}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Avg: {aiStats.tpHitStats.avgPnlTp1AndTp2.toFixed(2)} USDT
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                          <h4 className="text-xs text-gray-400 mb-1">Wszystkie TP</h4>
+                          <p className="text-2xl font-bold text-white">{aiStats.tpHitStats.allTPs}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Avg: {aiStats.tpHitStats.avgPnlAllTPs.toFixed(2)} USDT
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                          <h4 className="text-xs text-gray-400 mb-1">Bez TP (SL)</h4>
+                          <p className="text-2xl font-bold text-white">{aiStats.tpHitStats.noTP}</p>
+                          <p className="text-xs text-red-400 mt-1">
+                            Avg: {aiStats.tpHitStats.avgPnlNoTP.toFixed(2)} USDT
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Close Reason Distribution */}
+                {aiStats.closeReasonDistribution && aiStats.closeReasonDistribution.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <XCircle className="h-5 w-5 text-red-400" />
+                        Rozkład Przyczyn Zamknięcia
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Dlaczego pozycje zostały zamknięte
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {aiStats.closeReasonDistribution.map((item: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-gray-800/50 border border-gray-700">
+                            <div className="flex-1">
+                              <h4 className="text-sm font-semibold text-white">{item.closeReason}</h4>
+                              <p className="text-xs text-gray-400">
+                                {item.count} trades ({item.percentage.toFixed(1)}%)
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-lg font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                Avg: {item.avgPnL.toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                <CardContent className="p-12">
+                  <div className="text-center">
+                    <Brain className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
+                    <h3 className="text-xl font-bold text-gray-300 mb-2">Brak danych do analizy AI</h3>
+                    <p className="text-gray-500">Zamknij kilka pozycji aby zobaczyć zaawansowane statystyki</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
         </Tabs>
 
         {/* Risk Metrics */}
@@ -771,6 +1141,9 @@ export default function StatystykiPage() {
           </Card>
         </div>
       </div>
+
+      {/* Export Dialog */}
+      <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
     </div>
   );
 }
