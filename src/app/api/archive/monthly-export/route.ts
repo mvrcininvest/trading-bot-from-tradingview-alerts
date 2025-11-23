@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { positionHistory } from '@/db/schema';
 import { and, gte, lte, desc } from 'drizzle-orm';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * 📦 AUTOMATED MONTHLY ARCHIVE
  * 
- * Auto-exports old position data to external storage (Supabase/S3).
+ * Auto-exports old position data to Supabase Storage.
  * This endpoint can be called manually or via a cron job.
  * 
  * Usage:
@@ -15,16 +16,28 @@ import { and, gte, lte, desc } from 'drizzle-orm';
  * 
  * Query Parameters:
  * - month: YYYY-MM (default: previous month)
- * - storage: "supabase" | "s3" | "local" (default: "local")
  */
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     
+    // Initialize Supabase client
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('[Archive] Missing Supabase credentials');
+      return NextResponse.json({
+        success: false,
+        error: 'Supabase credentials not configured'
+      }, { status: 500 });
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
     // Determine which month to archive (default: previous month)
     const monthParam = searchParams.get('month');
-    const storageType = searchParams.get('storage') || 'local';
     
     let targetMonth: Date;
     let startDate: string;
@@ -65,10 +78,11 @@ export async function GET(request: NextRequest) {
     
     if (positions.length === 0) {
       return NextResponse.json({
-        success: false,
+        success: true,
         message: `No positions found for ${monthLabel}`,
         month: monthLabel,
-        count: 0
+        count: 0,
+        archived: false
       });
     }
     
@@ -110,12 +124,47 @@ export async function GET(request: NextRequest) {
       positions: enrichedPositions
     };
     
-    // For local storage, return the data as downloadable JSON
-    return new NextResponse(JSON.stringify(archiveData, null, 2), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Disposition': `attachment; filename="archive_${monthLabel}.json"`
-      }
+    // Upload to Supabase Storage
+    const fileName = `archive_${monthLabel}.json`;
+    const fileContent = JSON.stringify(archiveData, null, 2);
+    
+    console.log(`[Archive] Uploading to Supabase: ${fileName}`);
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('trading-archives')
+      .upload(fileName, fileContent, {
+        contentType: 'application/json',
+        upsert: true // Overwrite if exists
+      });
+    
+    if (uploadError) {
+      console.error('[Archive] Supabase upload error:', uploadError);
+      return NextResponse.json({
+        success: false,
+        error: `Failed to upload to Supabase: ${uploadError.message}`,
+        month: monthLabel,
+        count: positions.length
+      }, { status: 500 });
+    }
+    
+    console.log('[Archive] Upload successful:', uploadData);
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('trading-archives')
+      .getPublicUrl(fileName);
+    
+    console.log('[Archive] Public URL:', urlData.publicUrl);
+    
+    return NextResponse.json({
+      success: true,
+      message: `Successfully archived ${positions.length} positions for ${monthLabel}`,
+      month: monthLabel,
+      count: positions.length,
+      archived: true,
+      storage: 'supabase',
+      url: urlData.publicUrl,
+      statistics: stats
     });
     
   } catch (error) {
