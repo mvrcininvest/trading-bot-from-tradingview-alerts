@@ -33,6 +33,7 @@ interface HistoryPosition {
   openedAt: string;
   closedAt: string;
   durationMinutes: number;
+  status?: string; // ✅ ADDED: to check for open positions
 }
 
 export default function BotHistoryPage() {
@@ -48,12 +49,18 @@ export default function BotHistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // ✅ API zwraca TYLKO closed positions z positionHistory
+      // ✅ NAPRAWIONE: API zwraca TYLKO closed positions z positionHistory
       const positionsResponse = await fetch("/api/bot/history");
       const positionsData = await positionsResponse.json();
 
       if (positionsData.success && Array.isArray(positionsData.history)) {
-        setPositions(positionsData.history);
+        // ✅ DODATKOWA OCHRONA: Filtruj tylko pozycje bez status='open'
+        // (positionHistory nie powinno mieć otwartych pozycji, ale dla pewności)
+        const closedOnly = positionsData.history.filter((p: HistoryPosition) => 
+          !p.status || p.status !== 'open'
+        );
+        setPositions(closedOnly);
+        console.log(`[Historia] Załadowano ${closedOnly.length} zamkniętych pozycji (odfiltrowano ${positionsData.history.length - closedOnly.length} otwartych)`);
       }
     } catch (err) {
       console.error("Failed to fetch history:", err);
@@ -85,7 +92,7 @@ export default function BotHistoryPage() {
   // Get unique close reasons
   const closeReasons = Array.from(new Set(positions.map((p) => p.closeReason)));
 
-  // ✅ POPRAWIONE ETYKIETY - bardziej zrozumiałe i szczegółowe
+  // ✅ POPRAWIONE ETYKIETY - bardziej zrozumiałe
   const closeReasonLabels: Record<string, string> = {
     sl_hit: "🛑 Stop Loss",
     tp_main_hit: "🎯 Take Profit (Main)",
@@ -93,21 +100,21 @@ export default function BotHistoryPage() {
     tp2_hit: "🎯 TP2", 
     tp3_hit: "🎯 TP3",
     manual_close: "👤 Ręczne zamknięcie",
-    emergency_override: "⚠️ Emergency Override",
-    opposite_direction: "🔄 Odwrócenie kierunku",
-    auto_sync: "🔄 Auto-sync",
-    closed_on_exchange: "🔄 Auto-sync",  // ✅ SAME LABEL
-    oko_emergency: "👁️ Oko Saurona - Emergency",
-    oko_sl_breach: "👁️ Oko Saurona - SL Breach",
-    oko_account_drawdown: "👁️ Oko Saurona - Drawdown",
-    ghost_position_cleanup: "👻 Ghost Cleanup",
+    emergency_override: "⚠️ Alert Emergency Override (lepszy sygnał)",
+    opposite_direction: "🔄 Alert w przeciwnym kierunku (odwrócenie)",
+    auto_sync: "🔄 Zamknięte na giełdzie (auto-sync)",
+    closed_on_exchange: "🔄 Zamknięte na giełdzie (auto-sync)",
+    oko_emergency: "👁️ Oko Saurona - Emergency Close",
+    oko_sl_breach: "👁️ Oko Saurona - SL Breach Detection",
+    oko_account_drawdown: "👁️ Oko Saurona - Account Drawdown Protection",
+    ghost_position_cleanup: "👻 Ghost Position Cleanup",
   };
 
   const getCloseReasonLabel = (reason: string) => {
     return closeReasonLabels[reason] || reason;
   };
 
-  // ✅ POPRAWIONY FORMAT CZASU - normalne minuty/godziny
+  // ✅ POPRAWIONY FORMAT CZASU
   const formatDuration = (minutes: number) => {
     if (minutes < 60) {
       return `${Math.round(minutes)} min`;
@@ -259,7 +266,7 @@ export default function BotHistoryPage() {
               <Badge variant="secondary" className="bg-gray-700 text-gray-200">{filteredPositions.length}</Badge>
             </CardTitle>
             <CardDescription className="text-gray-300">
-              Historia zamkniętych pozycji
+              Historia zamkniętych pozycji (tylko closed positions)
             </CardDescription>
           </CardHeader>
           <CardContent>

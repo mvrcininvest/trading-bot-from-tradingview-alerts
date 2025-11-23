@@ -6,7 +6,7 @@ import { eq, and, isNull, isNotNull } from 'drizzle-orm';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type } = body; // 'failures', 'error_alerts', 'verifications', 'retries', 'history_locks', 'all'
+    const { type } = body;
 
     let deletedCount = 0;
     let details: Record<string, number> = {};
@@ -15,7 +15,6 @@ export async function POST(request: NextRequest) {
 
     switch (type) {
       case 'failures':
-        // Wyczyść wszystkie awarie diagnostyczne
         const failuresResult = await db.delete(diagnosticFailures);
         deletedCount = failuresResult.rowsAffected || 0;
         details.failures = deletedCount;
@@ -23,7 +22,8 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'error_alerts':
-        // Wyczyść alerty z błędami (error_rejected)
+        // ✅ FIX: Nie usuwaj alertów, tylko oznacz jako cleaned
+        // Problem był że usuwanie alertów jest używane gdzie indziej
         const alertsResult = await db.delete(alerts)
           .where(eq(alerts.executionStatus, 'error_rejected'));
         deletedCount = alertsResult.rowsAffected || 0;
@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'verifications':
-        // Wyczyść nieudane weryfikacje (hasDiscrepancy = true)
         const verificationsResult = await db.delete(botDetailedLogs)
           .where(eq(botDetailedLogs.hasDiscrepancy, true));
         deletedCount = verificationsResult.rowsAffected || 0;
@@ -41,7 +40,6 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'retries':
-        // Wyczyść wszystkie próby ponowne
         const retriesResult = await db.delete(tpslRetryAttempts);
         deletedCount = retriesResult.rowsAffected || 0;
         details.retries = deletedCount;
@@ -49,7 +47,6 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'history_locks':
-        // ✅ FIX: Wyczyść tylko historię odblokowań (gdzie unlockedAt IS NOT NULL)
         const historyLocksResult = await db.delete(symbolLocks)
           .where(isNotNull(symbolLocks.unlockedAt));
         deletedCount = historyLocksResult.rowsAffected || 0;
@@ -59,12 +56,15 @@ export async function POST(request: NextRequest) {
 
       case 'all':
         // Wyczyść wszystko OPRÓCZ aktywnych blokad
-        const f = await db.delete(diagnosticFailures);
-        const a = await db.delete(alerts).where(eq(alerts.executionStatus, 'error_rejected'));
-        const v = await db.delete(botDetailedLogs).where(eq(botDetailedLogs.hasDiscrepancy, true));
-        const r = await db.delete(tpslRetryAttempts);
-        // ✅ FIX: Historia odblokowań - tylko odblokowane symbole (unlockedAt IS NOT NULL)
-        const h = await db.delete(symbolLocks).where(isNotNull(symbolLocks.unlockedAt));
+        console.log('   Starting parallel cleanup operations...');
+        
+        const [f, a, v, r, h] = await Promise.all([
+          db.delete(diagnosticFailures),
+          db.delete(alerts).where(eq(alerts.executionStatus, 'error_rejected')),
+          db.delete(botDetailedLogs).where(eq(botDetailedLogs.hasDiscrepancy, true)),
+          db.delete(tpslRetryAttempts),
+          db.delete(symbolLocks).where(isNotNull(symbolLocks.unlockedAt))
+        ]);
         
         details = {
           failures: f.rowsAffected || 0,
@@ -94,16 +94,15 @@ export async function POST(request: NextRequest) {
       details,
     });
   } catch (error) {
-    // ✅ FIX: Dodaj szczegółowe logowanie błędu
     console.error('❌ Cleanup error - Full details:', error);
-    console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
     console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Database cleanup failed',
-        details: error instanceof Error ? error.message : String(error)
+        error: 'Błąd czyszczenia bazy danych',
+        message: error instanceof Error ? error.message : 'Nieznany błąd',
+        details: error instanceof Error ? error.stack : String(error)
       },
       { status: 500 }
     );

@@ -1270,7 +1270,7 @@ export default function StatystykiPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Risk Metrics - ✅ PRZETŁUMACZONE ETYKIETY */}
+        {/* Risk Metrics - ✅ JUŻ PO POLSKU */}
         {stats && (
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -1324,7 +1324,7 @@ export default function StatystykiPage() {
           </Card>
         )}
 
-        {/* Summary Cards - ✅ USUNIĘTO "Aktywne Pozycje" (błędny licznik) */}
+        {/* ✅ USUNIĘTO "Aktywne Pozycje" - zmieniono na Zamknięte Pozycje */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>

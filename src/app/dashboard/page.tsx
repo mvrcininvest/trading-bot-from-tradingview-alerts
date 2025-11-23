@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +76,7 @@ export default function DashboardPage() {
   const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
   const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
   const [loadingSync, setLoadingSync] = useState(false);
+  const [closingPosition, setClosingPosition] = useState<string | null>(null);
 
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) setLoadingPositions(true);
@@ -339,9 +340,68 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ POPRAWIONE STATYSTYKI
-  const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0);
-  const totalPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0);
+  const handleClosePosition = async (symbol: string) => {
+    if (!confirm(`Czy na pewno chcesz zamknąć pozycję ${symbol}?`)) {
+      return
+    }
+
+    setClosingPosition(symbol)
+    
+    try {
+      const response = await fetch("/api/exchange/close-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: credentials?.exchange || "bybit",
+          apiKey: credentials?.apiKey,
+          apiSecret: credentials?.apiSecret,
+          symbol,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast.success(`✅ Pozycja ${symbol} zamknięta!`, {
+          description: `PnL: ${data.data.pnl >= 0 ? '+' : ''}${data.data.pnl.toFixed(2)} USDT`
+        })
+        
+        // Refresh positions
+        await fetchPositions(credentials || undefined)
+        await fetchBotPositions()
+      } else {
+        toast.error(`❌ Błąd: ${data.message}`)
+      }
+    } catch (err) {
+      toast.error(`❌ Błąd: ${err instanceof Error ? err.message : "Nieznany błąd"}`)
+    } finally {
+      setClosingPosition(null)
+    }
+  }
+
+  // ✅ POPRAWIONE STATYSTYKI - dodane całkowity PnL
+  const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0)
+  const unrealisedPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0)
+  // NEW: Fetch realised PnL from history
+  const [realisedPnL, setRealisedPnL] = useState(0)
+  
+  useEffect(() => {
+    const fetchRealisedPnL = async () => {
+      try {
+        const response = await fetch("/api/bot/history?limit=1000")
+        const data = await response.json()
+        if (data.success && data.history) {
+          const total = data.history.reduce((sum: number, p: any) => sum + p.pnl, 0)
+          setRealisedPnL(total)
+        }
+      } catch (err) {
+        console.error("Failed to fetch realised PnL:", err)
+      }
+    }
+    fetchRealisedPnL()
+  }, [])
+  
+  const totalPnL = realisedPnL + unrealisedPnL
 
   if (!credentials) {
     return (
@@ -402,9 +462,9 @@ export default function DashboardPage() {
           </Alert>
         )}
 
-        {/* ✅ UPROSZCZONE STATYSTYKI - tylko 3 karty */}
+        {/* ✅ ROZSZERZONE STATYSTYKI - 4 karty z całkowitym PnL */}
         <div className="space-y-4 md:space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-medium text-green-300">Całkowite Saldo</h3>
@@ -421,10 +481,21 @@ export default function DashboardPage() {
                 <h3 className="text-sm font-medium text-blue-300">Niezrealizowany PnL</h3>
                 <TrendingUp className="h-4 w-4 text-blue-400" />
               </div>
+              <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
+                {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
+              </p>
+              <p className="text-xs text-blue-400">USDT (otwarte)</p>
+            </div>
+
+            <div className="p-4 rounded-lg bg-gradient-to-br from-amber-900/30 to-amber-800/50 border border-amber-800/30 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-amber-300">Całkowity PnL</h3>
+                <TrendingUp className="h-4 w-4 text-amber-400" />
+              </div>
               <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
                 {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
               </p>
-              <p className="text-xs text-blue-400">USDT (otwarte pozycje)</p>
+              <p className="text-xs text-amber-400">USDT (zrealizowany + niezrealizowany)</p>
             </div>
 
             <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
@@ -475,12 +546,15 @@ export default function DashboardPage() {
             {!loadingPositions && positions.length > 0 && (
               <div className="space-y-3">
                 {positions.map((position, idx) => {
-                  const pnl = parseFloat(position.unrealisedPnl || "0");
-                  const isProfitable = pnl > 0;
-                  const posValue = parseFloat(position.positionValue);
-                  const entryPrice = parseFloat(position.entryPrice);
-                  const markPrice = parseFloat(position.markPrice);
-                  const size = parseFloat(position.size);
+                  const pnl = parseFloat(position.unrealisedPnl || "0")
+                  const isProfitable = pnl > 0
+                  const posValue = parseFloat(position.positionValue)
+                  const entryPrice = parseFloat(position.entryPrice)
+                  const markPrice = parseFloat(position.markPrice)
+                  const size = parseFloat(position.size)
+                  
+                  // NEW: Get corresponding bot position for more details
+                  const botPos = botPositions.find(bp => bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "Buy" : "Sell"))
 
                   return (
                     <div
@@ -505,22 +579,51 @@ export default function DashboardPage() {
                             >
                               {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
                             </Badge>
+                            {botPos && (
+                              <Badge variant="outline" className="text-xs text-gray-300 border-gray-600">
+                                {botPos.tier}
+                              </Badge>
+                            )}
                           </div>
+                          {/* ✅ NOWE: Czas otwarcia */}
+                          {botPos && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              Otwarto: {new Date(botPos.openedAt).toLocaleString("pl-PL")}
+                            </div>
+                          )}
                         </div>
 
-                        <div className="text-right">
-                          <div
-                            className={`text-xl font-bold ${
-                              isProfitable ? "text-green-500" : "text-red-500"
-                            }`}
-                          >
-                            {isProfitable ? "+" : ""}
-                            {pnl.toFixed(4)} USDT
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div
+                              className={`text-xl font-bold ${
+                                isProfitable ? "text-green-500" : "text-red-500"
+                              }`}
+                            >
+                              {isProfitable ? "+" : ""}
+                              {pnl.toFixed(4)} USDT
+                            </div>
                           </div>
+                          
+                          {/* ✅ NOWY: Przycisk zamknięcia pozycji */}
+                          <Button
+                            onClick={() => handleClosePosition(position.symbol)}
+                            disabled={closingPosition === position.symbol}
+                            size="sm"
+                            variant="destructive"
+                            className="h-8 w-8 p-0"
+                            title="Zamknij pozycję"
+                          >
+                            {closingPosition === position.symbol ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <X className="h-4 w-4" />
+                            )}
+                          </Button>
                         </div>
                       </div>
 
-                      {/* ✅ ROZSZERZONE DANE - więcej informacji */}
+                      {/* ✅ ROZSZERZONE DANE */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                         <div>
                           <div className="text-gray-300">Wejście</div>
@@ -548,22 +651,69 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {(parseFloat(position.takeProfit) > 0 || parseFloat(position.stopLoss) > 0) && (
-                        <div className="mt-3 flex items-center gap-3 text-xs">
-                          {parseFloat(position.takeProfit) > 0 && (
-                            <span className="text-green-400">
-                              TP: {parseFloat(position.takeProfit).toFixed(4)}
-                            </span>
+                      {/* ✅ NOWE: Poziomy SL/TP z Bybit */}
+                      <div className="mt-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700">
+                        <div className="text-xs font-semibold text-gray-300 mb-2">Poziomy SL/TP</div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          {botPos?.liveSlPrice && parseFloat(String(botPos.liveSlPrice)) > 0 ? (
+                            <div>
+                              <span className="text-gray-400">SL:</span>
+                              <span className="ml-1 font-semibold text-red-400">
+                                {parseFloat(String(botPos.liveSlPrice)).toFixed(4)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-gray-400">SL:</span>
+                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
+                            </div>
                           )}
-                          {parseFloat(position.stopLoss) > 0 && (
-                            <span className="text-red-400">
-                              SL: {parseFloat(position.stopLoss).toFixed(4)}
-                            </span>
+                          
+                          {botPos?.liveTp1Price && parseFloat(String(botPos.liveTp1Price)) > 0 ? (
+                            <div>
+                              <span className="text-gray-400">TP1:</span>
+                              <span className="ml-1 font-semibold text-green-400">
+                                {parseFloat(String(botPos.liveTp1Price)).toFixed(4)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-gray-400">TP1:</span>
+                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
+                            </div>
+                          )}
+                          
+                          {botPos?.liveTp2Price && parseFloat(String(botPos.liveTp2Price)) > 0 ? (
+                            <div>
+                              <span className="text-gray-400">TP2:</span>
+                              <span className="ml-1 font-semibold text-green-400">
+                                {parseFloat(String(botPos.liveTp2Price)).toFixed(4)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-gray-400">TP2:</span>
+                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
+                            </div>
+                          )}
+                          
+                          {botPos?.liveTp3Price && parseFloat(String(botPos.liveTp3Price)) > 0 ? (
+                            <div>
+                              <span className="text-gray-400">TP3:</span>
+                              <span className="ml-1 font-semibold text-green-400">
+                                {parseFloat(String(botPos.liveTp3Price)).toFixed(4)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-gray-400">TP3:</span>
+                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
+                            </div>
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  );
+                  )
                 })}
               </div>
             )}

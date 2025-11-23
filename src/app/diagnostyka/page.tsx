@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, Lock, XCircle, AlertCircle, CheckCircle, Clock, TrendingDown, Trash2 } from "lucide-react";
+import { RefreshCw, AlertTriangle, Lock, XCircle, AlertCircle, CheckCircle, Clock, TrendingDown, Trash2, Eye } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -116,6 +116,14 @@ interface DiagnosticSummary {
   retryFailureRate: string;
 }
 
+interface OkoAction {
+  id: number;
+  actionType: string;
+  symbol: string | null;
+  details: string | null;
+  timestamp: string;
+}
+
 export default function DiagnosticsPage() {
   const [summary, setSummary] = useState<DiagnosticSummary | null>(null);
   const [locks, setLocks] = useState<SymbolLock[]>([]);
@@ -123,6 +131,7 @@ export default function DiagnosticsPage() {
   const [errorAlerts, setErrorAlerts] = useState<ErrorAlert[]>([]);
   const [retryAttempts, setRetryAttempts] = useState<RetryAttempt[]>([]);
   const [verifications, setVerifications] = useState<VerificationLog[]>([]);
+  const [okoActions, setOkoActions] = useState<OkoAction[]>([]);
   const [loading, setLoading] = useState(false);
   const [unlocking, setUnlocking] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState<string | null>(null);
@@ -140,7 +149,8 @@ export default function DiagnosticsPage() {
         fetchFailures(),
         fetchErrorAlerts(),
         fetchRetryAttempts(),
-        fetchVerifications()
+        fetchVerifications(),
+        fetchOkoActions()
       ]);
     } catch (error) {
       console.error("Failed to fetch diagnostic data:", error);
@@ -219,6 +229,18 @@ export default function DiagnosticsPage() {
       }
     } catch (error) {
       console.error("Failed to fetch verifications:", error);
+    }
+  };
+
+  const fetchOkoActions = async () => {
+    try {
+      const response = await fetch("/api/bot/diagnostics/oko-actions?limit=100");
+      const data = await response.json();
+      if (data.success) {
+        setOkoActions(data.actions);
+      }
+    } catch (error) {
+      console.error("Failed to fetch oko actions:", error);
     }
   };
 
@@ -360,14 +382,14 @@ export default function DiagnosticsPage() {
 
         {/* Summary Cards */}
         {summary && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-300 mb-1">Zablokowane Symbole</p>
+                    <p className="text-xs text-gray-300 mb-1">Blokady</p>
                     <p className="text-2xl font-bold text-white">{summary.activeSymbolLocks}</p>
-                    <p className="text-xs text-gray-300">z {summary.totalSymbolLocks} całkowitych</p>
+                    <p className="text-xs text-gray-300">aktywnych</p>
                   </div>
                   <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30">
                     <Lock className="h-6 w-6 text-red-400" />
@@ -380,11 +402,26 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-300 mb-1">Błędy Alertów</p>
-                    <p className="text-2xl font-bold text-white">{summary.totalErrorAlerts}</p>
+                    <p className="text-xs text-gray-300 mb-1">Weryfikacje</p>
+                    <p className="text-2xl font-bold text-white">{verifications.length}</p>
                     <p className="text-xs text-gray-300">
-                      API: {summary.apiTemporaryErrors} | Trade: {summary.tradeFaultErrors}
+                      ✓ {passedVerifications.length} | ✗ {failedVerifications.length}
                     </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-green-500/20 border border-green-500/30">
+                    <CheckCircle className="h-6 w-6 text-green-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-300 mb-1">Błędy</p>
+                    <p className="text-2xl font-bold text-white">{summary.totalErrorAlerts}</p>
+                    <p className="text-xs text-gray-300">alertów</p>
                   </div>
                   <div className="p-3 rounded-lg bg-orange-500/20 border border-orange-500/30">
                     <XCircle className="h-6 w-6 text-orange-400" />
@@ -397,9 +434,9 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-300 mb-1">Awaryjne Zamknięcia</p>
-                    <p className="text-2xl font-bold text-white">{summary.emergencyCloses}</p>
-                    <p className="text-xs text-gray-300">z {summary.totalDiagnosticFailures} błędów</p>
+                    <p className="text-xs text-gray-300 mb-1">Awarie</p>
+                    <p className="text-2xl font-bold text-white">{summary.totalDiagnosticFailures}</p>
+                    <p className="text-xs text-gray-300">zamknięć</p>
                   </div>
                   <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
                     <AlertCircle className="h-6 w-6 text-purple-400" />
@@ -412,9 +449,9 @@ export default function DiagnosticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-300 mb-1">Próby Ponowne (24h)</p>
+                    <p className="text-xs text-gray-300 mb-1">Retry</p>
                     <p className="text-2xl font-bold text-white">{summary.recentRetryAttempts}</p>
-                    <p className="text-xs text-gray-300">Błędy: {summary.retryFailureRate}</p>
+                    <p className="text-xs text-gray-300">prób (24h)</p>
                   </div>
                   <div className="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
                     <Clock className="h-6 w-6 text-blue-400" />
@@ -427,7 +464,7 @@ export default function DiagnosticsPage() {
 
         {/* Main Content with Tabs */}
         <Tabs defaultValue="locks" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+          <TabsList className="grid w-full grid-cols-6 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
             <TabsTrigger value="locks" className="data-[state=active]:bg-red-600/30 data-[state=active]:text-red-200 text-gray-300">
               <Lock className="mr-2 h-4 w-4" />
               Blokady ({activeLocks.length})
@@ -447,6 +484,10 @@ export default function DiagnosticsPage() {
             <TabsTrigger value="retries" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Clock className="mr-2 h-4 w-4" />
               Retry ({retryAttempts.length})
+            </TabsTrigger>
+            <TabsTrigger value="oko" className="data-[state=active]:bg-red-600/30 data-[state=active]:text-red-200 text-gray-300">
+              <Eye className="mr-2 h-4 w-4" />
+              Oko Saurona ({okoActions.length})
             </TabsTrigger>
           </TabsList>
 
@@ -851,6 +892,133 @@ export default function DiagnosticsPage() {
                                 </Badge>
                               )}
                             </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* NEW: Oko Saurona Tab */}
+          <TabsContent value="oko" className="space-y-6">
+            <Card className="border-red-700 bg-gradient-to-br from-red-600/10 via-orange-900/10 to-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <Eye className="h-5 w-5 text-red-400 animate-pulse" />
+                      👁️ Akcje Oka Saurona
+                      {okoActions.length > 0 && (
+                        <Badge variant="destructive" className="ml-2">
+                          {okoActions.length} Akcji
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-gray-200">
+                      Historia wszystkich działań systemu ochronnego Oko Saurona
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {okoActions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Eye className="h-16 w-16 mx-auto mb-4 text-gray-600 opacity-50" />
+                    <p className="text-gray-300">Brak akcji Oka Saurona - system ochronny nie musiał interweniować</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {okoActions.map((action) => {
+                      const actionTypeLabels: Record<string, { label: string; color: string; icon: string }> = {
+                        'oko_emergency_close': { 
+                          label: '🚨 Emergency Close - PnL krytyczny', 
+                          color: 'bg-red-500/20 border-red-500/40',
+                          icon: '🚨'
+                        },
+                        'oko_sl_breach': { 
+                          label: '⚠️ SL Breach Detection - cena poza SL', 
+                          color: 'bg-orange-500/20 border-orange-500/40',
+                          icon: '⚠️'
+                        },
+                        'oko_missing_tpsl': { 
+                          label: '🔧 Missing SL/TP - naprawa zabezpieczeń', 
+                          color: 'bg-yellow-500/20 border-yellow-500/40',
+                          icon: '🔧'
+                        },
+                        'oko_tp1_quantity_fix': { 
+                          label: '📊 TP1 Quantity Fix - korekta ilości', 
+                          color: 'bg-blue-500/20 border-blue-500/40',
+                          icon: '📊'
+                        },
+                        'oko_trailing_sl': { 
+                          label: '📈 Trailing SL - przesunięcie SL', 
+                          color: 'bg-green-500/20 border-green-500/40',
+                          icon: '📈'
+                        },
+                        'oko_breakeven_sl': { 
+                          label: '🎯 Break-even SL - SL na entry', 
+                          color: 'bg-cyan-500/20 border-cyan-500/40',
+                          icon: '🎯'
+                        },
+                        'oko_account_drawdown': { 
+                          label: '🛑 Account Drawdown - zamknięcie wszystkich pozycji', 
+                          color: 'bg-red-700/20 border-red-700/40',
+                          icon: '🛑'
+                        },
+                        'oko_capitulation_ban': { 
+                          label: '⛔ Kapitulacja - ban symbolu', 
+                          color: 'bg-purple-500/20 border-purple-500/40',
+                          icon: '⛔'
+                        },
+                      };
+
+                      const actionInfo = actionTypeLabels[action.actionType] || {
+                        label: action.actionType,
+                        color: 'bg-gray-500/20 border-gray-500/40',
+                        icon: '👁️'
+                      };
+
+                      return (
+                        <div
+                          key={action.id}
+                          className={`p-5 rounded-xl border-2 ${actionInfo.color} bg-gradient-to-r from-gray-900/20 to-gray-900/80 hover:from-gray-900/30 transition-all`}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`h-12 w-12 rounded-xl flex items-center justify-center text-2xl ${actionInfo.color}`}>
+                                {actionInfo.icon}
+                              </div>
+                              <div>
+                                {action.symbol && (
+                                  <div className="font-bold text-xl text-white mb-1">
+                                    {action.symbol}
+                                  </div>
+                                )}
+                                <Badge variant="outline" className="text-xs border-gray-600 text-gray-200">
+                                  {actionInfo.label}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs text-gray-300">Action ID</div>
+                              <div className="font-mono text-sm text-gray-100">#{action.id}</div>
+                            </div>
+                          </div>
+                          
+                          {action.details && (
+                            <div className="p-3 rounded-lg bg-gray-800/40 mb-3">
+                              <div className="text-xs text-gray-300 mb-1">Szczegóły:</div>
+                              <div className="text-sm text-gray-200 font-mono break-all">
+                                {action.details}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between text-xs text-gray-300">
+                            <span>{new Date(action.timestamp).toLocaleString("pl-PL")}</span>
                           </div>
                         </div>
                       );
