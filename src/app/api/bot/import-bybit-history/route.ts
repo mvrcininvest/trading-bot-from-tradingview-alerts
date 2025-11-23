@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
       // Insert into history
       await db.insert(positionHistory).values({
         positionId: null,
+        alertId: null,
         symbol: bybitPos.symbol,
         side: bybitPos.side,
         tier: "Standard", // Default tier for imported positions
