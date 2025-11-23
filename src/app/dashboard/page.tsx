@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 
 interface Balance {
   asset: string;
@@ -546,7 +547,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Positions List */}
+        {/* ✅ ULEPSZONA LISTA POZYCJI Z WIĘCEJ DANYMI */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
@@ -555,7 +556,7 @@ export default function DashboardPage() {
               <Badge variant="secondary" className="bg-gray-700 text-gray-200">{positions.length}</Badge>
             </CardTitle>
             <CardDescription className="text-gray-300">
-              Twoje aktualne pozycje tradingowe
+              Twoje aktualne pozycje tradingowe z rozszerzonymi danymi
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -576,7 +577,7 @@ export default function DashboardPage() {
             )}
 
             {!loadingPositions && positions.length > 0 && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {positions.map((position, idx) => {
                   const pnl = parseFloat(position.unrealisedPnl || "0")
                   const isProfitable = pnl > 0
@@ -584,66 +585,120 @@ export default function DashboardPage() {
                   const entryPrice = parseFloat(position.entryPrice)
                   const markPrice = parseFloat(position.markPrice)
                   const size = parseFloat(position.size)
+                  const leverage = parseFloat(position.leverage)
+                  const liqPrice = parseFloat(position.liqPrice || "0")
                   
-                  // NEW: Get corresponding bot position for more details
                   const botPos = botPositions.find(bp => bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "Buy" : "Sell"))
+
+                  // ✅ NOWE OBLICZENIA
+                  const priceChange = markPrice - entryPrice
+                  const priceChangePercent = ((priceChange / entryPrice) * 100)
+                  const roe = (pnl / (posValue / leverage)) * 100 // Return on Equity
+                  const margin = posValue / leverage
+                  
+                  // Czas trwania pozycji
+                  const openedAt = botPos ? new Date(botPos.openedAt) : null
+                  const durationMs = openedAt ? Date.now() - openedAt.getTime() : 0
+                  const durationHours = Math.floor(durationMs / (1000 * 60 * 60))
+                  const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+                  const durationText = durationHours > 0 
+                    ? `${durationHours}h ${durationMinutes}m` 
+                    : `${durationMinutes}m`
+
+                  // Odległość do SL/TP
+                  const slPrice = botPos?.liveSlPrice ? parseFloat(String(botPos.liveSlPrice)) : 0
+                  const tp1Price = botPos?.liveTp1Price ? parseFloat(String(botPos.liveTp1Price)) : 0
+                  
+                  const distanceToSl = slPrice > 0 
+                    ? position.side === "Buy" 
+                      ? ((markPrice - slPrice) / markPrice * 100)
+                      : ((slPrice - markPrice) / markPrice * 100)
+                    : null
+                  
+                  const distanceToTp1 = tp1Price > 0
+                    ? position.side === "Buy"
+                      ? ((tp1Price - markPrice) / markPrice * 100)
+                      : ((markPrice - tp1Price) / markPrice * 100)
+                    : null
+
+                  // Kolor dla ROE progress bar
+                  const roeColor = roe >= 5 ? "bg-green-500" : roe >= 0 ? "bg-green-400" : roe >= -5 ? "bg-orange-400" : "bg-red-500"
 
                   return (
                     <div
                       key={idx}
-                      className={`p-4 rounded-lg border-2 transition-colors ${
+                      className={`rounded-xl border-2 transition-all hover:shadow-lg ${
                         isProfitable
-                          ? "border-green-500/20 bg-green-500/5"
-                          : "border-red-500/20 bg-red-500/5"
+                          ? "border-green-500/30 bg-gradient-to-br from-green-900/20 via-green-800/10 to-transparent"
+                          : "border-red-500/30 bg-gradient-to-br from-red-900/20 via-red-800/10 to-transparent"
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-lg text-white">{position.symbol}</span>
+                      {/* HEADER ROW */}
+                      <div className="flex items-start justify-between p-4 pb-3 border-b border-gray-700/50">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-bold text-2xl text-white">{position.symbol}</span>
                             <Badge
                               variant={position.side === "Buy" ? "default" : "secondary"}
-                              className={
+                              className={`text-sm px-2 py-1 ${
                                 position.side === "Buy"
-                                  ? "bg-green-500"
-                                  : "bg-red-500"
-                              }
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "bg-red-600 hover:bg-red-700"
+                              }`}
                             >
-                              {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
+                              {position.side === "Buy" ? "LONG" : "SHORT"} {leverage}x
                             </Badge>
                             {botPos && (
-                              <Badge variant="outline" className="text-xs text-gray-300 border-gray-600">
+                              <Badge variant="outline" className="text-xs text-purple-300 border-purple-500/50 bg-purple-500/10">
                                 {botPos.tier}
                               </Badge>
                             )}
                           </div>
-                          {/* ✅ NOWE: Czas otwarcia */}
-                          {botPos && (
-                            <div className="text-xs text-gray-400 mt-1">
-                              Otwarto: {new Date(botPos.openedAt).toLocaleString("pl-PL")}
-                            </div>
-                          )}
+                          
+                          {/* Czas otwarcia i czas trwania */}
+                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                            {botPos && (
+                              <>
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  <span>Otwarto: {new Date(botPos.openedAt).toLocaleString("pl-PL", {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Zap className="h-3 w-3" />
+                                  <span>Czas trwania: {durationText}</span>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        {/* PNL i przycisk zamknięcia */}
+                        <div className="flex items-center gap-3">
                           <div className="text-right">
                             <div
-                              className={`text-xl font-bold ${
-                                isProfitable ? "text-green-500" : "text-red-500"
+                              className={`text-2xl font-bold mb-1 ${
+                                isProfitable ? "text-green-400" : "text-red-400"
                               }`}
                             >
                               {isProfitable ? "+" : ""}
-                              {pnl.toFixed(4)} USDT
+                              {pnl.toFixed(2)} USDT
+                            </div>
+                            <div className={`text-sm font-semibold ${isProfitable ? "text-green-300" : "text-red-300"}`}>
+                              ROE: {roe >= 0 ? "+" : ""}{roe.toFixed(2)}%
                             </div>
                           </div>
                           
-                          {/* ✅ NOWY: Przycisk zamknięcia pozycji */}
                           <Button
                             onClick={() => handleClosePosition(position.symbol)}
                             disabled={closingPosition === position.symbol}
                             size="sm"
                             variant="destructive"
-                            className="h-8 w-8 p-0"
+                            className="h-9 w-9 p-0"
                             title="Zamknij pozycję"
                           >
                             {closingPosition === position.symbol ? (
@@ -655,112 +710,201 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* ✅ ROZSZERZONE DANE */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                        <div>
-                          <div className="text-gray-300">Wejście</div>
-                          <div className="font-semibold text-white">{entryPrice.toFixed(4)}</div>
+                      {/* ROE PROGRESS BAR */}
+                      <div className="px-4 pt-3 pb-2">
+                        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                          <span className="flex items-center gap-1">
+                            <Percent className="h-3 w-3" />
+                            Return on Equity (ROE)
+                          </span>
+                          <span className={`font-semibold ${isProfitable ? "text-green-400" : "text-red-400"}`}>
+                            {roe >= 0 ? "+" : ""}{roe.toFixed(2)}%
+                          </span>
                         </div>
-                        <div>
-                          <div className="text-gray-300">Obecna Cena</div>
-                          <div className="font-semibold text-white">{markPrice.toFixed(4)}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Rozmiar</div>
-                          <div className="font-semibold text-white">{size.toFixed(4)}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Wartość</div>
-                          <div className="font-semibold text-white">{posValue.toFixed(2)} USDT</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Likwidacja</div>
-                          <div className="font-semibold text-red-400">
-                            {position.liqPrice && parseFloat(position.liqPrice) > 0 
-                              ? parseFloat(position.liqPrice).toFixed(4) 
-                              : "N/A"}
-                          </div>
+                        <div className="relative h-2 bg-gray-800 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full ${roeColor} transition-all duration-500`}
+                            style={{ width: `${Math.min(Math.abs(roe), 100)}%` }}
+                          />
                         </div>
                       </div>
 
-                      {/* ✅ NOWE: Poziomy SL/TP z Bybit */}
-                      <div className="mt-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-xs font-semibold text-gray-300">Poziomy SL/TP</div>
-                          {/* ✅ NOWY PRZYCISK: Pokaż dane alertu */}
-                          {botPos?.alertData ? (
-                            <Button
-                              onClick={() => handleShowAlertData(botPos.alertData)}
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs border-blue-600 text-blue-400 hover:bg-blue-600/20"
-                            >
-                              <FileText className="h-3 w-3 mr-1" />
-                              Zobacz Alert
-                            </Button>
-                          ) : (
-                            <Badge variant="outline" className="text-xs text-gray-500 border-gray-600">
-                              Brak danych alertu
-                            </Badge>
-                          )}
+                      {/* DANE POZYCJI - 3 SEKCJE */}
+                      <div className="p-4 space-y-3">
+                        
+                        {/* Sekcja 1: Ceny i rozmiar */}
+                        <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
+                          <div className="flex items-center gap-2 mb-2">
+                            <DollarSign className="h-4 w-4 text-blue-400" />
+                            <h4 className="text-xs font-semibold text-gray-300">Ceny i Rozmiar</h4>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div>
+                              <div className="text-gray-400 text-xs">Wejście</div>
+                              <div className="font-semibold text-white">{entryPrice.toFixed(4)}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 text-xs">Obecna Cena</div>
+                              <div className="font-semibold text-white">{markPrice.toFixed(4)}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 text-xs">Zmiana</div>
+                              <div className={`font-semibold ${priceChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(4)}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 text-xs">Rozmiar</div>
+                              <div className="font-semibold text-white">{size.toFixed(4)}</div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                          {botPos?.liveSlPrice && parseFloat(String(botPos.liveSlPrice)) > 0 ? (
+
+                        {/* Sekcja 2: Wartość i margin */}
+                        <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Wallet className="h-4 w-4 text-amber-400" />
+                            <h4 className="text-xs font-semibold text-gray-300">Wartość i Margin</h4>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                             <div>
-                              <span className="text-gray-400">SL:</span>
-                              <span className="ml-1 font-semibold text-red-400">
-                                {parseFloat(String(botPos.liveSlPrice)).toFixed(4)}
-                              </span>
+                              <div className="text-gray-400 text-xs">Wartość Pozycji</div>
+                              <div className="font-semibold text-white">{posValue.toFixed(2)} USDT</div>
                             </div>
-                          ) : (
                             <div>
-                              <span className="text-gray-400">SL:</span>
-                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
+                              <div className="text-gray-400 text-xs">Użyty Margin</div>
+                              <div className="font-semibold text-amber-300">{margin.toFixed(2)} USDT</div>
                             </div>
-                          )}
-                          
-                          {botPos?.liveTp1Price && parseFloat(String(botPos.liveTp1Price)) > 0 ? (
                             <div>
-                              <span className="text-gray-400">TP1:</span>
-                              <span className="ml-1 font-semibold text-green-400">
-                                {parseFloat(String(botPos.liveTp1Price)).toFixed(4)}
-                              </span>
+                              <div className="text-gray-400 text-xs">Dźwignia</div>
+                              <div className="font-semibold text-white">{leverage}x</div>
                             </div>
-                          ) : (
                             <div>
-                              <span className="text-gray-400">TP1:</span>
-                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
+                              <div className="text-gray-400 text-xs">Likwidacja</div>
+                              <div className="font-semibold text-red-400">
+                                {liqPrice > 0 ? liqPrice.toFixed(4) : "N/A"}
+                              </div>
                             </div>
-                          )}
-                          
-                          {botPos?.liveTp2Price && parseFloat(String(botPos.liveTp2Price)) > 0 ? (
-                            <div>
-                              <span className="text-gray-400">TP2:</span>
-                              <span className="ml-1 font-semibold text-green-400">
-                                {parseFloat(String(botPos.liveTp2Price)).toFixed(4)}
-                              </span>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="text-gray-400">TP2:</span>
-                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
-                            </div>
-                          )}
-                          
-                          {botPos?.liveTp3Price && parseFloat(String(botPos.liveTp3Price)) > 0 ? (
-                            <div>
-                              <span className="text-gray-400">TP3:</span>
-                              <span className="ml-1 font-semibold text-green-400">
-                                {parseFloat(String(botPos.liveTp3Price)).toFixed(4)}
-                              </span>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="text-gray-400">TP3:</span>
-                              <span className="ml-1 font-semibold text-gray-500">N/A</span>
-                            </div>
-                          )}
+                          </div>
                         </div>
+
+                        {/* Sekcja 3: SL/TP Levels */}
+                        <div className="p-3 rounded-lg bg-gradient-to-br from-gray-800/60 to-gray-800/30 border border-gray-700/50">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Target className="h-4 w-4 text-purple-400" />
+                              <h4 className="text-xs font-semibold text-gray-300">Poziomy SL/TP</h4>
+                            </div>
+                            {botPos?.alertData ? (
+                              <Button
+                                onClick={() => handleShowAlertData(botPos.alertData)}
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-blue-600 text-blue-400 hover:bg-blue-600/20"
+                              >
+                                <FileText className="h-3 w-3 mr-1" />
+                                Zobacz Alert
+                              </Button>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-gray-500 border-gray-600">
+                                Brak danych alertu
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            {/* Stop Loss */}
+                            <div className="p-2 rounded bg-red-500/10 border border-red-500/30">
+                              <div className="text-gray-400 text-xs mb-1">Stop Loss</div>
+                              {botPos?.liveSlPrice && parseFloat(String(botPos.liveSlPrice)) > 0 ? (
+                                <>
+                                  <div className="font-semibold text-red-400">
+                                    {parseFloat(String(botPos.liveSlPrice)).toFixed(4)}
+                                  </div>
+                                  {distanceToSl !== null && (
+                                    <div className="text-xs text-red-300 mt-1">
+                                      {distanceToSl.toFixed(2)}% distance
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="font-semibold text-gray-500">N/A</div>
+                              )}
+                            </div>
+                            
+                            {/* TP1 */}
+                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
+                              <div className="text-gray-400 text-xs mb-1">Take Profit 1</div>
+                              {botPos?.liveTp1Price && parseFloat(String(botPos.liveTp1Price)) > 0 ? (
+                                <>
+                                  <div className="font-semibold text-green-400">
+                                    {parseFloat(String(botPos.liveTp1Price)).toFixed(4)}
+                                  </div>
+                                  {distanceToTp1 !== null && (
+                                    <div className="text-xs text-green-300 mt-1">
+                                      {distanceToTp1.toFixed(2)}% to target
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="font-semibold text-gray-500">N/A</div>
+                              )}
+                            </div>
+                            
+                            {/* TP2 */}
+                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
+                              <div className="text-gray-400 text-xs mb-1">Take Profit 2</div>
+                              {botPos?.liveTp2Price && parseFloat(String(botPos.liveTp2Price)) > 0 ? (
+                                <div className="font-semibold text-green-400">
+                                  {parseFloat(String(botPos.liveTp2Price)).toFixed(4)}
+                                </div>
+                              ) : (
+                                <div className="font-semibold text-gray-500">N/A</div>
+                              )}
+                            </div>
+                            
+                            {/* TP3 */}
+                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
+                              <div className="text-gray-400 text-xs mb-1">Take Profit 3</div>
+                              {botPos?.liveTp3Price && parseFloat(String(botPos.liveTp3Price)) > 0 ? (
+                                <div className="font-semibold text-green-400">
+                                  {parseFloat(String(botPos.liveTp3Price)).toFixed(4)}
+                                </div>
+                              ) : (
+                                <div className="font-semibold text-gray-500">N/A</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Dodatkowe metryki jeśli są dane z bota */}
+                        {botPos && (
+                          <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Activity className="h-4 w-4 text-cyan-400" />
+                              <h4 className="text-xs font-semibold text-gray-300">Dodatkowe Informacje</h4>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                              <div>
+                                <div className="text-gray-400 text-xs">Status</div>
+                                <Badge variant="outline" className="text-xs mt-1">
+                                  {botPos.status === 'open' ? 'Otwarta' : botPos.status === 'partial_close' ? 'Częściowo zamknięta' : botPos.status}
+                                </Badge>
+                              </div>
+                              <div>
+                                <div className="text-gray-400 text-xs">Potwierdzenia</div>
+                                <div className="font-semibold text-white">{botPos.confirmationCount}</div>
+                              </div>
+                              <div>
+                                <div className="text-gray-400 text-xs">ID Pozycji</div>
+                                <div className="font-semibold text-cyan-300">#{botPos.id}</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
