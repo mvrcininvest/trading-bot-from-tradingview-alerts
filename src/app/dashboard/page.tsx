@@ -967,7 +967,7 @@ export default function DashboardPage() {
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-gray-200">Łączny nierealizowany zysk/strata ze wszystkich otwartych pozycji (bot + manualne)</p>
+                <p className="text-gray-200">Łączny nierealizowany zysk/strata ze wszystkich otwartych pozycji</p>
               </TooltipContent>
             </Tooltip>
 
@@ -977,21 +977,21 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-300 mb-1">Pozycje Bota</p>
+                        <p className="text-xs text-gray-300 mb-1">Otwarte Pozycje</p>
                         <p className="text-2xl font-bold text-white">{botPositions.length}</p>
                         <p className={`text-xs font-semibold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
                         </p>
                       </div>
                       <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
-                        <Bot className="h-6 w-6 text-purple-400" />
+                        <Activity className="h-6 w-6 text-purple-400" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-gray-200">Liczba aktywnych pozycji otwartych automatycznie przez bota i ich całkowity PnL</p>
+                <p className="text-gray-200">Liczba aktywnych pozycji otwartych przez bota i ich całkowity PnL</p>
               </TooltipContent>
             </Tooltip>
 
@@ -1001,21 +1001,21 @@ export default function DashboardPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-gray-300 mb-1">Wszystkie Pozycje</p>
-                        <p className="text-2xl font-bold text-white">{totalPositionsCount}</p>
+                        <p className="text-xs text-gray-300 mb-1">Zyskowne Pozycje</p>
+                        <p className="text-2xl font-bold text-white">{winningPositions}</p>
                         <p className="text-xs text-gray-300">
-                          {winningPositions} wygrywa
+                          z {botPositions.length} otwartych
                         </p>
                       </div>
                       <div className="p-3 rounded-lg bg-amber-500/20 border border-amber-500/30">
-                        <Activity className="h-6 w-6 text-amber-400" />
+                        <TrendingUp className="h-6 w-6 text-amber-400" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-gray-200">Wszystkie otwarte pozycje na giełdzie (bot + manualne) z liczbą zyskownych tradów</p>
+                <p className="text-gray-200">Liczba pozycji z dodatnim PnL (obecnie w zysku)</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -1169,83 +1169,47 @@ export default function DashboardPage() {
             </Card>
 
             {/* Quick Summary - Dark Theme */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-lg text-white">Pozycje Bota</CardTitle>
-                  <CardDescription className="text-gray-300">Aktywne pozycje automatyczne</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-300">Aktywne:</span>
-                      <span className="font-bold text-white">{botPositions.length}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-300">PnL:</span>
-                      <span className={`font-bold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
-                      </span>
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button 
-                          onClick={() => {
-                            const positionsTab = document.querySelector('[value="positions"]') as HTMLElement;
-                            positionsTab?.click();
-                          }}
-                          className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-                          variant="secondary"
-                        >
-                          Zobacz Pozycje
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-gray-200">Przejdź do szczegółowego widoku pozycji otwartych przez bota z informacjami o TP/SL</p>
-                      </TooltipContent>
-                    </Tooltip>
+            <Card className="border-gray-800 bg-gradient-to-br from-blue-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-lg text-white">Otwarte Pozycje Bota</CardTitle>
+                <CardDescription className="text-gray-300">Wszystkie aktywne pozycje automatyczne</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-300">Aktywne:</span>
+                    <span className="font-bold text-white">{botPositions.length}</span>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-gray-800 bg-gradient-to-br from-purple-600/20 via-gray-900/80 to-gray-900/80 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-lg text-white">Wszystkie Pozycje</CardTitle>
-                  <CardDescription className="text-gray-300">Łączne informacje</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-300">Otwarte:</span>
-                      <span className="font-bold text-white">{totalPositionsCount}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-300">Total PnL:</span>
-                      <span className={`font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
-                      </span>
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button 
-                          onClick={() => {
-                            const positionsTab = document.querySelector('[value="positions"]') as HTMLElement;
-                            positionsTab?.click();
-                          }}
-                          className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white"
-                          variant="secondary"
-                        >
-                          Zobacz Wszystkie
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="text-gray-200">Zobacz wszystkie otwarte pozycje na giełdzie (bot + manualne) z czasem rzeczywistym</p>
-                      </TooltipContent>
-                    </Tooltip>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-300">Zyskowne:</span>
+                    <span className="font-bold text-green-400">{winningPositions}</span>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-300">PnL:</span>
+                    <span className={`font-bold ${botPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {botPnL >= 0 ? '+' : ''}{botPnL.toFixed(2)} USDT
+                    </span>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        onClick={() => {
+                          const positionsTab = document.querySelector('[value="positions"]') as HTMLElement;
+                          positionsTab?.click();
+                        }}
+                        className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                        variant="secondary"
+                      >
+                        Zobacz Szczegóły Pozycji
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-gray-200">Przejdź do szczegółowego widoku wszystkich otwartych pozycji z informacjami o TP/SL</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Positions Tab */}
