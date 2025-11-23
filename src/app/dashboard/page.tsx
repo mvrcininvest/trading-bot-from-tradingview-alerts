@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +94,20 @@ export default function DashboardPage() {
   const [closingPosition, setClosingPosition] = useState<string | null>(null);
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
+  const [importingHistory, setImportingHistory] = useState(false);
+  const [historyStats, setHistoryStats] = useState<{
+    imported: number;
+    skipped: number;
+    total: number;
+    pages: number;
+  } | null>(null);
+  const [verifyingImport, setVerifyingImport] = useState(false);
+  const [importVerification, setImportVerification] = useState<{
+    bybitCount: number;
+    dbCount: number;
+    missing: number;
+    match: boolean;
+  } | null>(null);
 
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) setLoadingPositions(true);
@@ -436,6 +450,128 @@ export default function DashboardPage() {
   
   const totalPnL = realisedPnL + unrealisedPnL
 
+  const handleImportBybitHistory = async () => {
+    if (!credentials) {
+      toast.error("Brak konfiguracji API Bybit");
+      return;
+    }
+
+    if (!confirm("Czy chcesz zaimportować historię zamkniętych pozycji z Bybit? To może potrwać kilka minut.")) {
+      return;
+    }
+
+    setImportingHistory(true);
+    
+    try {
+      const response = await fetch("/api/bot/import-bybit-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: credentials.apiKey,
+          apiSecret: credentials.apiSecret,
+          daysBack: 90, // Import last 90 days
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setHistoryStats({
+          imported: data.imported,
+          skipped: data.skipped,
+          total: data.total,
+          pages: data.pages,
+        });
+        
+        toast.success(`✅ Import zakończony!`, {
+          description: `Zaimportowano ${data.imported} nowych pozycji, pominięto ${data.skipped} duplikatów (łącznie ${data.total} pozycji z ${data.pages} stron)`,
+        });
+      } else {
+        toast.error(`❌ Błąd importu: ${data.message}`);
+      }
+    } catch (err) {
+      toast.error(`❌ Błąd: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setImportingHistory(false);
+    }
+  };
+
+  const handleVerifyImport = async () => {
+    if (!credentials) {
+      toast.error("Brak konfiguracji API Bybit");
+      return;
+    }
+
+    setVerifyingImport(true);
+    
+    try {
+      // Fetch Bybit closed positions count
+      const timestamp = Date.now();
+      const startTime = timestamp - 90 * 24 * 60 * 60 * 1000; // 90 days
+      
+      const params: Record<string, any> = {
+        category: "linear",
+        startTime: startTime.toString(),
+        endTime: timestamp.toString(),
+        limit: 100,
+      };
+      
+      const signature = await signBybitRequest(
+        credentials.apiKey,
+        credentials.apiSecret,
+        timestamp,
+        params
+      );
+      
+      const queryString = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${params[key]}`)
+        .join("&");
+      
+      const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-BAPI-API-KEY": credentials.apiKey,
+          "X-BAPI-TIMESTAMP": timestamp.toString(),
+          "X-BAPI-SIGN": signature,
+          "X-BAPI-RECV-WINDOW": "5000",
+        },
+      });
+
+      const bybitData = await response.json();
+      
+      // Fetch DB history count
+      const historyResponse = await fetch("/api/bot/history?limit=1000");
+      const historyData = await historyResponse.json();
+      
+      const bybitCount = bybitData.result?.list?.length || 0;
+      const dbCount = historyData.history?.length || 0;
+      const missing = Math.max(0, bybitCount - dbCount);
+      const match = missing === 0;
+      
+      setImportVerification({
+        bybitCount,
+        dbCount,
+        missing,
+        match,
+      });
+      
+      if (match) {
+        toast.success(`✅ Weryfikacja OK! ${dbCount} pozycji w bazie zgadza się z Bybit`);
+      } else {
+        toast.warning(`⚠️ Brakuje ${missing} pozycji w bazie (Bybit: ${bybitCount}, DB: ${dbCount})`, {
+          description: "Kliknij 'Importuj Historię' aby uzupełnić brakujące pozycje"
+        });
+      }
+    } catch (err) {
+      toast.error(`❌ Błąd weryfikacji: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setVerifyingImport(false);
+    }
+  };
+
   if (!credentials) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 md:p-6">
@@ -495,6 +631,69 @@ export default function DashboardPage() {
           </Alert>
         )}
 
+        {/* ✅ NOWY: Import History Stats Banner */}
+        {historyStats && (
+          <Alert className="border-blue-800 bg-blue-900/30 text-blue-200">
+            <Database className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium">📊 Historia Bybit zaimportowana</span>
+                  <p className="text-xs mt-1">
+                    {historyStats.total} pozycji z ostatnich 90 dni ({historyStats.pages} stron API) 
+                    • {historyStats.imported} nowych • {historyStats.skipped} duplikatów
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setHistoryStats(null)}
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* ✅ NOWY: Import Verification Result */}
+        {importVerification && (
+          <Alert className={`border-2 ${importVerification.match ? 'border-green-800 bg-green-900/30 text-green-200' : 'border-orange-800 bg-orange-900/30 text-orange-200'}`}>
+            {importVerification.match ? (
+              <CheckCircle2 className="h-4 w-4 text-green-400" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-orange-400" />
+            )}
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium">
+                    {importVerification.match ? '✅ Import Kompletny' : '⚠️ Import Niekompletny'}
+                  </span>
+                  <p className="text-xs mt-1">
+                    Bybit: {importVerification.bybitCount} pozycji • 
+                    Baza danych: {importVerification.dbCount} pozycji • 
+                    {importVerification.match ? (
+                      <span className="text-green-300 font-semibold"> Wszystko zaimportowane!</span>
+                    ) : (
+                      <span className="text-orange-300 font-semibold"> Brakuje {importVerification.missing} pozycji</span>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setImportVerification(null)}
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* ✅ ROZSZERZONE STATYSTYKI - 4 karty z całkowitym PnL */}
         <div className="space-y-4 md:space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -546,6 +745,101 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* ✅ NOWY: Import History Action Card */}
+        <Card className="border-blue-800 bg-gradient-to-br from-blue-900/30 to-gray-900/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Download className="h-5 w-5 text-blue-400" />
+              Import Historii z Bybit
+            </CardTitle>
+            <CardDescription className="text-gray-300">
+              Zaimportuj wszystkie zamknięte pozycje z ostatnich 90 dni aby uzupełnić historię bota
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">ℹ️ Co zostanie zaimportowane:</h4>
+                <ul className="text-sm text-gray-400 space-y-1 list-disc list-inside">
+                  <li>Wszystkie zamknięte pozycje USDT Perpetual z ostatnich 90 dni</li>
+                  <li>Dane: Symbol, kierunek (Long/Short), ceny wejścia/wyjścia, PnL, dźwignia</li>
+                  <li>Automatyczne wykrywanie duplikatów (pozycje już w historii będą pominięte)</li>
+                  <li>Pełna paginacja - pobiera wszystkie strony z API Bybit (max 5000 pozycji)</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button
+                  onClick={handleImportBybitHistory}
+                  disabled={importingHistory}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  size="lg"
+                >
+                  {importingHistory ? (
+                    <>
+                      <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                      Importowanie...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-5 w-5" />
+                      Importuj Historię (90 dni)
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleVerifyImport}
+                  disabled={verifyingImport}
+                  variant="outline"
+                  size="lg"
+                  className="border-purple-700 text-purple-300 hover:bg-purple-900/20"
+                >
+                  {verifyingImport ? (
+                    <>
+                      <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                      Weryfikacja...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-5 w-5" />
+                      Weryfikuj Import
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={() => router.push("/bot-history")}
+                  variant="outline"
+                  size="lg"
+                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                >
+                  <FileText className="mr-2 h-5 w-5" />
+                  Zobacz Pełną Historię
+                </Button>
+              </div>
+
+              {importingHistory && (
+                <div className="p-3 rounded-lg bg-blue-900/30 border border-blue-800/50">
+                  <div className="flex items-center gap-2 text-sm text-blue-300">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Pobieranie danych z Bybit API... To może potrwać do 2 minut dla dużej liczby pozycji</span>
+                  </div>
+                </div>
+              )}
+              
+              {verifyingImport && (
+                <div className="p-3 rounded-lg bg-purple-900/30 border border-purple-800/50">
+                  <div className="flex items-center gap-2 text-sm text-purple-300">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Porównywanie danych Bybit z bazą danych...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* ✅ ULEPSZONA LISTA POZYCJI Z WIĘCEJ DANYMI */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
