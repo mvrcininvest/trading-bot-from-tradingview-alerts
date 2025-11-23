@@ -23,8 +23,12 @@ const nextConfig: NextConfig = {
         loaders: [LOADER]
       }
     }
-  }
+  },
+  // Force cache invalidation
+  generateBuildId: async () => {
+    return `build-${Date.now()}`;
+  },
 };
 
 export default nextConfig;
-// Orchids restart: 1759780550511
+// Orchids restart: 1763930318697
