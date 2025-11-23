@@ -20,7 +20,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
-  const [format, setFormat] = useState<"json" | "csv">("json");
+  const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
   const [period, setPeriod] = useState<"7" | "30" | "90" | "custom" | "all">("30");
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
@@ -73,7 +73,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
     try {
       // Build query params
       const params = new URLSearchParams();
-      params.append("format", format);
+      params.append("format", exportFormat);
       
       if (period === "all") {
         params.append("all", "true");
@@ -113,7 +113,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         throw new Error(error.message || "Błąd eksportu");
       }
       
-      if (format === "csv") {
+      if (exportFormat === "csv") {
         // Download CSV
         const blob = await response.blob();
         const downloadUrl = window.URL.createObjectURL(blob);
@@ -171,7 +171,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           {/* Format Selection */}
           <div className="space-y-3">
             <Label className="text-white">Format Pliku</Label>
-            <RadioGroup value={format} onValueChange={(v) => setFormat(v as "json" | "csv")}>
+            <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as "json" | "csv")}>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="json" id="json" />
                 <Label htmlFor="json" className="text-gray-300 cursor-pointer">
