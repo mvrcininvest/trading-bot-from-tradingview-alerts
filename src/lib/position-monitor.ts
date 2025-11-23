@@ -1486,7 +1486,7 @@ export async function monitorAndManagePositions(silent = true) {
       if (!hasSL || !hasTP) {
         console.log(`   ⚠️ MISSING ${!hasSL ? 'SL' : ''} ${!hasTP ? 'TP' : ''} - checking repair limiter...`);
         
-        // ✅ REPAIR LIMITS: 3 attempts per 10 minutes (original safe value)
+        // ✅ REPAIR LIMITS: 3 attempts per 10 minutes
         const shouldAttemptSlRepair = !hasSL && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
         const shouldAttemptTpRepair = !hasTP && shouldAttemptRepair(dbPos.id, 'missing_sl_tp', 3, 10);
         
@@ -1697,7 +1697,7 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            3 // 🆕 Increased from 3 to 5 attempts per monitor cycle
+            3
           );
           
           if (slAlgoId) {
@@ -1740,9 +1740,9 @@ export async function monitorAndManagePositions(silent = true) {
             dbPos.id,
             apiKey,
             apiSecret,
-            3 // 🆕 Increased from 3 to 5 attempts per monitor cycle
+            3
           );
-          
+
           if (tpAlgoId) {
             console.log(`   ✅ TP FIXED @ ${newTP.toFixed(4)}`);
             slTpFixed++;
