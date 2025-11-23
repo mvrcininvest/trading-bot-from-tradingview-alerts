@@ -1057,7 +1057,7 @@ export default function BotSettingsPage() {
               <>
                 <Separator className="bg-gray-700" />
                 <div className="space-y-2">
-                  <Label className="text-gray-200">Domyślny SL (% RR)</Label>
+                  <Label className="text-gray-200">Domyślny SL (% od Entry)</Label>
                   <Input 
                     type="number" 
                     value={defaultSlRR} 
@@ -1066,7 +1066,17 @@ export default function BotSettingsPage() {
                     min="0.1"
                     className="text-gray-200 bg-gray-800 border-gray-700"
                   />
-                  <p className="text-xs text-gray-300">Procent od ceny entry dla Stop Loss</p>
+                  <p className="text-xs text-gray-300">Ile procent poniżej/powyżej ceny entry ustawić Stop Loss (np. 1 = 1% od entry)</p>
+                </div>
+
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                  <p className="text-sm text-blue-200 mb-2">
+                    <strong>Przykład:</strong> Jeśli ustawisz <strong>1%</strong> i entry price to <strong>$40,000</strong>:
+                  </p>
+                  <div className="text-xs text-gray-200 space-y-1 ml-3">
+                    <p>• <strong>LONG:</strong> SL = $40,000 × (1 - 0.01) = <strong>$39,600</strong> (1% poniżej)</p>
+                    <p>• <strong>SHORT:</strong> SL = $40,000 × (1 + 0.01) = <strong>$40,400</strong> (1% powyżej)</p>
+                  </div>
                 </div>
 
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
