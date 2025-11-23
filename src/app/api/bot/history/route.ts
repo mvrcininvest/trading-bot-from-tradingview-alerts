@@ -9,29 +9,36 @@ import { getBybitPositionsHistory, convertSymbolFromBybit } from '@/lib/bybit-he
 // ============================================
 
 function classifyCloseReason(position: any): string {
-  // If closeReason already exists and is not "unknown" or "bybit_history", use it
-  if (position.closeReason && position.closeReason !== 'unknown' && position.closeReason !== 'bybit_history') {
-    return position.closeReason;
+  const closeReason = position.closeReason;
+  
+  // ✅ Only keep these specific close reasons (they are already correct)
+  const keepAsIs = [
+    'sl_hit', 'tp_main_hit', 'tp1_hit', 'tp2_hit', 'tp3_hit',
+    'manual_close', 'emergency_override', 'opposite_direction',
+    'oko_emergency', 'oko_sl_breach', 'ghost_position_cleanup'
+  ];
+  
+  if (closeReason && keepAsIs.includes(closeReason)) {
+    return closeReason;
   }
 
+  // 🔥 For "closed_on_exchange", "auto_sync", "unknown", or null → classify by PnL
   const pnl = typeof position.pnl === 'number' ? position.pnl : parseFloat(position.pnl || "0");
 
-  // If PnL is positive -> must be TP hit
+  // If PnL is positive → must be TP hit
   if (pnl > 0) {
-    // Check which TP was hit based on TP flags
     if (position.tp3Hit) return 'tp3_hit';
     if (position.tp2Hit) return 'tp2_hit';
     if (position.tp1Hit) return 'tp1_hit';
-    // If no TP flags but profitable, assume main TP
     return 'tp_main_hit';
   }
 
-  // If PnL is negative -> must be SL hit
+  // If PnL is negative → must be SL hit
   if (pnl < 0) {
     return 'sl_hit';
   }
 
-  // If PnL is exactly 0 -> probably manual close or closed on exchange
+  // If PnL is exactly 0 → probably manual close
   return 'manual_close';
 }
 
@@ -168,6 +175,15 @@ export async function GET(request: NextRequest) {
           .offset(offset);
 
     // ============================================
+    // 🔥 CLASSIFY DATABASE POSITIONS
+    // ============================================
+    const classifiedHistory = history.map(position => ({
+      ...position,
+      closeReason: classifyCloseReason(position),
+      source: "database" as const
+    }));
+
+    // ============================================
     // 🔥 FETCH CLOSED POSITIONS FROM BYBIT
     // ============================================
     
@@ -240,7 +256,7 @@ export async function GET(request: NextRequest) {
 
     // Combine DB history and Bybit history
     const combinedHistory = [
-      ...history.map(h => ({ ...h, source: "database" as const })),
+      ...classifiedHistory,
       ...bybitHistory
     ].sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
 
@@ -280,7 +296,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      history: includeBybitHistory ? combinedHistory : history,
+      history: includeBybitHistory ? combinedHistory : classifiedHistory,
       total: includeBybitHistory ? combinedHistory.length : total,
       limit,
       offset,
