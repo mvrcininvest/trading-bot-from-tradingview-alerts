@@ -3,11 +3,18 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Balance {
   asset: string;
@@ -57,6 +64,8 @@ interface BotPosition {
   liveTp1Price?: number | null;
   liveTp2Price?: number | null;
   liveTp3Price?: number | null;
+  // ✅ NOWE: Dane alertu
+  alertData?: string | null;
 }
 
 interface SymbolLock {
@@ -82,6 +91,8 @@ export default function DashboardPage() {
   const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
   const [loadingSync, setLoadingSync] = useState(false);
   const [closingPosition, setClosingPosition] = useState<string | null>(null);
+  const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
+  const [showAlertDialog, setShowAlertDialog] = useState(false);
 
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) setLoadingPositions(true);
@@ -384,6 +395,22 @@ export default function DashboardPage() {
     }
   }
 
+  const handleShowAlertData = (alertDataString: string | null | undefined) => {
+    if (!alertDataString) {
+      toast.error("Brak danych alertu dla tej pozycji");
+      return;
+    }
+
+    try {
+      const alertData = JSON.parse(alertDataString);
+      setSelectedAlertData(alertData);
+      setShowAlertDialog(true);
+    } catch (error) {
+      toast.error("Nie można odczytać danych alertu");
+      console.error("Failed to parse alert data:", error);
+    }
+  };
+
   // ✅ POPRAWIONE STATYSTYKI - dodane całkowity PnL
   const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0)
   const unrealisedPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0)
@@ -658,7 +685,21 @@ export default function DashboardPage() {
 
                       {/* ✅ NOWE: Poziomy SL/TP z Bybit */}
                       <div className="mt-3 p-3 rounded-lg bg-gray-800/40 border border-gray-700">
-                        <div className="text-xs font-semibold text-gray-300 mb-2">Poziomy SL/TP</div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs font-semibold text-gray-300">Poziomy SL/TP</div>
+                          {/* ✅ NOWY PRZYCISK: Pokaż dane alertu */}
+                          {botPos?.alertData && (
+                            <Button
+                              onClick={() => handleShowAlertData(botPos.alertData)}
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-blue-600 text-blue-400 hover:bg-blue-600/20"
+                            >
+                              <FileText className="h-3 w-3 mr-1" />
+                              Zobacz Alert
+                            </Button>
+                          )}
+                        </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                           {botPos?.liveSlPrice && parseFloat(String(botPos.liveSlPrice)) > 0 ? (
                             <div>
@@ -724,6 +765,196 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* ✅ NOWY DIALOG: Dane alertu */}
+        <Dialog open={showAlertDialog} onOpenChange={setShowAlertDialog}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <FileText className="h-5 w-5 text-blue-400" />
+                Dane Alertu - {selectedAlertData?.symbol}
+              </DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Wartości rynkowe z alertu TradingView w momencie otwarcia pozycji
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedAlertData && (
+              <div className="space-y-4">
+                {/* Podstawowe informacje */}
+                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Podstawowe Informacje</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-400">Symbol</div>
+                      <div className="font-semibold text-white">{selectedAlertData.symbol}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Kierunek</div>
+                      <Badge variant={selectedAlertData.side === "Buy" ? "default" : "secondary"}>
+                        {selectedAlertData.side === "Buy" ? "LONG" : "SHORT"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Tier</div>
+                      <Badge variant="outline" className="text-gray-300">
+                        {selectedAlertData.tier}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Siła Sygnału</div>
+                      <div className="font-semibold text-blue-400">
+                        {(selectedAlertData.strength * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Dźwignia</div>
+                      <div className="font-semibold text-white">{selectedAlertData.leverage}x</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Sesja</div>
+                      <div className="font-semibold text-white">{selectedAlertData.session}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ceny wejścia i wyjścia */}
+                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Ceny Wejścia i Wyjścia</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-400">Entry Price</div>
+                      <div className="font-semibold text-green-400">{selectedAlertData.entryPrice}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Stop Loss</div>
+                      <div className="font-semibold text-red-400">{selectedAlertData.sl}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Main TP</div>
+                      <div className="font-semibold text-green-400">{selectedAlertData.mainTp}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">TP1</div>
+                      <div className="font-semibold text-green-300">{selectedAlertData.tp1}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">TP2</div>
+                      <div className="font-semibold text-green-300">{selectedAlertData.tp2}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">TP3</div>
+                      <div className="font-semibold text-green-300">{selectedAlertData.tp3}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Wskaźniki techniczne */}
+                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Wskaźniki Techniczne</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-400">ATR</div>
+                      <div className="font-semibold text-white">{selectedAlertData.atr}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Volume Ratio</div>
+                      <div className="font-semibold text-white">
+                        {selectedAlertData.volumeRatio?.toFixed(2) || "N/A"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">MTF Agreement</div>
+                      <div className="font-semibold text-blue-400">
+                        {(selectedAlertData.mtfAgreement * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Regime</div>
+                      <div className="font-semibold text-white">{selectedAlertData.regime}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Regime Confidence</div>
+                      <div className="font-semibold text-blue-400">
+                        {(selectedAlertData.regimeConfidence * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    {selectedAlertData.latency && (
+                      <div>
+                        <div className="text-gray-400">Latencja</div>
+                        <div className="font-semibold text-white">{selectedAlertData.latency}ms</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Order Blocks & FVG */}
+                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Order Blocks & FVG</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-400">In OB</div>
+                      <Badge variant={selectedAlertData.inOb ? "default" : "secondary"}>
+                        {selectedAlertData.inOb ? "Tak" : "Nie"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">OB Score</div>
+                      <div className="font-semibold text-white">
+                        {selectedAlertData.obScore?.toFixed(2) || "N/A"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">In FVG</div>
+                      <Badge variant={selectedAlertData.inFvg ? "default" : "secondary"}>
+                        {selectedAlertData.inFvg ? "Tak" : "Nie"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">FVG Score</div>
+                      <div className="font-semibold text-white">
+                        {selectedAlertData.fvgScore?.toFixed(2) || "N/A"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Smart Money Indicators */}
+                {(selectedAlertData.institutionalFlow || selectedAlertData.accumulation || selectedAlertData.volumeClimax) && (
+                  <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+                    <h3 className="text-sm font-semibold text-gray-300 mb-3">Smart Money</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                      {selectedAlertData.institutionalFlow !== undefined && (
+                        <div>
+                          <div className="text-gray-400">Institutional Flow</div>
+                          <div className="font-semibold text-purple-400">
+                            {selectedAlertData.institutionalFlow?.toFixed(2) || "N/A"}
+                          </div>
+                        </div>
+                      )}
+                      {selectedAlertData.accumulation !== undefined && (
+                        <div>
+                          <div className="text-gray-400">Accumulation</div>
+                          <div className="font-semibold text-purple-400">
+                            {selectedAlertData.accumulation?.toFixed(2) || "N/A"}
+                          </div>
+                        </div>
+                      )}
+                      {selectedAlertData.volumeClimax !== undefined && (
+                        <div>
+                          <div className="text-gray-400">Volume Climax</div>
+                          <Badge variant={selectedAlertData.volumeClimax ? "default" : "secondary"}>
+                            {selectedAlertData.volumeClimax ? "Tak" : "Nie"}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
