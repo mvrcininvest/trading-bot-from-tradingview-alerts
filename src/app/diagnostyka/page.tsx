@@ -460,7 +460,12 @@ export default function DiagnosticsPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/60 backdrop-blur-sm hover:border-red-700 transition-all cursor-pointer" onClick={() => document.querySelector('[value="oko"]')?.click()}>
+            <Card className="border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/60 backdrop-blur-sm hover:border-red-700 transition-all cursor-pointer" onClick={() => {
+              const okoTab = document.querySelector('[value="oko"]');
+              if (okoTab instanceof HTMLElement) {
+                okoTab.click();
+              }
+            }}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
