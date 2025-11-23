@@ -1018,23 +1018,28 @@ export default function BotSettingsPage() {
           </Card>
 
           {/* SL/TP Safety - UPDATED WITH EXCLUSIONS */}
-          <Card className="p-6 space-y-4 border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+          <Card className="p-6 space-y-6 border-gray-800 bg-gradient-to-br from-blue-600/10 to-gray-900/80 backdrop-blur-sm">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Zabezpieczenie SL/TP</h3>
-                  <p className="text-sm text-gray-200">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-blue-500/20 border border-blue-500/30">
+                  <Shield className="h-6 w-6 text-blue-400" />
                 </div>
-                {slAsMarginPercent && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-4 w-4 text-orange-400 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-xs">Wykluczenie: "SL jako % Margin" jest włączone, więc domyślny SL z zabezpieczenia jest ignorowany.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <div className="flex items-center gap-2">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Zabezpieczenie SL/TP</h3>
+                    <p className="text-sm text-gray-200">Automatyczne ustawienie gdy alert nie zawiera wartości</p>
+                  </div>
+                  {slAsMarginPercent && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-orange-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">Wykluczenie: "SL jako % Margin" jest włączone, więc domyślny SL z zabezpieczenia jest ignorowany.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
               <Switch 
                 checked={useDefaultSlTp} 
@@ -1055,34 +1060,47 @@ export default function BotSettingsPage() {
 
             {useDefaultSlTp && !slAsMarginPercent && (
               <>
-                <Separator className="bg-gray-700" />
-                <div className="space-y-2">
-                  <Label className="text-gray-200">Domyślny SL (% od Entry)</Label>
-                  <Input 
-                    type="number" 
-                    value={defaultSlRR} 
-                    onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
-                    step="0.1"
-                    min="0.1"
-                    className="text-gray-200 bg-gray-800 border-gray-700"
-                  />
-                  <p className="text-xs text-gray-300">Ile procent poniżej/powyżej ceny entry ustawić Stop Loss (np. 1 = 1% od entry)</p>
-                </div>
+                <Separator className="bg-gray-700/50" />
+                
+                <Alert className="border-blue-700 bg-blue-900/20">
+                  <Info className="h-4 w-4 text-blue-400" />
+                  <AlertDescription className="text-sm text-blue-200">
+                    <strong>Priorytet ustawień:</strong> Bot użyje domyślnego SL z tej sekcji gdy alert nie zawiera wartości SL. 
+                    TP będzie brany z sekcji "Strategia Take Profit".
+                  </AlertDescription>
+                </Alert>
 
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                  <p className="text-sm text-blue-200 mb-2">
-                    <strong>Przykład:</strong> Jeśli ustawisz <strong>1%</strong> i entry price to <strong>$40,000</strong>:
-                  </p>
-                  <div className="text-xs text-gray-200 space-y-1 ml-3">
-                    <p>• <strong>LONG:</strong> SL = $40,000 × (1 - 0.01) = <strong>$39,600</strong> (1% poniżej)</p>
-                    <p>• <strong>SHORT:</strong> SL = $40,000 × (1 + 0.01) = <strong>$40,400</strong> (1% powyżej)</p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-200 flex items-center gap-2">
+                      <Percent className="h-4 w-4 text-blue-400" />
+                      Domyślny SL (% od ceny entry)
+                    </Label>
+                    <Input 
+                      type="number" 
+                      value={defaultSlRR} 
+                      onChange={(e) => setDefaultSlRR(parseFloat(e.target.value))}
+                      step="0.1"
+                      min="0.1"
+                      className="text-gray-200 bg-gray-900/60 border-gray-700"
+                    />
+                    <p className="text-xs text-gray-300">
+                      Ile procent poniżej/powyżej ceny entry ustawić Stop Loss
+                    </p>
                   </div>
-                </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                  <p className="text-sm text-blue-200">
-                    <strong>Uwaga:</strong> Wartości Take Profit są konfigurowane w sekcji "Strategia Take Profit (Zaawansowana)" poniżej.
-                  </p>
+                  <div className="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/30 rounded-lg p-4">
+                    <h5 className="text-sm font-bold text-white mb-3">🧮 Przykład kalkulacji SL jako % od entry:</h5>
+                    <div className="space-y-3 text-xs text-gray-200">
+                      <div className="p-3 bg-gray-900/60 rounded">
+                        <p className="text-gray-300 mb-2">Jeśli ustawisz <strong className="text-white">{defaultSlRR}%</strong> i entry price to <strong className="text-white">$40,000</strong>:</p>
+                        <div className="space-y-1 ml-3">
+                          <p>• <strong className="text-green-300">LONG:</strong> SL = $40,000 × (1 - {(defaultSlRR/100).toFixed(3)}) = <strong className="text-white">${(40000 * (1 - defaultSlRR/100)).toFixed(2)}</strong> ({defaultSlRR}% poniżej)</p>
+                          <p>• <strong className="text-red-300">SHORT:</strong> SL = $40,000 × (1 + {(defaultSlRR/100).toFixed(3)}) = <strong className="text-white">${(40000 * (1 + defaultSlRR/100)).toFixed(2)}</strong> ({defaultSlRR}% powyżej)</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
