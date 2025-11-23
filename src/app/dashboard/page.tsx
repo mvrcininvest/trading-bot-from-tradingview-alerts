@@ -787,7 +787,7 @@ export default function DashboardPage() {
               <p className="text-xs mt-1">
                 {symbolLocks.map((lock, i) => (
                   <span key={i} className="inline-block mr-1">
-                    {lock.symbol} {lock.side} {lock.size} {lock.reason}
+                    {lock.symbol} - {lock.lockReason}
                   </span>
                 ))}
               </p>
