@@ -1,6 +1,71 @@
+/* Updated: 2025-11-23T10:46:19.934Z */
+/* Updated: 2025-11-22T23:05:12.408Z */
+/* Updated: 2025-11-22T22:22:26.495Z */
+/* Updated: 2025-11-22T15:42:31.761Z */
+/* Updated: 2025-11-22T13:21:55.015Z */
+/* Updated: 2025-11-22T01:47:29.671Z */
+/* Updated: 2025-11-21T22:42:29.062Z */
+/* Updated: 2025-11-21T16:40:07.737Z */
+/* Updated: 2025-11-21T13:03:24.744Z */
+/* Updated: 2025-11-21T11:47:06.911Z */
+/* Updated: 2025-11-20T18:37:02.402Z */
+/* Updated: 2025-11-20T13:34:14.914Z */
+/* Updated: 2025-11-20T10:42:51.563Z */
+/* Updated: 2025-11-19T21:41:29.169Z */
+/* Updated: 2025-11-19T11:59:01.811Z */
+/* Updated: 2025-11-18T15:38:27.562Z */
+/* Updated: 2025-11-18T12:35:10.876Z */
+/* Updated: 2025-11-13T16:51:46.370Z */
+/* Updated: 2025-11-10T10:05:10.584Z */
+/* Updated: 2025-11-09T21:33:38.824Z */
+/* Updated: 2025-11-08T16:17:37.293Z */
+/* Updated: 2025-11-07T08:51:13.837Z */
+/* Updated: 2025-11-06T21:43:52.853Z */
+/* Updated: 2025-11-06T20:09:04.589Z */
+/* Updated: 2025-11-05T19:19:07.713Z */
+/* Updated: 2025-11-04T20:07:48.882Z */
+/* Updated: 2025-11-03T19:21:14.175Z */
+/* Updated: 2025-11-03T11:21:51.418Z */
+/* Updated: 2025-11-03T08:24:23.432Z */
+/* Updated: 2025-11-02T20:00:05.729Z */
+/* Updated: 2025-11-01T22:58:49.843Z */
+/* Updated: 2025-11-01T19:56:40.856Z */
+/* Updated: 2025-11-01T07:05:37.227Z */
+/* Updated: 2025-10-31T15:12:50.996Z */
+/* Updated: 2025-10-31T12:43:59.364Z */
+/* Updated: 2025-10-31T11:56:24.257Z */
+/* Updated: 2025-10-31T11:28:45.426Z */
+/* Updated: 2025-10-27T19:20:47.898Z */
+/* Updated: 2025-10-27T18:25:24.907Z */
+/* Updated: 2025-10-27T16:36:59.900Z */
+/* Updated: 2025-10-27T11:18:17.601Z */
+/* Updated: 2025-10-26T18:05:04.377Z */
+/* Updated: 2025-10-26T15:17:43.371Z */
+/* Updated: 2025-10-20T19:26:51.810Z */
+/* Updated: 2025-10-20T19:19:58.851Z */
+/* Updated: 2025-10-11T18:22:44.227Z */
+/* Updated: 2025-10-11T08:48:46.464Z */
+/* Updated: 2025-10-11T08:46:44.300Z */
+/* Updated: 2025-10-11T08:40:55.616Z */
+/* Updated: 2025-10-09T20:34:36.640Z */
+/* Updated: 2025-10-09T18:13:10.717Z */
+/* Updated: 2025-10-09T16:28:54.636Z */
+/* Updated: 2025-10-08T15:34:15.395Z */
+/* Updated: 2025-10-07T18:37:23.415Z */
+/* Updated: 2025-10-07T16:06:12.288Z */
+/* Updated: 2025-10-07T04:42:44.209Z */
+/* Updated: 2025-10-06T19:37:35.908Z */
+/* Updated: 2025-10-06T19:17:34.886Z */
+/* Updated: 2025-10-06T19:17:30.146Z */
+/* Updated: 2025-10-06T18:41:26.838Z */
+/* Updated: 2025-10-06T14:56:25.729Z */
+/* Updated: 2025-10-05T15:45:48.131Z */
+/* Updated: 2025-10-05T10:42:29.488Z */
+/* Updated: 2025-10-04T23:22:21.598Z */
 /* Updated: 2025-10-04T22:56:18.475Z */
 /* Updated: 2025-10-04T21:50:17.019Z */
 /* Updated: 2025-10-04T21:40:44.387Z */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -11,14 +76,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -71,14 +128,6 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
@@ -105,23 +154,43 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  html,
   body {
     @apply bg-background text-foreground;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
   }
+}
+
+/* FORCE KILL ANY SIDEBAR REMNANTS */
+[data-sidebar],
+[data-slot="sidebar"],
+[data-slot="sidebar-wrapper"],
+.group\/sidebar-wrapper,
+aside,
+[role="complementary"] {
+  display: none !important;
+  width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure main content takes full width */
+main,
+[data-slot="sidebar-inset"],
+.peer-data-\[variant\=inset\]\:m-2 {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 /* Hide Next.js error overlay portal */
