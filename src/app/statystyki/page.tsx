@@ -21,12 +21,16 @@ import {
   Download,
   Brain,
   Zap,
-  TrendingUp as TrendUp
+  TrendingUp as TrendUp,
+  Sparkles,
+  Filter,
+  CheckCircle2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ExportDialog } from "@/components/ExportDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface HistoricalPosition {
   id: number;
@@ -119,6 +123,7 @@ export default function StatystykiPage() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aiStats, setAiStats] = useState<any>(null);
   const [loadingAiStats, setLoadingAiStats] = useState(false);
+  const [aiTimeRange, setAiTimeRange] = useState<string>("all");
 
   useEffect(() => {
     fetchAllData();
@@ -160,7 +165,12 @@ export default function StatystykiPage() {
   const fetchAiStats = async () => {
     setLoadingAiStats(true);
     try {
-      const response = await fetch("/api/analytics/ai-stats");
+      const params = new URLSearchParams();
+      if (aiTimeRange !== "all") {
+        params.append("days", aiTimeRange);
+      }
+      
+      const response = await fetch(`/api/analytics/ai-stats?${params.toString()}`);
       const data = await response.json();
       
       if (data.success) {
@@ -549,8 +559,12 @@ export default function StatystykiPage() {
         )}
 
         {/* Detailed Statistics Tabs */}
-        <Tabs defaultValue="time" className="space-y-6">
+        <Tabs defaultValue="ai" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 bg-gray-900/80 backdrop-blur-sm border border-gray-800">
+            <TabsTrigger value="ai" className="data-[state=active]:bg-purple-600/30 data-[state=active]:text-purple-200 text-gray-300">
+              <Brain className="mr-2 h-4 w-4" />
+              Analiza AI
+            </TabsTrigger>
             <TabsTrigger value="time" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Calendar className="mr-2 h-4 w-4" />
               Czasowe
@@ -563,168 +577,41 @@ export default function StatystykiPage() {
               <Activity className="mr-2 h-4 w-4" />
               Według Symboli
             </TabsTrigger>
-            <TabsTrigger value="ai" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
-              <Brain className="mr-2 h-4 w-4" />
-              Analiza AI
-            </TabsTrigger>
           </TabsList>
 
-          {/* Time Statistics */}
-          <TabsContent value="time" className="space-y-4">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white">Statystyki Czasowe</CardTitle>
-                <CardDescription className="text-gray-200">
-                  Wydajność bota w różnych okresach czasu
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {timeStats.map((period, idx) => (
-                    <div key={idx} className="p-4 rounded-lg border border-gray-800 bg-gray-900/50">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="font-semibold text-white">{period.period}</h3>
-                          <p className="text-sm text-gray-200">{period.totalTrades} trades</p>
-                        </div>
-                        <Badge 
-                          variant={period.totalPnL >= 0 ? "default" : "destructive"}
-                          className={period.totalPnL >= 0 ? "bg-green-600" : "bg-red-600"}
-                        >
-                          {period.totalPnL >= 0 ? '+' : ''}{period.totalPnL.toFixed(2)} USDT
-                        </Badge>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-200">Win Rate:</span>
-                          <span className="font-semibold text-white">{period.winRate.toFixed(1)}%</span>
-                        </div>
-                        <Progress value={period.winRate} className="h-2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Tier Statistics */}
-          <TabsContent value="tiers" className="space-y-4">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white">Statystyki według Tierów</CardTitle>
-                <CardDescription className="text-gray-200">
-                  Wydajność poszczególnych poziomów sygnałów
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {tierStats.length === 0 ? (
-                  <div className="text-center py-8">
-                    <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                    <p className="text-sm text-gray-300">Brak danych o tierach</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {tierStats.map((tier, idx) => {
-                      const tierColors: Record<string, string> = {
-                        'Platinum': 'from-purple-600/20 to-purple-900/10 border-purple-500/30',
-                        'Premium': 'from-blue-600/20 to-blue-900/10 border-blue-500/30',
-                        'Standard': 'from-green-600/20 to-green-900/10 border-green-500/30',
-                        'Quick': 'from-orange-600/20 to-orange-900/10 border-orange-500/30',
-                        'Emergency': 'from-red-600/20 to-red-900/10 border-red-500/30',
-                      };
-                      
-                      return (
-                        <div 
-                          key={idx} 
-                          className={`p-4 rounded-lg border bg-gradient-to-r ${tierColors[tier.tier] || 'from-gray-800/50 to-gray-900/50 border-gray-700'}`}
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <h3 className="font-bold text-white text-lg">{tier.tier}</h3>
-                              <p className="text-sm text-gray-200">{tier.totalTrades} trades</p>
-                            </div>
-                            <div className="text-right">
-                              <p className={`text-xl font-bold ${tier.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {tier.totalPnL >= 0 ? '+' : ''}{tier.totalPnL.toFixed(2)}
-                              </p>
-                              <p className="text-xs text-gray-300">USDT</p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <span className="text-gray-200">Win Rate:</span>
-                              <span className="ml-2 font-semibold text-white">{tier.winRate.toFixed(1)}%</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-200">Avg PnL:</span>
-                              <span className={`ml-2 font-semibold ${tier.avgPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {tier.avgPnL >= 0 ? '+' : ''}{tier.avgPnL.toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Symbol Statistics */}
-          <TabsContent value="symbols" className="space-y-4">
-            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white">Top 10 Symboli</CardTitle>
-                <CardDescription className="text-gray-200">
-                  Najlepiej i najgorzej performujące instrumenty
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {symbolStats.length === 0 ? (
-                  <div className="text-center py-8">
-                    <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
-                    <p className="text-sm text-gray-300">Brak danych o symbolach</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {symbolStats.map((symbol, idx) => (
-                      <div 
-                        key={idx} 
-                        className="p-3 rounded-lg border border-gray-800 bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                              symbol.totalPnL >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                            }`}>
-                              {idx + 1}
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-white">{symbol.symbol}</h4>
-                              <p className="text-xs text-gray-300">{symbol.totalTrades} trades · {symbol.winRate.toFixed(1)}% WR</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className={`text-lg font-bold ${symbol.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {symbol.totalPnL >= 0 ? '+' : ''}{symbol.totalPnL.toFixed(2)}
-                            </p>
-                            <p className="text-xs text-gray-300">
-                              Avg: {symbol.avgPnL >= 0 ? '+' : ''}{symbol.avgPnL.toFixed(2)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* AI Analysis Tab */}
+          {/* AI Analysis Tab - FIRST TAB NOW */}
           <TabsContent value="ai" className="space-y-4">
+            {/* AI Time Range Filter */}
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Filter className="h-5 w-5 text-purple-400" />
+                      Zakres Analizy AI
+                    </CardTitle>
+                    <CardDescription className="text-gray-400">
+                      Wybierz okres dla zaawansowanej analizy danych
+                    </CardDescription>
+                  </div>
+                  <Select value={aiTimeRange} onValueChange={(val) => {
+                    setAiTimeRange(val);
+                    fetchAiStats();
+                  }}>
+                    <SelectTrigger className="w-[180px] bg-gray-800 border-gray-700 text-gray-300">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-800 border-gray-700">
+                      <SelectItem value="7" className="text-gray-300">Ostatnie 7 dni</SelectItem>
+                      <SelectItem value="30" className="text-gray-300">Ostatnie 30 dni</SelectItem>
+                      <SelectItem value="90" className="text-gray-300">Ostatnie 90 dni</SelectItem>
+                      <SelectItem value="all" className="text-gray-300">Wszystko</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+            </Card>
+
             {loadingAiStats ? (
               <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
                 <CardContent className="p-12">
@@ -736,41 +623,193 @@ export default function StatystykiPage() {
               </Card>
             ) : aiStats ? (
               <>
-                {/* Win Rate by Confirmation Count */}
-                <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-                  <CardHeader>
-                    <CardTitle className="text-white flex items-center gap-2">
-                      <Zap className="h-5 w-5 text-yellow-400" />
-                      Win Rate według Liczby Potwierdzeń
-                    </CardTitle>
-                    <CardDescription className="text-gray-400">
-                      Jak liczba confirmations wpływa na skuteczność
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {aiStats.winRateByConfirmation?.map((item: any, idx: number) => (
-                        <div key={idx} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                          <div className="flex items-center justify-between mb-2">
-                            <div>
-                              <h3 className="text-lg font-bold text-white">
-                                {item.confirmationCount} {item.confirmationCount === 1 ? 'Potwierdzenie' : 'Potwierdzenia'}
-                              </h3>
-                              <p className="text-sm text-gray-400">{item.totalTrades} trades</p>
-                            </div>
-                            <div className="text-right">
-                              <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)} USDT
-                              </p>
-                              <p className="text-sm text-gray-400">{item.winRate.toFixed(1)}% WR</p>
-                            </div>
-                          </div>
-                          <Progress value={item.winRate} className="h-2" />
+                {/* AI Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/30">
+                          <Sparkles className="h-5 w-5 text-purple-400" />
                         </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                        <Badge variant="outline" className="text-xs text-purple-300 border-purple-600">
+                          Rekomendacja AI
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-300 mb-2">Najlepszy Tier</p>
+                      <p className="text-2xl font-bold text-purple-100">
+                        {aiStats.winRateByTier?.[0]?.tier || 'N/A'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {aiStats.winRateByTier?.[0]?.winRate.toFixed(1)}% Win Rate
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-blue-800 bg-gradient-to-br from-blue-900/30 to-gray-900/80 backdrop-blur-sm">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/30">
+                          <CheckCircle2 className="h-5 w-5 text-blue-400" />
+                        </div>
+                        <Badge variant="outline" className="text-xs text-blue-300 border-blue-600">
+                          Optymalna Wartość
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-300 mb-2">Najlepsza Liczba Potwierdzeń</p>
+                      <p className="text-2xl font-bold text-blue-100">
+                        {aiStats.winRateByConfirmation?.reduce((best, curr) => 
+                          curr.winRate > best.winRate ? curr : best, 
+                          aiStats.winRateByConfirmation[0]
+                        )?.confirmationCount || 'N/A'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {aiStats.winRateByConfirmation?.reduce((best, curr) => 
+                          curr.winRate > best.winRate ? curr : best, 
+                          aiStats.winRateByConfirmation[0]
+                        )?.winRate.toFixed(1)}% Win Rate
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-green-800 bg-gradient-to-br from-green-900/30 to-gray-900/80 backdrop-blur-sm">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="p-2 rounded-lg bg-green-500/20 border border-green-500/30">
+                          <Target className="h-5 w-5 text-green-400" />
+                        </div>
+                        <Badge variant="outline" className="text-xs text-green-300 border-green-600">
+                          Najlepszy TP
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-300 mb-2">Optymalny Poziom TP</p>
+                      <p className="text-2xl font-bold text-green-100">
+                        {aiStats.tpHitStats?.tp1AndTp2 > aiStats.tpHitStats?.allTPs ? 'TP1 + TP2' : 
+                         aiStats.tpHitStats?.allTPs > aiStats.tpHitStats?.tp1Only ? 'Wszystkie' : 'TP1'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Najlepszy ROI
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Win Rate by Tier */}
+                {aiStats.winRateByTier && aiStats.winRateByTier.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Award className="h-5 w-5 text-yellow-400" />
+                        Analiza Tierów - Rekomendacje AI
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Która jakość sygnału przynosi najlepsze wyniki?
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {aiStats.winRateByTier.map((item: any, idx: number) => {
+                          const isRecommended = idx === 0;
+                          const tierColors: Record<string, string> = {
+                            'Platinum': 'from-purple-600/20 to-purple-900/10 border-purple-500/30',
+                            'Premium': 'from-blue-600/20 to-blue-900/10 border-blue-500/30',
+                            'Standard': 'from-green-600/20 to-green-900/10 border-green-500/30',
+                            'Quick': 'from-orange-600/20 to-orange-900/10 border-orange-500/30',
+                            'Emergency': 'from-red-600/20 to-red-900/10 border-red-500/30',
+                          };
+                          
+                          return (
+                            <div 
+                              key={idx} 
+                              className={`p-4 rounded-lg border bg-gradient-to-r ${tierColors[item.tier] || 'from-gray-800/50 to-gray-900/50 border-gray-700'} ${isRecommended ? 'ring-2 ring-purple-500/50' : ''}`}
+                            >
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-bold text-white text-lg">{item.tier}</h3>
+                                  {isRecommended && (
+                                    <Badge className="bg-purple-600 text-white">
+                                      <Sparkles className="h-3 w-3 mr-1" />
+                                      Najlepszy
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-right">
+                                  <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)}
+                                  </p>
+                                  <p className="text-xs text-gray-300">USDT</p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-3 text-sm mb-2">
+                                <div>
+                                  <span className="text-gray-200">Trades:</span>
+                                  <span className="ml-2 font-semibold text-white">{item.totalTrades}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-200">Win Rate:</span>
+                                  <span className="ml-2 font-semibold text-white">{item.winRate.toFixed(1)}%</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-200">Avg PnL:</span>
+                                  <span className={`ml-2 font-semibold ${item.avgPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {item.avgPnL >= 0 ? '+' : ''}{item.avgPnL.toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                              <Progress value={item.winRate} className="h-2" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Win Rate by Confirmation Count */}
+                {aiStats.winRateByConfirmation && aiStats.winRateByConfirmation.length > 0 && (
+                  <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Zap className="h-5 w-5 text-yellow-400" />
+                        Analiza Potwierdzeń - Optymalna Wartość
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Ile potwierdzeń daje najlepsze rezultaty?
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {aiStats.winRateByConfirmation.map((item: any, idx: number) => {
+                          const isOptimal = item.winRate === Math.max(...aiStats.winRateByConfirmation.map((i: any) => i.winRate));
+                          
+                          return (
+                            <div key={idx} className={`p-4 rounded-lg bg-gray-800/50 border ${isOptimal ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-gray-700'}`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-lg font-bold text-white">
+                                    {item.confirmationCount} {item.confirmationCount === 1 ? 'Potwierdzenie' : 'Potwierdzenia'}
+                                  </h3>
+                                  {isOptimal && (
+                                    <Badge className="bg-blue-600 text-white">
+                                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                                      Optymalny
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-right">
+                                  <p className={`text-xl font-bold ${item.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {item.totalPnL >= 0 ? '+' : ''}{item.totalPnL.toFixed(2)} USDT
+                                  </p>
+                                  <p className="text-sm text-gray-400">{item.totalTrades} trades · {item.winRate.toFixed(1)}% WR</p>
+                                </div>
+                              </div>
+                              <Progress value={item.winRate} className="h-2" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* PnL by Alert Strength */}
                 {aiStats.pnlByStrength && aiStats.pnlByStrength.length > 0 && (
@@ -1051,6 +1090,160 @@ export default function StatystykiPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* Time Statistics */}
+          <TabsContent value="time" className="space-y-4">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-white">Statystyki Czasowe</CardTitle>
+                <CardDescription className="text-gray-200">
+                  Wydajność bota w różnych okresach czasu
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {timeStats.map((period, idx) => (
+                    <div key={idx} className="p-4 rounded-lg border border-gray-800 bg-gray-900/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="font-semibold text-white">{period.period}</h3>
+                          <p className="text-sm text-gray-200">{period.totalTrades} trades</p>
+                        </div>
+                        <Badge 
+                          variant={period.totalPnL >= 0 ? "default" : "destructive"}
+                          className={period.totalPnL >= 0 ? "bg-green-600" : "bg-red-600"}
+                        >
+                          {period.totalPnL >= 0 ? '+' : ''}{period.totalPnL.toFixed(2)} USDT
+                        </Badge>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-200">Win Rate:</span>
+                          <span className="font-semibold text-white">{period.winRate.toFixed(1)}%</span>
+                        </div>
+                        <Progress value={period.winRate} className="h-2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tier Statistics */}
+          <TabsContent value="tiers" className="space-y-4">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-white">Statystyki według Tierów</CardTitle>
+                <CardDescription className="text-gray-200">
+                  Wydajność poszczególnych poziomów sygnałów
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {tierStats.length === 0 ? (
+                  <div className="text-center py-8">
+                    <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
+                    <p className="text-sm text-gray-300">Brak danych o tierach</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {tierStats.map((tier, idx) => {
+                      const tierColors: Record<string, string> = {
+                        'Platinum': 'from-purple-600/20 to-purple-900/10 border-purple-500/30',
+                        'Premium': 'from-blue-600/20 to-blue-900/10 border-blue-500/30',
+                        'Standard': 'from-green-600/20 to-green-900/10 border-green-500/30',
+                        'Quick': 'from-orange-600/20 to-orange-900/10 border-orange-500/30',
+                        'Emergency': 'from-red-600/20 to-red-900/10 border-red-500/30',
+                      };
+                      
+                      return (
+                        <div 
+                          key={idx} 
+                          className={`p-4 rounded-lg border bg-gradient-to-r ${tierColors[tier.tier] || 'from-gray-800/50 to-gray-900/50 border-gray-700'}`}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <h3 className="font-bold text-white text-lg">{tier.tier}</h3>
+                              <p className="text-sm text-gray-200">{tier.totalTrades} trades</p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-xl font-bold ${tier.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {tier.totalPnL >= 0 ? '+' : ''}{tier.totalPnL.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-gray-300">USDT</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <span className="text-gray-200">Win Rate:</span>
+                              <span className="ml-2 font-semibold text-white">{tier.winRate.toFixed(1)}%</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-200">Avg PnL:</span>
+                              <span className={`ml-2 font-semibold ${tier.avgPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {tier.avgPnL >= 0 ? '+' : ''}{tier.avgPnL.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Symbol Statistics */}
+          <TabsContent value="symbols" className="space-y-4">
+            <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-white">Top 10 Symboli</CardTitle>
+                <CardDescription className="text-gray-200">
+                  Najlepiej i najgorzej performujące instrumenty
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {symbolStats.length === 0 ? (
+                  <div className="text-center py-8">
+                    <XCircle className="h-12 w-12 mx-auto mb-3 text-gray-600 opacity-50" />
+                    <p className="text-sm text-gray-300">Brak danych o symbolach</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {symbolStats.map((symbol, idx) => (
+                      <div 
+                        key={idx} 
+                        className="p-3 rounded-lg border border-gray-800 bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
+                              symbol.totalPnL >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                            }`}>
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-white">{symbol.symbol}</h4>
+                              <p className="text-xs text-gray-300">{symbol.totalTrades} trades · {symbol.winRate.toFixed(1)}% WR</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-lg font-bold ${symbol.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {symbol.totalPnL >= 0 ? '+' : ''}{symbol.totalPnL.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-gray-300">
+                              Avg: {symbol.avgPnL >= 0 ? '+' : ''}{symbol.avgPnL.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 
