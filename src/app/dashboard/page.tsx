@@ -1463,17 +1463,9 @@ export default function DashboardPage() {
                                 <div className="font-semibold text-yellow-300">{parseFloat(position.positionMM).toFixed(2)} USDT</div>
                               </div>
                             )}
-                            {position.cumRealisedPnl && parseFloat(position.cumRealisedPnl) !== 0 && (
-                              <div>
-                                <div className="text-gray-300">Zrealizowany PnL</div>
-                                <div className={`font-semibold ${parseFloat(position.cumRealisedPnl) >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                                  {parseFloat(position.cumRealisedPnl) >= 0 ? '+' : ''}{parseFloat(position.cumRealisedPnl).toFixed(2)} USDT
-                                </div>
-                              </div>
-                            )}
                           </div>
 
-                          {/* ✅ IMPROVED: SL/TP Display with Polish labels and removed yellow circles */}
+                          {/* ✅ IMPROVED: SL/TP Display with Polish labels and tooltips */}
                           <div className="mt-3 p-3 rounded-lg bg-gray-800/60 border border-gray-700">
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
@@ -1487,9 +1479,16 @@ export default function DashboardPage() {
                                   
                                   if (!hasAnySl) {
                                     return (
-                                      <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500">
-                                        ⚠️ BRAK SL
-                                      </Badge>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500 cursor-help">
+                                            ⚠️ BRAK SL
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-gray-200">Stop Loss nie jest ustawiony na giełdzie - pozycja nie jest chroniona przed stratą!</p>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     );
                                   }
                                   
@@ -1499,13 +1498,30 @@ export default function DashboardPage() {
                                         {slPrice.toFixed(4)}
                                       </div>
                                       {isLive ? (
-                                        <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
-                                          🟢 Aktywny
-                                        </Badge>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500 cursor-help">
+                                              🟢 Aktywny
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-gray-200">Stop Loss jest AKTYWNY na giełdzie Bybit - pozycja jest chroniona</p>
+                                          </TooltipContent>
+                                        </Tooltip>
                                       ) : (
-                                        <Badge className="text-xs bg-gray-600/30 text-gray-400 border-gray-500">
-                                          Z pamięci
-                                        </Badge>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="text-xs bg-gray-600/30 text-gray-400 border-gray-500 cursor-help">
+                                              Z pamięci
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="max-w-xs text-gray-200">
+                                              <strong>Uwaga:</strong> Ten SL jest z pamięci cache bota, nie z live API Bybit.
+                                              Jeśli zmieniłeś SL ręcznie na giełdzie, ta wartość może być nieaktualna.
+                                            </p>
+                                          </TooltipContent>
+                                        </Tooltip>
                                       )}
                                     </div>
                                   );
@@ -1526,9 +1542,16 @@ export default function DashboardPage() {
                                   
                                   if (!hasAnyTp) {
                                     return (
-                                      <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500">
-                                        ⚠️ BRAK TP
-                                      </Badge>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="destructive" className="text-xs bg-red-600/30 border-red-500 cursor-help">
+                                            ⚠️ BRAK TP
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-gray-200">Take Profit nie jest ustawiony - brak automatycznego zamknięcia zyskownej pozycji</p>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     );
                                   }
                                   
@@ -1567,17 +1590,41 @@ export default function DashboardPage() {
                                             {tp.price?.toFixed(4)}
                                           </div>
                                           {tp.isHit ? (
-                                            <Badge className="text-xs bg-green-600 text-white border-green-500">
-                                              ✓ Osiągnięty
-                                            </Badge>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Badge className="text-xs bg-green-600 text-white border-green-500 cursor-help">
+                                                  ✓ Osiągnięty
+                                                </Badge>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                <p className="text-gray-200">Ten Take Profit został już osiągnięty i zrealizowany</p>
+                                              </TooltipContent>
+                                            </Tooltip>
                                           ) : tp.isLive ? (
-                                            <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500">
-                                              🟢 Aktywny
-                                            </Badge>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Badge className="text-xs bg-green-600/30 text-green-300 border-green-500 cursor-help">
+                                                  🟢 Aktywny
+                                                </Badge>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                <p className="text-gray-200">Take Profit jest AKTYWNY na giełdzie Bybit</p>
+                                              </TooltipContent>
+                                            </Tooltip>
                                           ) : (
-                                            <Badge className="text-xs bg-gray-600/30 text-gray-400 border-gray-500">
-                                              Z pamięci
-                                            </Badge>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Badge className="text-xs bg-gray-600/30 text-gray-400 border-gray-500 cursor-help">
+                                                  Z pamięci
+                                                </Badge>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                <p className="max-w-xs text-gray-200">
+                                                  <strong>Uwaga:</strong> Ten TP jest z pamięci cache bota, nie z live API Bybit.
+                                                  Jeśli zmieniłeś TP ręcznie na giełdzie, ta wartość może być nieaktualna.
+                                                </p>
+                                              </TooltipContent>
+                                            </Tooltip>
                                           )}
                                         </div>
                                       ))}
