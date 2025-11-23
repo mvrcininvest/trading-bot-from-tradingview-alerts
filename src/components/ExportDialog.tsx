@@ -4,11 +4,10 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarIcon, Download, Loader2, Filter } from "lucide-react";
+import { CalendarIcon, Download, Loader2, Filter, Check } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -168,63 +167,57 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Format Selection - ✅ POPRAWIONY WYGLĄD */}
+          {/* ✅ POPRAWIONY Format Selection - lepszy wygląd z checkmarkami */}
           <div className="space-y-3">
             <Label className="text-white text-base font-semibold">Format Pliku</Label>
             <div className="grid grid-cols-2 gap-3">
               <div
                 onClick={() => setExportFormat("json")}
                 className={cn(
-                  "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative",
                   exportFormat === "json"
-                    ? "border-blue-500 bg-blue-500/10"
-                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                    ? "border-blue-500 bg-blue-500/20 shadow-lg shadow-blue-500/10"
+                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600 hover:bg-gray-800"
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                    exportFormat === "json" ? "border-blue-500" : "border-gray-600"
-                  )}>
-                    {exportFormat === "json" && (
-                      <div className="w-3 h-3 rounded-full bg-blue-500" />
-                    )}
-                  </div>
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-white">JSON</p>
+                    <p className="font-bold text-lg text-white">JSON</p>
                     <p className="text-xs text-gray-400">Pełne dane + alerty</p>
                   </div>
+                  {exportFormat === "json" && (
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500">
+                      <Check className="h-4 w-4 text-white" />
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div
                 onClick={() => setExportFormat("csv")}
                 className={cn(
-                  "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                  "p-4 rounded-lg border-2 cursor-pointer transition-all relative",
                   exportFormat === "csv"
-                    ? "border-blue-500 bg-blue-500/10"
-                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                    ? "border-blue-500 bg-blue-500/20 shadow-lg shadow-blue-500/10"
+                    : "border-gray-700 bg-gray-800/50 hover:border-gray-600 hover:bg-gray-800"
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                    exportFormat === "csv" ? "border-blue-500" : "border-gray-600"
-                  )}>
-                    {exportFormat === "csv" && (
-                      <div className="w-3 h-3 rounded-full bg-blue-500" />
-                    )}
-                  </div>
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-white">CSV</p>
+                    <p className="font-bold text-lg text-white">CSV</p>
                     <p className="text-xs text-gray-400">Excel/Sheets</p>
                   </div>
+                  {exportFormat === "csv" && (
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500">
+                      <Check className="h-4 w-4 text-white" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Period Selection - ✅ POPRAWIONY WYGLĄD */}
+          {/* ✅ POPRAWIONY Period Selection - lepszy wygląd z checkmarkami */}
           <div className="space-y-3">
             <Label className="text-white text-base font-semibold">Okres Danych</Label>
             <div className="grid grid-cols-2 gap-2">
@@ -239,27 +232,24 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                   key={option.value}
                   onClick={() => setPeriod(option.value as any)}
                   className={cn(
-                    "p-3 rounded-lg border-2 cursor-pointer transition-all text-center",
+                    "p-3 rounded-lg border-2 cursor-pointer transition-all",
                     period === option.value
-                      ? "border-blue-500 bg-blue-500/10"
-                      : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                      ? "border-blue-500 bg-blue-500/20 shadow-lg shadow-blue-500/10"
+                      : "border-gray-700 bg-gray-800/50 hover:border-gray-600 hover:bg-gray-800"
                   )}
                 >
-                  <div className="flex items-center justify-center gap-2">
-                    <div className={cn(
-                      "w-4 h-4 rounded-full border-2 flex items-center justify-center",
-                      period === option.value ? "border-blue-500" : "border-gray-600"
-                    )}>
-                      {period === option.value && (
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between">
                     <span className={cn(
-                      "font-medium",
+                      "font-semibold",
                       period === option.value ? "text-white" : "text-gray-300"
                     )}>
                       {option.label}
                     </span>
+                    {period === option.value && (
+                      <div className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-500">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -268,7 +258,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
           {/* Custom Date Range */}
           {period === "custom" && (
-            <div className="space-y-3 pl-6 border-l-2 border-gray-700">
+            <div className="space-y-3 pl-6 border-l-2 border-blue-500/50 bg-blue-500/5 py-2">
               <div className="space-y-2">
                 <Label className="text-gray-300">Od</Label>
                 <Popover>

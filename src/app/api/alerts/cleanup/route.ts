@@ -24,13 +24,13 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({
       success: true,
       deleted: deletedCount,
-      message: `Usunięto ${deletedCount} starych alertów`
+      message: `Usunięto ${deletedCount} starych alertów (sprzed dzisiaj)`
     }, { status: 200 });
 
   } catch (error) {
     console.error('[Cleanup] DELETE error:', error);
     
-    // ✅ POPRAWKA: Zwróć więcej szczegółów o błędzie
+    // ✅ POPRAWKA: Bezpieczne wydobycie szczegółów błędu
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
     
@@ -41,8 +41,8 @@ export async function DELETE(request: NextRequest) {
     
     return NextResponse.json({
       success: false,
-      error: 'Database cleanup failed: ' + errorMessage,
-      details: errorStack
+      error: 'Błąd czyszczenia bazy danych',
+      message: errorMessage
     }, { status: 500 });
   }
 }

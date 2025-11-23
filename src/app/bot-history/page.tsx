@@ -48,7 +48,7 @@ export default function BotHistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // ✅ positionHistory table zawiera tylko closed positions - nie trzeba filtrować
+      // ✅ API zwraca TYLKO closed positions z positionHistory
       const positionsResponse = await fetch("/api/bot/history");
       const positionsData = await positionsResponse.json();
 
@@ -87,20 +87,20 @@ export default function BotHistoryPage() {
 
   // ✅ POPRAWIONE ETYKIETY - bardziej zrozumiałe i szczegółowe
   const closeReasonLabels: Record<string, string> = {
-    sl_hit: "🛑 Stop Loss trafiony",
-    tp_main_hit: "🎯 Take Profit (główny)",
-    tp1_hit: "🎯 TP1 trafiony",
-    tp2_hit: "🎯 TP2 trafiony", 
-    tp3_hit: "🎯 TP3 trafiony",
+    sl_hit: "🛑 Stop Loss",
+    tp_main_hit: "🎯 Take Profit (Main)",
+    tp1_hit: "🎯 TP1",
+    tp2_hit: "🎯 TP2", 
+    tp3_hit: "🎯 TP3",
     manual_close: "👤 Ręczne zamknięcie",
-    emergency_override: "⚠️ Emergency Override (zamknięte przez silniejszy alert)",
-    opposite_direction: "🔄 Alert w przeciwnym kierunku (odwrócenie pozycji)",
-    auto_sync: "🔄 Auto-sync (zamknięte na giełdzie, wykryte przez synchronizację)",
-    closed_on_exchange: "🔄 Zamknięte na giełdzie (auto-sync)",
-    oko_emergency: "👁️ OKO - Emergency Close (PnL poniżej progu)",
-    oko_sl_breach: "👁️ OKO - SL Breach (cena przekroczyła SL)",
-    oko_account_drawdown: "👁️ OKO - Account Drawdown Protection",
-    ghost_position_cleanup: "👻 Ghost Position Cleanup",
+    emergency_override: "⚠️ Emergency Override",
+    opposite_direction: "🔄 Odwrócenie kierunku",
+    auto_sync: "🔄 Auto-sync",
+    closed_on_exchange: "🔄 Auto-sync",  // ✅ SAME LABEL
+    oko_emergency: "👁️ Oko Saurona - Emergency",
+    oko_sl_breach: "👁️ Oko Saurona - SL Breach",
+    oko_account_drawdown: "👁️ Oko Saurona - Drawdown",
+    ghost_position_cleanup: "👻 Ghost Cleanup",
   };
 
   const getCloseReasonLabel = (reason: string) => {
