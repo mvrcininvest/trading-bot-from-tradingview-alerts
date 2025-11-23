@@ -22,23 +22,49 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'error_alerts':
-        // ✅ POPRAWKA: Nie usuwaj alertów (to psuje inne części systemu)
-        // Zamiast tego oznacz je jako "cleaned" - zmień executionStatus
+        // ✅ POPRAWKA: Oznacz jako cleaned zamiast usuwać
+        console.log('   Attempting to mark error_rejected alerts as cleaned...');
         try {
-          const updateResult = await db
-            .update(alerts)
-            .set({ 
-              executionStatus: 'cleaned',
-              rejectionReason: 'Cleaned by diagnostics - was error_rejected'
-            })
-            .where(eq(alerts.executionStatus, 'error_rejected'));
+          // First check how many records match
+          const matchingAlerts = await db
+            .select()
+            .from(alerts)
+            .where(eq(alerts.executionStatus, 'error_rejected'))
+            .limit(100);
           
-          deletedCount = updateResult.rowsAffected || 0;
+          console.log(`   Found ${matchingAlerts.length} error_rejected alerts to clean`);
+          
+          if (matchingAlerts.length > 0) {
+            const updateResult = await db
+              .update(alerts)
+              .set({ 
+                executionStatus: 'cleaned',
+                rejectionReason: 'Cleaned by diagnostics - was error_rejected'
+              })
+              .where(eq(alerts.executionStatus, 'error_rejected'));
+            
+            deletedCount = updateResult.rowsAffected || 0;
+            console.log(`   Successfully marked ${deletedCount} alerts as cleaned`);
+          } else {
+            console.log('   No error_rejected alerts found to clean');
+            deletedCount = 0;
+          }
+          
           details.errorAlerts = deletedCount;
-          console.log(`   Marked ${deletedCount} error alerts as cleaned`);
         } catch (err) {
           console.error('❌ Failed to clean error alerts:', err);
-          throw new Error(`Failed to clean error alerts: ${err instanceof Error ? err.message : String(err)}`);
+          console.error('❌ Error details:', err instanceof Error ? err.stack : String(err));
+          
+          // Don't throw - just return error details
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Błąd czyszczenia błędnych alertów',
+              message: err instanceof Error ? err.message : 'Nieznany błąd',
+              details: err instanceof Error ? err.stack : String(err)
+            },
+            { status: 500 }
+          );
         }
         break;
 
@@ -69,29 +95,55 @@ export async function POST(request: NextRequest) {
         // Wyczyść wszystko OPRÓCZ aktywnych blokad
         console.log('   Starting parallel cleanup operations...');
         
-        const [f, a, v, r, h] = await Promise.all([
-          db.delete(diagnosticFailures),
-          // ✅ POPRAWKA: Oznacz jako cleaned zamiast usuwać
-          db.update(alerts)
-            .set({ 
-              executionStatus: 'cleaned',
-              rejectionReason: 'Cleaned by diagnostics - was error_rejected'
-            })
-            .where(eq(alerts.executionStatus, 'error_rejected')),
-          db.delete(botDetailedLogs).where(eq(botDetailedLogs.hasDiscrepancy, true)),
-          db.delete(tpslRetryAttempts),
-          db.delete(symbolLocks).where(isNotNull(symbolLocks.unlockedAt))
-        ]);
-        
-        details = {
-          failures: f.rowsAffected || 0,
-          errorAlerts: a.rowsAffected || 0,
-          verifications: v.rowsAffected || 0,
-          retries: r.rowsAffected || 0,
-          historyLocks: h.rowsAffected || 0,
-        };
-        deletedCount = Object.values(details).reduce((sum, val) => sum + val, 0);
-        console.log(`   Cleaned ${deletedCount} total records:`, details);
+        try {
+          // Check error alerts first
+          const errorAlertsToClean = await db
+            .select()
+            .from(alerts)
+            .where(eq(alerts.executionStatus, 'error_rejected'))
+            .limit(100);
+          
+          console.log(`   Found ${errorAlertsToClean.length} error_rejected alerts for cleanup`);
+          
+          const [f, a, v, r, h] = await Promise.all([
+            db.delete(diagnosticFailures),
+            // ✅ POPRAWKA: Oznacz jako cleaned zamiast usuwać
+            errorAlertsToClean.length > 0 
+              ? db.update(alerts)
+                  .set({ 
+                    executionStatus: 'cleaned',
+                    rejectionReason: 'Cleaned by diagnostics - was error_rejected'
+                  })
+                  .where(eq(alerts.executionStatus, 'error_rejected'))
+              : Promise.resolve({ rowsAffected: 0 }),
+            db.delete(botDetailedLogs).where(eq(botDetailedLogs.hasDiscrepancy, true)),
+            db.delete(tpslRetryAttempts),
+            db.delete(symbolLocks).where(isNotNull(symbolLocks.unlockedAt))
+          ]);
+          
+          details = {
+            failures: f.rowsAffected || 0,
+            errorAlerts: a.rowsAffected || 0,
+            verifications: v.rowsAffected || 0,
+            retries: r.rowsAffected || 0,
+            historyLocks: h.rowsAffected || 0,
+          };
+          deletedCount = Object.values(details).reduce((sum, val) => sum + val, 0);
+          console.log(`   Cleaned ${deletedCount} total records:`, details);
+        } catch (err) {
+          console.error('❌ Parallel cleanup failed:', err);
+          console.error('❌ Error details:', err instanceof Error ? err.stack : String(err));
+          
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Błąd podczas czyszczenia wszystkich danych',
+              message: err instanceof Error ? err.message : 'Nieznany błąd',
+              details: err instanceof Error ? err.stack : String(err)
+            },
+            { status: 500 }
+          );
+        }
         break;
 
       default:
