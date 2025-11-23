@@ -159,47 +159,64 @@ export async function openBybitPosition(
   console.log(`   Stop Loss: ${stopLoss || 'N/A'}`);
 
   // ✅ FIX: Round quantity to 3 decimal places to prevent signing errors
-  // Bybit API has issues with excessive precision (e.g., 0.011894849530153443)
   const roundedQuantity = Math.floor(quantity * 1000) / 1000;
   
   console.log(`\n🔧 Quantity adjustment:`);
   console.log(`   Original: ${quantity}`);
   console.log(`   Rounded (3 decimals): ${roundedQuantity}`);
 
-  // ✅ CRITICAL: Validate TP/SL direction based on side
-  const isLong = side === 'BUY';
-  
-  // Get current market price for validation
+  // Get current market price for entry estimation
   const currentPrice = await getCurrentMarketPrice(symbol, apiKey, apiSecret);
   console.log(`\n💰 Current Market Price: ${currentPrice}`);
 
-  // Validate TP
+  // ✅ CRITICAL FIX: Validate TP/SL direction based on side AND entry price
+  const isLong = side === 'BUY';
+  
+  // Use current price as entry estimate (market orders fill at current price)
+  const estimatedEntry = currentPrice;
+
+  console.log(`\n🔍 TP/SL Validation (Side: ${side}):`);
+  console.log(`   Estimated Entry: ${estimatedEntry}`);
+  
+  // Validate TP direction
   if (takeProfit) {
-    if (isLong && takeProfit <= currentPrice) {
-      console.warn(`⚠️ INVALID TP for LONG: ${takeProfit} must be > ${currentPrice}`);
-      console.warn(`   Adjusting TP to be 0.5% above current price...`);
-      takeProfit = currentPrice * 1.005;
-    } else if (!isLong && takeProfit >= currentPrice) {
-      console.warn(`⚠️ INVALID TP for SHORT: ${takeProfit} must be < ${currentPrice}`);
-      console.warn(`   Adjusting TP to be 0.5% below current price...`);
-      takeProfit = currentPrice * 0.995;
+    console.log(`   Original TP: ${takeProfit}`);
+    
+    if (isLong && takeProfit <= estimatedEntry) {
+      console.warn(`   ⚠️ INVALID TP for LONG: ${takeProfit} must be ABOVE ${estimatedEntry}`);
+      console.warn(`   🔧 Auto-fixing: Setting TP to 0.5% above entry...`);
+      takeProfit = estimatedEntry * 1.005;
+      console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
+    } else if (!isLong && takeProfit >= estimatedEntry) {
+      console.warn(`   ⚠️ INVALID TP for SHORT: ${takeProfit} must be BELOW ${estimatedEntry}`);
+      console.warn(`   🔧 Auto-fixing: Setting TP to 0.5% below entry...`);
+      takeProfit = estimatedEntry * 0.995;
+      console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
+    } else {
+      console.log(`   ✅ TP direction valid`);
     }
   }
 
-  // Validate SL
+  // Validate SL direction
   if (stopLoss) {
-    if (isLong && stopLoss >= currentPrice) {
-      console.warn(`⚠️ INVALID SL for LONG: ${stopLoss} must be < ${currentPrice}`);
-      console.warn(`   Adjusting SL to be 1% below current price...`);
-      stopLoss = currentPrice * 0.99;
-    } else if (!isLong && stopLoss <= currentPrice) {
-      console.warn(`⚠️ INVALID SL for SHORT: ${stopLoss} must be > ${currentPrice}`);
-      console.warn(`   Adjusting SL to be 1% above current price...`);
-      stopLoss = currentPrice * 1.01;
+    console.log(`   Original SL: ${stopLoss}`);
+    
+    if (isLong && stopLoss >= estimatedEntry) {
+      console.warn(`   ⚠️ INVALID SL for LONG: ${stopLoss} must be BELOW ${estimatedEntry}`);
+      console.warn(`   🔧 Auto-fixing: Setting SL to 1% below entry...`);
+      stopLoss = estimatedEntry * 0.99;
+      console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
+    } else if (!isLong && stopLoss <= estimatedEntry) {
+      console.warn(`   ⚠️ INVALID SL for SHORT: ${stopLoss} must be ABOVE ${estimatedEntry}`);
+      console.warn(`   🔧 Auto-fixing: Setting SL to 1% above entry...`);
+      stopLoss = estimatedEntry * 1.01;
+      console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
+    } else {
+      console.log(`   ✅ SL direction valid`);
     }
   }
 
-  console.log(`\n✅ Validated TP/SL:`);
+  console.log(`\n✅ Final TP/SL after validation:`);
   console.log(`   Take Profit: ${takeProfit?.toFixed(4) || 'N/A'}`);
   console.log(`   Stop Loss: ${stopLoss?.toFixed(4) || 'N/A'}`);
 
@@ -232,17 +249,17 @@ export async function openBybitPosition(
     symbol: symbol,
     side: side === 'BUY' ? 'Buy' : 'Sell',
     orderType: 'Market',
-    qty: roundedQuantity.toFixed(3), // ✅ FIX: Use .toFixed(3) for consistent precision
+    qty: roundedQuantity.toFixed(3),
     timeInForce: 'GTC',
     positionIdx: 0
   };
 
   // Add TP/SL if provided
   if (takeProfit) {
-    orderPayload.takeProfit = takeProfit.toFixed(2); // ✅ FIX: Round prices too
+    orderPayload.takeProfit = takeProfit.toFixed(2);
   }
   if (stopLoss) {
-    orderPayload.stopLoss = stopLoss.toFixed(2); // ✅ FIX: Round prices too
+    orderPayload.stopLoss = stopLoss.toFixed(2);
   }
 
   console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));

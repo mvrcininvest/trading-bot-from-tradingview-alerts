@@ -868,6 +868,71 @@ export async function POST(request: Request) {
 
     console.log(`💰 Position: $${positionSizeUsd}, Leverage: ${leverage}x`);
 
+    // ✅ CRITICAL FIX: Validate TP/SL direction BEFORE sending to exchange
+    console.log(`\n🔍 Pre-Exchange TP/SL Validation:`);
+    console.log(`   Entry Price: ${entryPrice}`);
+    console.log(`   Side: ${data.side}`);
+    console.log(`   TP1 (before validation): ${tp1Price}`);
+    console.log(`   SL (before validation): ${slPrice}`);
+
+    const isLong = data.side === "BUY";
+
+    // Validate and fix TP1
+    if (tp1Price) {
+      if (isLong && tp1Price <= entryPrice) {
+        console.warn(`   ⚠️ INVALID TP1 for LONG: ${tp1Price} must be > ${entryPrice}`);
+        console.warn(`   🔧 Auto-fixing: Setting TP1 to 0.5% above entry...`);
+        tp1Price = entryPrice * 1.005;
+        console.warn(`   ✅ New TP1: ${tp1Price.toFixed(4)}`);
+      } else if (!isLong && tp1Price >= entryPrice) {
+        console.warn(`   ⚠️ INVALID TP1 for SHORT: ${tp1Price} must be < ${entryPrice}`);
+        console.warn(`   🔧 Auto-fixing: Setting TP1 to 0.5% below entry...`);
+        tp1Price = entryPrice * 0.995;
+        console.warn(`   ✅ New TP1: ${tp1Price.toFixed(4)}`);
+      } else {
+        console.log(`   ✅ TP1 direction valid`);
+      }
+    }
+
+    // Validate and fix SL
+    if (slPrice) {
+      if (isLong && slPrice >= entryPrice) {
+        console.warn(`   ⚠️ INVALID SL for LONG: ${slPrice} must be < ${entryPrice}`);
+        console.warn(`   🔧 Auto-fixing: Setting SL to 1% below entry...`);
+        slPrice = entryPrice * 0.99;
+        console.warn(`   ✅ New SL: ${slPrice.toFixed(4)}`);
+      } else if (!isLong && slPrice <= entryPrice) {
+        console.warn(`   ⚠️ INVALID SL for SHORT: ${slPrice} must be > ${entryPrice}`);
+        console.warn(`   🔧 Auto-fixing: Setting SL to 1% above entry...`);
+        slPrice = entryPrice * 1.01;
+        console.warn(`   ✅ New SL: ${slPrice.toFixed(4)}`);
+      } else {
+        console.log(`   ✅ SL direction valid`);
+      }
+    }
+
+    // Recalculate TP2/TP3 based on fixed TP1 and SL
+    if (tp1Price && slPrice) {
+      const slDistance = Math.abs(entryPrice - slPrice);
+      const tp1RR = Math.abs(tp1Price - entryPrice) / slDistance;
+      const tp2RR = botConfig.tp2RR || 2.0;
+      const tp3RR = botConfig.tp3RR || 3.0;
+      
+      if (isLong) {
+        if (botConfig.tpCount >= 2) tp2Price = entryPrice + (slDistance * tp2RR);
+        if (botConfig.tpCount >= 3) tp3Price = entryPrice + (slDistance * tp3RR);
+      } else {
+        if (botConfig.tpCount >= 2) tp2Price = entryPrice - (slDistance * tp2RR);
+        if (botConfig.tpCount >= 3) tp3Price = entryPrice - (slDistance * tp3RR);
+      }
+    }
+
+    console.log(`\n✅ Final validated TP/SL before exchange:`);
+    console.log(`   TP1: ${tp1Price?.toFixed(4) || 'N/A'}`);
+    console.log(`   TP2: ${tp2Price?.toFixed(4) || 'N/A'}`);
+    console.log(`   TP3: ${tp3Price?.toFixed(4) || 'N/A'}`);
+    console.log(`   SL: ${slPrice?.toFixed(4) || 'N/A'}`);
+
     // Open position on Bybit
     try {
       const symbol = data.symbol;
