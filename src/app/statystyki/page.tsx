@@ -378,7 +378,7 @@ export default function StatystykiPage() {
     setTimeStats(timeStatsData);
   };
 
-  // ✅ POPRAWIONY FORMAT CZASU
+  // ✅ POPRAWIONY FORMAT CZASU - normalne minuty/godziny
   const formatDuration = (minutes: number) => {
     if (minutes < 60) {
       return `${Math.round(minutes)} min`;

@@ -84,35 +84,38 @@ export default function BotHistoryPage() {
   // Get unique close reasons
   const closeReasons = Array.from(new Set(positions.map((p) => p.closeReason)));
 
-  // ✅ POPRAWIONE ETYKIETY - proste i zrozumiałe
+  // ✅ POPRAWIONE ETYKIETY - bardziej zrozumiałe
   const closeReasonLabels: Record<string, string> = {
     sl_hit: "🛑 Stop Loss",
-    tp_main_hit: "🎯 Take Profit",
-    tp1_hit: "🎯 TP1",
-    tp2_hit: "🎯 TP2", 
-    tp3_hit: "🎯 TP3",
-    manual_close: "👤 Zamknięcie ręczne",
+    tp_main_hit: "🎯 Take Profit (Main)",
+    tp1_hit: "🎯 TP1 Hit",
+    tp2_hit: "🎯 TP2 Hit", 
+    tp3_hit: "🎯 TP3 Hit",
+    manual_close: "👤 Ręczne zamknięcie",
     emergency_override: "⚠️ Emergency",
     opposite_direction: "🔄 Przeciwny kierunek",
-    auto_sync: "🔄 Zsynchronizowane z giełdą",
+    auto_sync: "🔄 Auto-sync z giełdą",
     closed_on_exchange: "🔄 Zamknięte na giełdzie",
     oko_emergency: "👁️ OKO Emergency",
     oko_sl_breach: "👁️ OKO SL Breach",
-    ghost_position_cleanup: "👻 Ghost Position",
+    ghost_position_cleanup: "👻 Ghost cleanup",
   };
 
   const getCloseReasonLabel = (reason: string) => {
     return closeReasonLabels[reason] || reason;
   };
 
-  // ✅ POPRAWIONY FORMAT CZASU
+  // ✅ POPRAWIONY FORMAT CZASU - normalne minuty/godziny
   const formatDuration = (minutes: number) => {
     if (minutes < 60) {
-      return `${minutes} min`;
+      return `${Math.round(minutes)} min`;
     }
     const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+    const mins = Math.round(minutes % 60);
+    if (mins > 0) {
+      return `${hours}h ${mins}min`;
+    }
+    return `${hours}h`;
   };
 
   return (

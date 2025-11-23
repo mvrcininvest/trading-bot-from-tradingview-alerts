@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bell, Bot, Shield } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -339,11 +339,9 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ POPRAWIONE STATYSTYKI - tylko otwarte pozycje
+  // ✅ POPRAWIONE STATYSTYKI
   const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0);
   const totalPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0);
-  const winningPositions = positions.filter(p => parseFloat(p.unrealisedPnl || "0") > 0).length;
-  const losingPositions = positions.filter(p => parseFloat(p.unrealisedPnl || "0") < 0).length;
 
   if (!credentials) {
     return (
@@ -404,12 +402,12 @@ export default function DashboardPage() {
           </Alert>
         )}
 
-        {/* Header with Quick Stats */}
+        {/* ✅ UPROSZCZONE STATYSTYKI - tylko 3 karty */}
         <div className="space-y-4 md:space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-green-300">Saldo</h3>
+                <h3 className="text-sm font-medium text-green-300">Całkowite Saldo</h3>
                 <Wallet className="h-4 w-4 text-green-400" />
               </div>
               <p className="text-2xl font-bold text-green-100">
@@ -426,21 +424,7 @@ export default function DashboardPage() {
               <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
                 {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
               </p>
-              <p className="text-xs text-blue-400">USDT (otwarte)</p>
-            </div>
-
-            <div className="p-4 rounded-lg bg-gradient-to-br from-yellow-900/30 to-yellow-800/50 border border-yellow-800/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-yellow-300">Otwarte Pozycje</h3>
-                <Activity className="h-4 w-4 text-yellow-400" />
-              </div>
-              <p className="text-2xl font-bold text-yellow-100">
-                {positions.length}
-              </p>
-              <p className="text-xs text-yellow-400">
-                {winningPositions > 0 && <span className="text-green-400">+{winningPositions}</span>}
-                {losingPositions > 0 && <span className="text-red-400 ml-2">-{losingPositions}</span>}
-              </p>
+              <p className="text-xs text-blue-400">USDT (otwarte pozycje)</p>
             </div>
 
             <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
