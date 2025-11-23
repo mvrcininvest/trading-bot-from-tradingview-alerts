@@ -78,8 +78,9 @@ export async function POST(request: NextRequest) {
         break;
 
       default:
+        console.error(`❌ Invalid cleanup type: ${type}`);
         return NextResponse.json(
-          { success: false, error: 'Invalid cleanup type' },
+          { success: false, error: `Invalid cleanup type: ${type}` },
           { status: 400 }
         );
     }
@@ -93,9 +94,17 @@ export async function POST(request: NextRequest) {
       details,
     });
   } catch (error) {
-    console.error('❌ Cleanup error:', error);
+    // ✅ FIX: Dodaj szczegółowe logowanie błędu
+    console.error('❌ Cleanup error - Full details:', error);
+    console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
     return NextResponse.json(
-      { success: false, error: 'Database cleanup failed' },
+      { 
+        success: false, 
+        error: 'Database cleanup failed',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }
