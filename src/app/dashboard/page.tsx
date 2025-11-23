@@ -945,9 +945,9 @@ export default function DashboardPage() {
                           <p className="text-xs text-gray-400 mb-1">TP</p>
                           <TPBadge 
                             label="TP" 
-                            price={position.takeProfit} 
-                            livePrice={position.takeProfit} 
-                            isHit={position.takeProfit === position.markPrice}
+                            price={parseFloat(position.takeProfit) || null} 
+                            livePrice={parseFloat(position.takeProfit) || null} 
+                            isHit={parseFloat(position.takeProfit) === parseFloat(position.markPrice)}
                           />
                         </div>
                         
@@ -955,9 +955,9 @@ export default function DashboardPage() {
                           <p className="text-xs text-gray-400 mb-1">SL</p>
                           <TPBadge 
                             label="SL" 
-                            price={position.stopLoss} 
-                            livePrice={position.stopLoss} 
-                            isHit={position.stopLoss === position.markPrice}
+                            price={parseFloat(position.stopLoss) || null} 
+                            livePrice={parseFloat(position.stopLoss) || null} 
+                            isHit={parseFloat(position.stopLoss) === parseFloat(position.markPrice)}
                           />
                         </div>
                       </div>
