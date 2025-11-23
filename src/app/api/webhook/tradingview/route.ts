@@ -17,6 +17,7 @@ import {
   getBybitPositions,
   modifyBybitTpSl
 } from '@/lib/bybit-helpers';
+import { validateAndAdjustPositionSize } from '@/lib/bybit-symbol-info';
 
 // ============================================
 // 🛠️ UTILITY FUNCTIONS
@@ -829,21 +830,94 @@ export async function POST(request: Request) {
         trackingId
       }, alert.id);
 
-      // Get current market price to calculate quantity
-      const marketPrice = await getCurrentMarketPrice(symbol, apiKey, apiSecret);
+      // ✅ NEW: Dynamic position size validation and adjustment per-symbol
+      console.log(`\n💰 ========== DYNAMIC POSITION SIZING ==========`);
+      console.log(`   Target Position Size: $${positionSizeUsd}`);
+      console.log(`   Leverage: ${leverage}x`);
+      console.log(`   Fetching symbol requirements for ${symbol}...`);
       
-      // ✅ FIX: Calculate quantity with proper precision
-      const rawQuantity = positionSizeUsd / marketPrice;
+      let marketPrice: number;
+      let adjustedQuantity: number;
+      let actualPositionSize: number;
+      let adjustmentReason: string;
       
-      // Round to 3 decimal places for safety (Bybit usually accepts 3-4 decimals)
-      // This prevents "minimum limit" errors and signing issues
-      const quantity = Math.floor(rawQuantity * 1000) / 1000;
+      try {
+        // Get current market price
+        marketPrice = await getCurrentMarketPrice(symbol, apiKey, apiSecret);
+        console.log(`   Current Market Price: ${marketPrice}`);
+        
+        // Validate and auto-adjust position size based on symbol minimums
+        const validation = await validateAndAdjustPositionSize(
+          symbol,
+          positionSizeUsd,
+          marketPrice,
+          leverage,
+          apiKey,
+          apiSecret
+        );
+        
+        adjustedQuantity = validation.adjustedQuantity;
+        actualPositionSize = validation.adjustedPositionSize;
+        adjustmentReason = validation.reason;
+        
+        // Log symbol info
+        console.log(`\n📋 Symbol Requirements (${symbol}):`);
+        console.log(`   Min Quantity: ${validation.symbolInfo.minOrderQty}`);
+        console.log(`   Qty Step: ${validation.symbolInfo.qtyStep}`);
+        console.log(`   Precision: ${validation.symbolInfo.precision} decimals`);
+        console.log(`   Min Notional: $${validation.symbolInfo.minNotional}`);
+        
+        // Log adjustment details
+        if (actualPositionSize !== positionSizeUsd) {
+          console.log(`\n⚠️ AUTO-ADJUSTMENT APPLIED:`);
+          console.log(`   Original: $${positionSizeUsd} → ${(positionSizeUsd / marketPrice).toFixed(6)} ${symbol}`);
+          console.log(`   Adjusted: $${actualPositionSize.toFixed(2)} → ${adjustedQuantity} ${symbol}`);
+          console.log(`   Reason: ${adjustmentReason}`);
+          console.log(`   Min Margin Required: $${(validation.symbolInfo.minOrderQty * marketPrice / leverage).toFixed(2)}`);
+          
+          await logToBot('warning', 'position_size_adjusted', adjustmentReason, {
+            symbol,
+            originalSize: positionSizeUsd,
+            adjustedSize: actualPositionSize,
+            originalQuantity: positionSizeUsd / marketPrice,
+            adjustedQuantity,
+            minRequired: validation.symbolInfo.minOrderQty,
+            leverage
+          }, alert.id);
+        } else {
+          console.log(`\n✅ Position size sufficient for ${symbol}`);
+          console.log(`   Quantity: ${adjustedQuantity} ${symbol}`);
+        }
+        
+        // Update positionSizeUsd to actual value being used
+        positionSizeUsd = actualPositionSize;
+        
+      } catch (symbolError: any) {
+        console.error(`❌ Symbol validation failed:`, symbolError.message);
+        
+        if (trackingId) {
+          await markPositionOpenFailed(trackingId);
+        }
+        
+        await db.update(alerts).set({ 
+          executionStatus: 'error_rejected', 
+          rejectionReason: 'symbol_validation_failed',
+          errorType: 'configuration_error'
+        }).where(eq(alerts.id, alert.id));
+        
+        await logToBot('error', 'symbol_validation_failed', `Failed to validate ${symbol}: ${symbolError.message}`, {
+          error: symbolError.message
+        }, alert.id);
+        
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id, 
+          error: `Symbol validation failed: ${symbolError.message}`,
+          message: "Alert saved but symbol validation failed" 
+        });
+      }
       
-      console.log(`💰 Position sizing:`);
-      console.log(`   Market Price: ${marketPrice}`);
-      console.log(`   Position Size: $${positionSizeUsd}`);
-      console.log(`   Raw Quantity: ${rawQuantity}`);
-      console.log(`   Rounded Quantity: ${quantity} (3 decimals)`);
+      console.log(`${'='.repeat(50)}\n`);
 
       let orderId: string;
       
@@ -851,7 +925,7 @@ export async function POST(request: Request) {
         const result = await openBybitPosition(
           symbol,
           side,
-          quantity,
+          adjustedQuantity,
           leverage,
           apiKey,
           apiSecret,
@@ -912,7 +986,7 @@ export async function POST(request: Request) {
           symbol: data.symbol,
           side: data.side,
           entryPrice,
-          quantity,
+          quantity: adjustedQuantity,
           leverage,
           stopLoss: slPrice || 0,
           tp1Price,
@@ -968,7 +1042,7 @@ export async function POST(request: Request) {
           symbol,
           side,
           leverage,
-          quantity,
+          quantity: adjustedQuantity,
           entryPrice,
           sl: slPrice,
           tp1: tp1Price
@@ -982,7 +1056,7 @@ export async function POST(request: Request) {
             {
               symbol,
               side: data.side,
-              quantity,
+              quantity: adjustedQuantity,
               entryPrice,
               slPrice,
               tp1Price,
@@ -1098,7 +1172,7 @@ export async function POST(request: Request) {
             symbol, 
             side, 
             entry: entryPrice, 
-            quantity, 
+            quantity: adjustedQuantity, 
             sl: slPrice, 
             tp1: tp1Price
           },
