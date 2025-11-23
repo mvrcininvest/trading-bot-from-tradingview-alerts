@@ -26,7 +26,7 @@ interface Position {
   entryPrice: string;
   markPrice: string;
   leverage: string;
-  unrealisedPnl: string;
+  unrealisedPnl: string; // String from Bybit API
   takeProfit: string;
   stopLoss: string;
   positionValue: string;
@@ -936,8 +936,8 @@ export default function DashboardPage() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                         <div>
                           <p className="text-xs text-gray-400 mb-1">PnL</p>
-                          <p className={`text-sm font-medium ${position.unrealisedPnl >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                            {position.unrealisedPnl >= 0 ? '+' : ''}{position.unrealisedPnl} USDT
+                          <p className={`text-sm font-medium ${parseFloat(position.unrealisedPnl) >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                            {parseFloat(position.unrealisedPnl) >= 0 ? '+' : ''}{position.unrealisedPnl} USDT
                           </p>
                         </div>
                         
