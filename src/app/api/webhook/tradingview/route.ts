@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { alerts, botSettings, botPositions, botActions, botLogs, symbolLocks, botDetailedLogs, diagnosticFailures, positionHistory } from '@/db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, or } from 'drizzle-orm';
 import { monitorAndManagePositions } from '@/lib/position-monitor';
 import { classifyError } from '@/lib/error-classifier';
 import { 
@@ -579,6 +579,50 @@ export async function POST(request: Request) {
       await logToBot('warning', 'rejected', `Tier ${data.tier} disabled`, { tier: data.tier }, alert.id);
       return NextResponse.json({ success: true, alert_id: alert.id, message: `Tier ${data.tier} disabled` });
     }
+
+    // ============================================
+    // 🆕 CHECK MAX CONCURRENT POSITIONS LIMIT
+    // ============================================
+    console.log(`\n📊 Checking max concurrent positions limit...`);
+    const currentOpenPositions = await db
+      .select()
+      .from(botPositions)
+      .where(
+        or(
+          eq(botPositions.status, 'open'),
+          eq(botPositions.status, 'partial_close')
+        )
+      );
+    
+    const openCount = currentOpenPositions.length;
+    const maxAllowed = botConfig.maxConcurrentPositions;
+    
+    console.log(`   Current open positions: ${openCount}`);
+    console.log(`   Max allowed: ${maxAllowed}`);
+    
+    if (openCount >= maxAllowed) {
+      await db.update(alerts).set({ 
+        executionStatus: 'rejected', 
+        rejectionReason: 'max_positions_reached' 
+      }).where(eq(alerts.id, alert.id));
+      
+      await logToBot('warning', 'rejected', `Max concurrent positions reached: ${openCount}/${maxAllowed}`, { 
+        openCount,
+        maxAllowed,
+        currentPositions: currentOpenPositions.map(p => ({ symbol: p.symbol, side: p.side, tier: p.tier }))
+      }, alert.id);
+      
+      console.log(`   ❌ REJECTED: Max positions limit reached (${openCount}/${maxAllowed})`);
+      
+      return NextResponse.json({ 
+        success: true, 
+        alert_id: alert.id, 
+        message: `Max concurrent positions reached (${openCount}/${maxAllowed})`,
+        rejected: true
+      });
+    }
+    
+    console.log(`   ✅ Within limit: ${openCount}/${maxAllowed} positions\n`);
 
     // Conflict resolution
     console.log(`\n🔍 Checking for conflicts...`);
