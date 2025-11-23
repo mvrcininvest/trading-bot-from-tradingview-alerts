@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { History, TrendingUp, TrendingDown, Activity, Filter } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -36,20 +35,8 @@ interface HistoryPosition {
   durationMinutes: number;
 }
 
-interface BotAction {
-  id: number;
-  action: string;
-  symbol: string | null;
-  side: string | null;
-  details: any;
-  success: boolean;
-  createdAt: string;
-}
-
 export default function BotHistoryPage() {
-  const router = useRouter();
   const [positions, setPositions] = useState<HistoryPosition[]>([]);
-  const [actions, setActions] = useState<BotAction[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "profitable" | "loss">("all");
   const [closeReasonFilter, setCloseReasonFilter] = useState<string>("all");
@@ -61,20 +48,11 @@ export default function BotHistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // Fetch position history from Bybit
       const positionsResponse = await fetch("/api/bot/history");
       const positionsData = await positionsResponse.json();
 
       if (positionsData.success && Array.isArray(positionsData.history)) {
         setPositions(positionsData.history);
-      }
-
-      // Fetch bot actions
-      const actionsResponse = await fetch("/api/bot/actions");
-      const actionsData = await actionsResponse.json();
-
-      if (actionsData.success && Array.isArray(actionsData.actions)) {
-        setActions(actionsData.actions);
       }
     } catch (err) {
       console.error("Failed to fetch history:", err);
@@ -106,35 +84,35 @@ export default function BotHistoryPage() {
   // Get unique close reasons
   const closeReasons = Array.from(new Set(positions.map((p) => p.closeReason)));
 
-  // Close reason labels - ROZSZERZONY SŁOWNIK
+  // ✅ POPRAWIONE ETYKIETY - proste i zrozumiałe
   const closeReasonLabels: Record<string, string> = {
     sl_hit: "🛑 Stop Loss",
     tp_main_hit: "🎯 Take Profit",
-    tp1_hit: "🎯 TP1 Osiągnięty",
-    tp2_hit: "🎯 TP2 Osiągnięty",
-    tp3_hit: "🎯 TP3 Osiągnięty",
-    emergency_override: "⚠️ Emergency Override",
-    opposite_direction: "🔄 Przeciwny Kierunek",
-    manual_close: "👤 Zamknięcie Ręczne",
-    manual_close_all: "👤 Zamknięcie Wszystkich (Ręczne)",
-    auto_sync: "🔄 Auto Sync (zamknięte na giełdzie)",
-    market_reversal: "🔄 Market Reversal",
+    tp1_hit: "🎯 TP1",
+    tp2_hit: "🎯 TP2", 
+    tp3_hit: "🎯 TP3",
+    manual_close: "👤 Zamknięcie ręczne",
+    emergency_override: "⚠️ Emergency",
+    opposite_direction: "🔄 Przeciwny kierunek",
+    auto_sync: "🔄 Zsynchronizowane z giełdą",
     closed_on_exchange: "🔄 Zamknięte na giełdzie",
-    emergency_verification_failure: "⚠️ Błąd weryfikacji (emergency)",
-    partial_close: "📊 Częściowe zamknięcie",
-    // Oko Saurona actions
-    oko_emergency: "👁️ OKO: Emergency Close",
-    oko_sl_breach: "👁️ OKO: SL Breach",
-    oko_pnl_emergency: "👁️ OKO: PnL Emergency",
-    oko_multi_position_correlation: "👁️ OKO: Multi-Position",
-    oko_time_based_exit: "👁️ OKO: Time-Based Exit",
-    oko_account_drawdown: "👁️ OKO: Account Drawdown",
-    oko_ghost_position_cleanup: "👁️ OKO: Ghost Position",
-    ghost_position_cleanup: "👻 Ghost Position Cleanup",
+    oko_emergency: "👁️ OKO Emergency",
+    oko_sl_breach: "👁️ OKO SL Breach",
+    ghost_position_cleanup: "👻 Ghost Position",
   };
 
   const getCloseReasonLabel = (reason: string) => {
-    return closeReasonLabels[reason] || `❓ ${reason}`;
+    return closeReasonLabels[reason] || reason;
+  };
+
+  // ✅ POPRAWIONY FORMAT CZASU
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) {
+      return `${minutes} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
   };
 
   return (
@@ -148,10 +126,10 @@ export default function BotHistoryPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                Historia Bota
+                Historia Pozycji
               </h1>
               <p className="text-gray-200">
-                Zamknięte pozycje i działania bota tradingowego
+                Zamknięte pozycje tradingowe
               </p>
             </div>
           </div>
@@ -165,7 +143,7 @@ export default function BotHistoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-300">Łącznie Transakcji</CardDescription>
+              <CardDescription className="text-gray-300">Łącznie</CardDescription>
               <CardTitle className="text-3xl text-white">{stats.totalTrades}</CardTitle>
             </CardHeader>
           </Card>
@@ -227,14 +205,14 @@ export default function BotHistoryPage() {
                 }}
                 className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
               >
-                Wyczyść Filtry
+                Wyczyść
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-200">Typ Wyniku</label>
+                <label className="text-sm font-medium mb-2 block text-gray-200">Typ</label>
                 <Select value={filter} onValueChange={(v) => setFilter(v as any)}>
                   <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
                     <SelectValue />
@@ -276,14 +254,14 @@ export default function BotHistoryPage() {
               <Badge variant="secondary" className="bg-gray-700 text-gray-200">{filteredPositions.length}</Badge>
             </CardTitle>
             <CardDescription className="text-gray-300">
-              Historia wszystkich zamkniętych pozycji bota
+              Historia zamkniętych pozycji
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading && (
               <div className="text-center py-8">
                 <Activity className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                <p className="text-sm text-gray-300">Ładowanie historii...</p>
+                <p className="text-sm text-gray-300">Ładowanie...</p>
               </div>
             )}
 
@@ -291,7 +269,7 @@ export default function BotHistoryPage() {
               <div className="text-center py-8">
                 <History className="h-12 w-12 mx-auto mb-3 text-gray-600" />
                 <p className="text-sm text-gray-300">
-                  Brak zamkniętych pozycji spełniających kryteria filtrowania.
+                  Brak pozycji
                 </p>
               </div>
             )}
@@ -300,9 +278,7 @@ export default function BotHistoryPage() {
               <div className="space-y-3">
                 {filteredPositions.map((position) => {
                   const isProfitable = position.pnl > 0;
-                  const pnlPercent = position.pnlPercent;
 
-                  // Tier colors
                   const tierColors: Record<string, string> = {
                     Platinum: "bg-purple-500/10 text-purple-300 border-purple-500/50",
                     Premium: "bg-blue-500/10 text-blue-300 border-blue-500/50",
@@ -328,14 +304,14 @@ export default function BotHistoryPage() {
                               {position.tier}
                             </Badge>
                             <Badge
-                              variant={position.side === "BUY" ? "default" : "secondary"}
+                              variant={position.side === "Buy" ? "default" : "secondary"}
                               className={
-                                position.side === "BUY"
+                                position.side === "Buy"
                                   ? "bg-green-500"
                                   : "bg-red-500"
                               }
                             >
-                              {position.side === "BUY" ? "LONG" : "SHORT"} {position.leverage}x
+                              {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
                             </Badge>
                           </div>
                           <div className="text-sm text-gray-200">
@@ -358,7 +334,7 @@ export default function BotHistoryPage() {
                             }`}
                           >
                             ({isProfitable ? "+" : ""}
-                            {pnlPercent.toFixed(2)}%)
+                            {position.pnlPercent.toFixed(2)}%)
                           </div>
                         </div>
                       </div>
@@ -385,50 +361,14 @@ export default function BotHistoryPage() {
                           </div>
                         </div>
                         <div>
-                          <div className="text-gray-300">Czas Trwania</div>
+                          <div className="text-gray-300">Czas</div>
                           <div className="font-semibold text-white">
-                            {position.durationMinutes < 60
-                              ? `${position.durationMinutes}m`
-                              : `${Math.floor(position.durationMinutes / 60)}h ${
-                                  position.durationMinutes % 60
-                                }m`}
+                            {formatDuration(position.durationMinutes)}
                           </div>
                         </div>
                       </div>
 
-                      {/* TP Status - Only show TPs that exist */}
-                      {(position.tp1Hit || position.tp2Hit || position.tp3Hit) && (
-                        <div className="flex items-center gap-2 text-xs mb-2">
-                          <span className="text-gray-300">Take Profit:</span>
-                          {position.tp1Hit && (
-                            <Badge
-                              variant="default"
-                              className="bg-green-500"
-                            >
-                              TP1 ✓
-                            </Badge>
-                          )}
-                          {position.tp2Hit && (
-                            <Badge
-                              variant="default"
-                              className="bg-green-500"
-                            >
-                              TP2 ✓
-                            </Badge>
-                          )}
-                          {position.tp3Hit && (
-                            <Badge
-                              variant="default"
-                              className="bg-green-500"
-                            >
-                              TP3 ✓
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-
                       <div className="flex items-center justify-between text-xs text-gray-300">
-                        <span>Confirmations: {position.confirmationCount}</span>
                         <span>
                           {new Date(position.openedAt).toLocaleString("pl-PL")} →{" "}
                           {new Date(position.closedAt).toLocaleString("pl-PL")}

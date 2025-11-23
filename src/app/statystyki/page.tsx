@@ -378,10 +378,17 @@ export default function StatystykiPage() {
     setTimeStats(timeStatsData);
   };
 
+  // ✅ POPRAWIONY FORMAT CZASU
   const formatDuration = (minutes: number) => {
-    if (minutes < 60) return `${Math.round(minutes)}m`;
-    if (minutes < 1440) return `${Math.round(minutes / 60)}h`;
-    return `${Math.round(minutes / 1440)}d`;
+    if (minutes < 60) {
+      return `${Math.round(minutes)} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    if (mins > 0) {
+      return `${hours}h ${mins}min`;
+    }
+    return `${hours}h`;
   };
 
   if (loading) {
@@ -417,7 +424,7 @@ export default function StatystykiPage() {
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               <Download className="mr-2 h-4 w-4" />
-              Eksportuj Dane
+              Eksportuj
             </Button>
             <Button
               onClick={fetchAllData}
@@ -440,14 +447,14 @@ export default function StatystykiPage() {
                     <BarChart3 className="h-5 w-5 text-blue-400" />
                   </div>
                   <Badge variant="outline" className="text-xs text-gray-200">
-                    Wszystkie trade
+                    Zamknięte
                   </Badge>
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">{stats.totalTrades}</p>
-                <p className="text-sm text-gray-200">Łączna liczba pozycji</p>
+                <p className="text-sm text-gray-200">Łącznie pozycji</p>
                 <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-green-400">✓ {stats.winningTrades} Win</span>
-                  <span className="text-red-400">✗ {stats.losingTrades} Loss</span>
+                  <span className="text-green-400">✓ {stats.winningTrades}</span>
+                  <span className="text-red-400">✗ {stats.losingTrades}</span>
                 </div>
               </CardContent>
             </Card>
@@ -475,16 +482,16 @@ export default function StatystykiPage() {
                     <DollarSign className="h-5 w-5 text-purple-400" />
                   </div>
                   <Badge variant="outline" className="text-xs text-gray-200">
-                    Zysk/Strata
+                    Zrealizowany
                   </Badge>
                 </div>
                 <p className={`text-3xl font-bold mb-1 ${stats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {stats.totalPnL >= 0 ? '+' : ''}{stats.totalPnL.toFixed(2)}
                 </p>
-                <p className="text-sm text-gray-200">USDT Total PnL</p>
+                <p className="text-sm text-gray-200">USDT (zamknięte)</p>
                 <div className="mt-3 flex items-center gap-3 text-xs">
-                  <span className="text-green-400">Avg Win: +{stats.avgWin.toFixed(2)}</span>
-                  <span className="text-red-400">Avg Loss: -{stats.avgLoss.toFixed(2)}</span>
+                  <span className="text-green-400">Śr. +{stats.avgWin.toFixed(2)}</span>
+                  <span className="text-red-400">Śr. -{stats.avgLoss.toFixed(2)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -496,13 +503,13 @@ export default function StatystykiPage() {
                     <Award className="h-5 w-5 text-amber-400" />
                   </div>
                   <Badge variant="outline" className="text-xs text-gray-200">
-                    Profit Factor
+                    Stosunek
                   </Badge>
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">
                   {stats.profitFactor === 999 ? '∞' : stats.profitFactor.toFixed(2)}
                 </p>
-                <p className="text-sm text-gray-200">Stosunek zysk/strata</p>
+                <p className="text-sm text-gray-200">Profit Factor</p>
                 <p className="mt-3 text-xs text-gray-300">
                   {stats.profitFactor >= 2 ? '🔥 Doskonały' : stats.profitFactor >= 1.5 ? '✅ Dobry' : stats.profitFactor >= 1 ? '⚠️ Średni' : '❌ Słaby'}
                 </p>
@@ -546,7 +553,7 @@ export default function StatystykiPage() {
               <CardHeader>
                 <CardTitle className="text-sm font-medium text-gray-200 flex items-center gap-2">
                   <Clock className="h-4 w-4" />
-                  Średni Czas Trwania
+                  Średni Czas
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -571,15 +578,15 @@ export default function StatystykiPage() {
             </TabsTrigger>
             <TabsTrigger value="tiers" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Award className="mr-2 h-4 w-4" />
-              Według Tierów
+              Tiery
             </TabsTrigger>
             <TabsTrigger value="symbols" className="data-[state=active]:bg-blue-600/30 data-[state=active]:text-blue-200 text-gray-300">
               <Activity className="mr-2 h-4 w-4" />
-              Według Symboli
+              Symbole
             </TabsTrigger>
           </TabsList>
 
-          {/* AI Analysis Tab - FIRST TAB NOW */}
+          {/* AI Analysis Tab */}
           <TabsContent value="ai" className="space-y-4">
             {/* AI Time Range Filter */}
             <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
@@ -958,36 +965,30 @@ export default function StatystykiPage() {
                   </Card>
                 )}
 
-                {/* Duration Analysis */}
-                {aiStats.durationAnalysis && (
+                {/* Duration Analysis - POPRAWIONY */}
+                {aiStats?.durationAnalysis && (
                   <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
                     <CardHeader>
                       <CardTitle className="text-white flex items-center gap-2">
                         <Clock className="h-5 w-5 text-green-400" />
-                        Analiza Czasu Trwania Pozycji
+                        Analiza Czasu Trwania
                       </CardTitle>
                       <CardDescription className="text-gray-400">
-                        Średni czas trwania wygranych vs przegranych pozycji
+                        Średni czas wygranych vs przegranych
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="p-4 rounded-lg bg-green-900/20 border border-green-700">
-                          <h3 className="text-sm font-medium text-green-300 mb-2">Wygrane Pozycje</h3>
+                          <h3 className="text-sm font-medium text-green-300 mb-2">Wygrane</h3>
                           <p className="text-3xl font-bold text-green-400">
-                            {aiStats.durationAnalysis.winDurationHours.toFixed(1)}h
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            ({aiStats.durationAnalysis.avgWinDurationMinutes.toFixed(0)} minut)
+                            {formatDuration(aiStats.durationAnalysis.avgWinDurationMinutes)}
                           </p>
                         </div>
                         <div className="p-4 rounded-lg bg-red-900/20 border border-red-700">
-                          <h3 className="text-sm font-medium text-red-300 mb-2">Przegrane Pozycje</h3>
+                          <h3 className="text-sm font-medium text-red-300 mb-2">Przegrane</h3>
                           <p className="text-3xl font-bold text-red-400">
-                            {aiStats.durationAnalysis.lossDurationHours.toFixed(1)}h
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            ({aiStats.durationAnalysis.avgLossDurationMinutes.toFixed(0)} minut)
+                            {formatDuration(aiStats.durationAnalysis.avgLossDurationMinutes)}
                           </p>
                         </div>
                       </div>
