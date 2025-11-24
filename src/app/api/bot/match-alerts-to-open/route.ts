@@ -64,20 +64,37 @@ export async function POST() {
       // 2. Timestamp within ±30 seconds of position open time
       // 3. Side matches (case-insensitive comparison)
       const matchingAlert = allAlerts.find(alert => {
-        const alertTime = alert.timestamp;
+        // ✅ FIX: Convert alert timestamp from SECONDS to MILLISECONDS
+        const alertTime = alert.timestamp * 1000;
         const timeDiff = Math.abs(positionOpenTime - alertTime);
+        
+        // Debug log for first alert check
+        if (alert.symbol === position.symbol) {
+          console.log(`[Match Check] Alert #${alert.id}: ${alert.symbol} ${alert.side} @ ${new Date(alertTime).toISOString()}`);
+          console.log(`              Position: ${position.symbol} ${position.side} @ ${position.openedAt}`);
+          console.log(`              Time diff: ${timeDiff}ms (threshold: 30000ms)`);
+        }
         
         // Symbol must match
         if (alert.symbol !== position.symbol) return false;
         
         // Time difference must be ≤30 seconds (30000ms)
-        if (timeDiff > 30000) return false;
+        if (timeDiff > 30000) {
+          if (alert.symbol === position.symbol) {
+            console.log(`              ❌ Time diff too large: ${timeDiff}ms > 30000ms`);
+          }
+          return false;
+        }
         
         // Side should match (case-insensitive if both are available)
         if (alert.side && position.side) {
-          if (alert.side.toUpperCase() !== position.side.toUpperCase()) return false;
+          if (alert.side.toUpperCase() !== position.side.toUpperCase()) {
+            console.log(`              ❌ Side mismatch: ${alert.side} !== ${position.side}`);
+            return false;
+          }
         }
         
+        console.log(`              ✅ MATCH FOUND!`);
         return true;
       });
 
@@ -121,14 +138,14 @@ export async function POST() {
 
         matchedCount++;
         
-        const timeDiff = Math.abs(new Date(position.openedAt).getTime() - matchingAlert.timestamp);
+        const timeDiff = Math.abs(new Date(position.openedAt).getTime() - (matchingAlert.timestamp * 1000));
         matchDetails.push({
           positionId: position.id,
           symbol: position.symbol,
           side: position.side,
           openedAt: position.openedAt,
           alertId: matchingAlert.id,
-          alertTimestamp: new Date(matchingAlert.timestamp).toISOString(),
+          alertTimestamp: new Date(matchingAlert.timestamp * 1000).toISOString(),
           alertStatus: matchingAlert.executionStatus,
           timeDiffMs: timeDiff,
           matched: true

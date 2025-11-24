@@ -124,6 +124,7 @@ export default function DashboardPage() {
   const [autoImporting, setAutoImporting] = useState(false);
   const [realisedPnL, setRealisedPnL] = useState(0);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
+  const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
 
   // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
   const autoMatchAlertsToOpen = useCallback(async () => {
@@ -630,6 +631,40 @@ export default function DashboardPage() {
     }
   };
 
+  // ✅ NOWA FUNKCJA: Ręczne dopasowanie alertów do otwartych pozycji
+  const handleMatchAlertsManually = async () => {
+    setLoadingAlertMatch(true);
+    
+    try {
+      const response = await fetch("/api/bot/match-alerts-to-open", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.matched > 0) {
+          toast.success(`🔗 Dopasowano ${data.matched} alertów!`, {
+            description: `${data.unmatched} pozycji bez dopasowania (brak alertu w oknie ±30s)`
+          });
+          
+          // Odśwież pozycje
+          await fetchBotPositions();
+        } else {
+          toast.info("✅ Wszystkie otwarte pozycje mają już przypisane alerty", {
+            description: "Nie znaleziono pozycji do dopasowania"
+          });
+        }
+      } else {
+        toast.error("❌ Błąd dopasowywania alertów");
+      }
+    } catch (err) {
+      toast.error(`❌ Błąd: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setLoadingAlertMatch(false);
+    }
+  };
+
   // ✅ NOWA FUNKCJA: Etykiety powodów zamknięcia
   const getCloseReasonLabel = (reason: string) => {
     const closeReasonLabels: Record<string, string> = {
@@ -860,14 +895,41 @@ export default function DashboardPage() {
         {/* ✅ ULEPSZONA LISTA POZYCJI Z WIĘCEJ DANYMI */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              Otwarte Pozycje
-              <Badge variant="secondary" className="bg-gray-700 text-gray-200">{positions.length}</Badge>
-            </CardTitle>
-            <CardDescription className="text-gray-300">
-              Twoje aktualne pozycje tradingowe z rozszerzonymi danymi
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Otwarte Pozycje
+                  <Badge variant="secondary" className="bg-gray-700 text-gray-200">{positions.length}</Badge>
+                </CardTitle>
+                <CardDescription className="text-gray-300">
+                  Twoje aktualne pozycje tradingowe z rozszerzonymi danymi
+                </CardDescription>
+              </div>
+              
+              {/* ✅ NOWY: Przycisk do ręcznego dopasowania alertów */}
+              {positions.length > 0 && (
+                <Button
+                  onClick={handleMatchAlertsManually}
+                  disabled={loadingAlertMatch}
+                  variant="outline"
+                  size="sm"
+                  className="border-green-700 text-green-300 hover:bg-green-900/20"
+                >
+                  {loadingAlertMatch ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                      Dopasowywanie...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-1" />
+                      Dopasuj Alerty
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {loadingPositions && (
@@ -915,11 +977,24 @@ export default function DashboardPage() {
                     ? `${durationHours}h ${durationMinutes}m` 
                     : `${durationMinutes}m`
 
-                  // ✅ POPRAWIONE: Odległość do SL/TP - używaj danych z Bybit position, a jako fallback botPos
-                  const slPrice = parseFloat(position.stopLoss || "0") || (botPos?.liveSlPrice ? parseFloat(String(botPos.liveSlPrice)) : 0)
-                  const tp1Price = parseFloat(position.takeProfit || "0") || (botPos?.liveTp1Price ? parseFloat(String(botPos.liveTp1Price)) : 0)
+                  // ✅ POPRAWIONE: Odległość do SL/TP - sprawdzaj czy wartość istnieje i jest > 0
+                  // Priorytet: Bybit position.stopLoss/takeProfit → fallback na botPos.liveSlPrice/liveTp1Price
+                  const bybitSl = parseFloat(position.stopLoss || "0")
+                  const bybitTp = parseFloat(position.takeProfit || "0")
                   
-                  const distanceToSl = slPrice > 0 
+                  const slPrice = bybitSl > 0 
+                    ? bybitSl 
+                    : (botPos?.liveSlPrice && botPos.liveSlPrice > 0 
+                        ? parseFloat(String(botPos.liveSlPrice)) 
+                        : 0)
+                  
+                  const tp1Price = bybitTp > 0 
+                    ? bybitTp 
+                    : (botPos?.liveTp1Price && botPos.liveTp1Price > 0 
+                        ? parseFloat(String(botPos.liveTp1Price)) 
+                        : 0)
+                  
+                  const distanceToSl = slPrice > 0
                     ? position.side === "Buy" 
                       ? ((markPrice - slPrice) / markPrice * 100)
                       : ((slPrice - markPrice) / markPrice * 100)
