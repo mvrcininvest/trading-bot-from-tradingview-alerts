@@ -24,13 +24,13 @@ function createBybitSignature(
 // ============================================
 
 async function getStatsFromDatabase(daysBack: number = 90) {
-  const cutoffDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const cutoffDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
   
   // Fetch closed positions from database
   const closedPositions = await db
     .select()
     .from(positionHistory)
-    .where(gte(positionHistory.closedAt, cutoffDate));
+    .where(sql`${positionHistory.closedAt} >= ${cutoffDate}`);
   
   // Calculate statistics
   const realisedPnL = closedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
@@ -250,7 +250,7 @@ async function getOpenPositions(apiKey: string, apiSecret: string) {
 function calculateBybitStatistics(closedPositions: any[], openPositions: any[], balance: any) {
   const realisedPnL = closedPositions.reduce((sum, p) => sum + parseFloat(p.closedPnl || "0"), 0);
   const unrealisedPnL = openPositions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0);
-  const totalPnL = realisedPnL + unrealisedPnl;
+  const totalPnL = realisedPnL + unrealisedPnL;
   
   const totalTrades = closedPositions.length;
   const winningTrades = closedPositions.filter(p => parseFloat(p.closedPnl) > 0).length;
@@ -314,7 +314,7 @@ export async function GET(request: NextRequest) {
     const settings = await db.select().from(botSettings).limit(1);
     
     if (settings.length === 0 || !settings[0].apiKey || !settings[0].apiSecret) {
-      // ✅ Fallback na dane z bazy jeśli brak credentials
+      // Fallback na dane z bazy jeśli brak credentials
       console.log(`[Bybit Stats] No credentials - using database fallback`);
       const stats = await getStatsFromDatabase(daysBack);
       
@@ -322,7 +322,6 @@ export async function GET(request: NextRequest) {
         success: true,
         stats,
         dataSource: "database",
-        warning: "Bybit credentials not configured - using local data",
         daysBack,
         fetchedAt: new Date().toISOString(),
       });
@@ -353,7 +352,7 @@ export async function GET(request: NextRequest) {
       });
       
     } catch (bybitError) {
-      // ✅ NOWY: Jeśli Bybit jest zablokowany, użyj fallback
+      // Jeśli Bybit jest zablokowany, użyj fallback
       if (bybitError instanceof Error && bybitError.message === 'GEO_BLOCKED') {
         console.log(`[Bybit Stats] ⚠️ Bybit geo-blocked - falling back to database`);
         const stats = await getStatsFromDatabase(daysBack);
@@ -362,7 +361,6 @@ export async function GET(request: NextRequest) {
           success: true,
           stats,
           dataSource: "database",
-          warning: "Bybit API is geo-blocked on this server - using local data",
           daysBack,
           fetchedAt: new Date().toISOString(),
         });
@@ -375,7 +373,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[Bybit Stats] Error:", error);
     
-    // ✅ OSTATNIA DESKA RATUNKU: Zawsze zwróć coś z bazy
+    // Ostatnia deska ratunku: Zawsze zwróć coś z bazy
     try {
       const daysBack = parseInt(request.nextUrl.searchParams.get("days") || "90");
       const stats = await getStatsFromDatabase(daysBack);
@@ -384,7 +382,6 @@ export async function GET(request: NextRequest) {
         success: true,
         stats,
         dataSource: "database",
-        warning: `Error fetching from Bybit: ${error instanceof Error ? error.message : 'Unknown error'}`,
         daysBack,
         fetchedAt: new Date().toISOString(),
       });

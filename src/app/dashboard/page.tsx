@@ -153,7 +153,7 @@ export default function DashboardPage() {
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
-  // ✅ USUNIĘTE: ostrzeżenia - zostaw tylko dataSource
+  // ✅ Tylko dataSource - bez ostrzeżeń
   const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
@@ -460,7 +460,7 @@ export default function DashboardPage() {
     }
   }, [credentials]);
 
-  // ✅ ZAKTUALIZOWANA FUNKCJA: Bez ostrzeżeń, tylko źródło danych
+  // ✅ POPRAWIONA FUNKCJA: Fetch Bybit stats
   const fetchBybitStats = useCallback(async () => {
     if (!credentials) return;
     
@@ -559,23 +559,21 @@ export default function DashboardPage() {
       fetchPositions(credentials, true);
       fetchBotStatus(true);
       fetchHistoryPositions();
-      // ✅ USUNIĘTE: nie odświeżaj co 2s (powoduje migoczenie)
-      // fetchBybitStats();
     }, 2000);
 
     return () => clearInterval(interval);
   }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
 
-  // ✅ NOWY: Osobny interval dla statystyk Bybit - odśwież co 30s zamiast co 2s
+  // ✅ NAPRAWIONY: Osobny interval dla statystyk - bez bybitStats w dependencies
   useEffect(() => {
-    if (!credentials || !bybitStats) return;
+    if (!credentials) return;
 
     const statsInterval = setInterval(() => {
       fetchBybitStats();
     }, 30000); // Co 30 sekund
 
     return () => clearInterval(statsInterval);
-  }, [credentials, bybitStats, fetchBybitStats]);
+  }, [credentials, fetchBybitStats]);
 
   // ✅ NOWY: Automatyczna synchronizacja z Bybit co 30 sekund
   useEffect(() => {
