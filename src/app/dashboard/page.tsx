@@ -139,7 +139,6 @@ export default function DashboardPage() {
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [autoImporting, setAutoImporting] = useState(false);
-  const [realisedPnL, setRealisedPnL] = useState(0);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);

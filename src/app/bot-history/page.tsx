@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText, Link as LinkIcon } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText, Link as LinkIcon, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -45,6 +45,23 @@ interface HistoryPosition {
   alertData?: string | null;
 }
 
+// ✅ NOWY: Interfejs dla statystyk Bybit
+interface BybitStats {
+  totalEquity: number;
+  totalWalletBalance: number;
+  availableBalance: number;
+  realisedPnL: number;
+  unrealisedPnL: number;
+  totalPnL: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number;
+  tradingVolume: number;
+  avgHoldingTime: number;
+}
+
 export default function BotHistoryPage() {
   const [positions, setPositions] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,10 +71,31 @@ export default function BotHistoryPage() {
   const [matchingAlerts, setMatchingAlerts] = useState(false);
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
+  // ✅ NOWE: Stan dla statystyk Bybit
+  const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
+  const [loadingBybitStats, setLoadingBybitStats] = useState(false);
 
   useEffect(() => {
     fetchHistory();
+    fetchBybitStats(); // ✅ NOWE
   }, []);
+
+  // ✅ NOWA FUNKCJA: Pobierz statystyki z Bybit API
+  const fetchBybitStats = async () => {
+    setLoadingBybitStats(true);
+    try {
+      const response = await fetch('/api/analytics/bybit-stats?days=30');
+      const data = await response.json();
+      
+      if (data.success) {
+        setBybitStats(data.stats);
+      }
+    } catch (err) {
+      console.error("Failed to fetch Bybit stats:", err);
+    } finally {
+      setLoadingBybitStats(false);
+    }
+  };
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -181,6 +219,7 @@ export default function BotHistoryPage() {
           }
         );
         await fetchHistory(); // Refresh history
+        await fetchBybitStats(); // ✅ NOWE: Odśwież statystyki po imporcie
       } else {
         toast.error(`❌ Błąd: ${data.message}`);
       }
@@ -207,8 +246,14 @@ export default function BotHistoryPage() {
     }
   };
 
-  // Calculate statistics
-  const stats = {
+  // ✅ POPRAWIONE: Używaj statystyk z Bybit API jeśli dostępne
+  const stats = bybitStats ? {
+    totalTrades: bybitStats.totalTrades,
+    profitable: bybitStats.winningTrades,
+    losses: bybitStats.losingTrades,
+    totalPnl: bybitStats.realisedPnL,
+    winRate: bybitStats.winRate,
+  } : {
     totalTrades: positions.length,
     profitable: positions.filter((p) => p.pnl > 0).length,
     losses: positions.filter((p) => p.pnl < 0).length,
@@ -375,6 +420,70 @@ export default function BotHistoryPage() {
             </CardHeader>
           </Card>
         </div>
+
+        {/* ✅ NOWE: Dodatkowe statystyki z Bybit API */}
+        {bybitStats && !loadingBybitStats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/60 backdrop-blur-sm hover:from-amber-900/40 transition-all">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-amber-300">Profit Factor</CardDescription>
+                <CardTitle className="text-3xl text-white">
+                  {bybitStats.profitFactor === 999 ? '∞' : bybitStats.profitFactor.toFixed(2)}
+                </CardTitle>
+                <p className="text-xs text-amber-400 mt-1">
+                  {bybitStats.profitFactor >= 2 ? '🔥 Excellent' : bybitStats.profitFactor >= 1.5 ? '✅ Good' : '⚠️ Average'}
+                </p>
+              </CardHeader>
+            </Card>
+
+            <Card className="border-cyan-800 bg-gradient-to-br from-cyan-900/30 to-gray-900/60 backdrop-blur-sm hover:from-cyan-900/40 transition-all">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-cyan-300">Trading Volume</CardDescription>
+                <CardTitle className="text-3xl text-white">
+                  {(bybitStats.tradingVolume / 1000).toFixed(1)}K
+                </CardTitle>
+                <p className="text-xs text-cyan-400 mt-1">USDT</p>
+              </CardHeader>
+            </Card>
+
+            <Card className="border-orange-800 bg-gradient-to-br from-orange-900/30 to-gray-900/60 backdrop-blur-sm hover:from-orange-900/40 transition-all">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-orange-300">Avg Holding Time</CardDescription>
+                <CardTitle className="text-3xl text-white">
+                  {bybitStats.avgHoldingTime < 60 
+                    ? `${Math.round(bybitStats.avgHoldingTime)}m`
+                    : `${Math.round(bybitStats.avgHoldingTime / 60)}h`
+                  }
+                </CardTitle>
+                <p className="text-xs text-orange-400 mt-1">per trade</p>
+              </CardHeader>
+            </Card>
+
+            <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/60 backdrop-blur-sm hover:from-purple-900/40 transition-all">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-purple-300">Total P&L</CardDescription>
+                <CardTitle className={`text-3xl ${bybitStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {bybitStats.totalPnL >= 0 ? '+' : ''}{bybitStats.totalPnL.toFixed(2)}
+                </CardTitle>
+                <p className="text-xs text-purple-400 mt-1">
+                  Realised + Unrealised
+                </p>
+              </CardHeader>
+            </Card>
+          </div>
+        )}
+
+        {/* ✅ NOWY: Loading indicator dla statystyk Bybit */}
+        {loadingBybitStats && (
+          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+            <CardContent className="py-8">
+              <div className="flex items-center justify-center gap-3">
+                <RefreshCw className="h-5 w-5 animate-spin text-blue-400" />
+                <p className="text-sm text-gray-300">Ładowanie statystyk z Bybit API...</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
