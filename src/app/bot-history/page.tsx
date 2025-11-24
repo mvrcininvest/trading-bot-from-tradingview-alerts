@@ -31,6 +31,7 @@ interface BybitStatsResponse {
   dataSource: "bybit";
   daysBack: number;
   fetchedAt: string;
+  message?: string; // ✅ Dodano opcjonalne pole dla obsługi błędów
 }
 
 export default function BotHistoryPage() {
