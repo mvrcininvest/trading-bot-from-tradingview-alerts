@@ -106,6 +106,7 @@ interface SymbolLock {
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
+  const [isCheckingCredentials, setIsCheckingCredentials] = useState(true); // ✅ NOWY STAN
   const [balances, setBalances] = useState<Balance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [botPositions, setBotPositions] = useState<BotPosition[]>([]);
@@ -122,6 +123,7 @@ export default function DashboardPage() {
   const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [autoImporting, setAutoImporting] = useState(false);
   const [realisedPnL, setRealisedPnL] = useState(0);
+  const [loadingCredentials, setLoadingCredentials] = useState(true); // ✅ NOWY STATE
 
   // ✅ NOWA FUNKCJA: Automatyczny import historii z Bybit
   const autoImportBybitHistory = useCallback(async (creds: ExchangeCredentials) => {
@@ -277,61 +279,69 @@ export default function DashboardPage() {
   }, [credentials]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("exchange_credentials");
-    console.log("[Dashboard] Sprawdzanie credentials w localStorage:", stored ? "ZNALEZIONE" : "BRAK");
-    
-    if (stored) {
-      const creds = JSON.parse(stored);
-      creds.exchange = "bybit";
-      creds.environment = "mainnet";
-      setCredentials(creds);
+    const checkCredentials = async () => {
+      setIsCheckingCredentials(true);
       
-      fetchBalance(creds);
-      fetchPositions(creds);
-      fetchBotPositions();
-      fetchHistoryPositions();
-      fetchBotStatus();
-      fetchSymbolLocks();
+      // 1. Sprawdź localStorage
+      const stored = localStorage.getItem("exchange_credentials");
+      console.log("[Dashboard] Sprawdzanie credentials w localStorage:", stored ? "ZNALEZIONE" : "BRAK");
       
-      // ✅ NOWE: Automatyczny import przy starcie
-      autoImportBybitHistory(creds);
-    } else {
-      console.error("[Dashboard] ❌ Brak kluczy API w localStorage - wyświetlam komunikat błędu");
-      // ✅ NOWY FALLBACK: Spróbuj pobrać z bazy danych
+      if (stored) {
+        const creds = JSON.parse(stored);
+        creds.exchange = "bybit";
+        creds.environment = "mainnet";
+        setCredentials(creds);
+        
+        fetchBalance(creds);
+        fetchPositions(creds);
+        fetchBotPositions();
+        fetchHistoryPositions();
+        fetchBotStatus();
+        fetchSymbolLocks();
+        autoImportBybitHistory(creds);
+        
+        setIsCheckingCredentials(false);
+        return;
+      }
+      
+      // 2. Sprawdź bazę danych
       console.log("[Dashboard] 🔄 Próbuję pobrać credentials z bazy danych...");
+      try {
+        const response = await fetch("/api/bot/credentials");
+        const data = await response.json();
+        
+        if (data.success && data.credentials && data.credentials.apiKey) {
+          console.log("[Dashboard] ✅ Credentials pobrane z bazy danych!");
+          const creds = {
+            exchange: "bybit" as const,
+            environment: "mainnet" as const,
+            apiKey: data.credentials.apiKey,
+            apiSecret: data.credentials.apiSecret,
+            savedAt: data.credentials.savedAt || new Date().toISOString()
+          };
+          
+          // Zapisz do localStorage aby działało następnym razem
+          localStorage.setItem("exchange_credentials", JSON.stringify(creds));
+          
+          setCredentials(creds);
+          fetchBalance(creds);
+          fetchPositions(creds);
+          fetchBotPositions();
+          fetchHistoryPositions();
+          fetchBotStatus();
+          fetchSymbolLocks();
+          autoImportBybitHistory(creds);
+        } else {
+          console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
+        }
+      } catch (err) {
+        console.error("[Dashboard] ❌ Błąd pobierania credentials z bazy:", err);
+      }
       
-      fetch("/api/bot/credentials")
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.credentials && data.credentials.apiKey) {
-            console.log("[Dashboard] ✅ Credentials pobrane z bazy danych!");
-            const creds = {
-              exchange: "bybit",
-              environment: "mainnet",
-              apiKey: data.credentials.apiKey,
-              apiSecret: data.credentials.apiSecret,
-              savedAt: data.credentials.savedAt || new Date().toISOString()
-            };
-            
-            // Zapisz do localStorage aby działało następnym razem
-            localStorage.setItem("exchange_credentials", JSON.stringify(creds));
-            
-            setCredentials(creds);
-            fetchBalance(creds);
-            fetchPositions(creds);
-            fetchBotPositions();
-            fetchHistoryPositions();
-            fetchBotStatus();
-            fetchSymbolLocks();
-            autoImportBybitHistory(creds);
-          } else {
-            console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
-          }
-        })
-        .catch(err => {
-          console.error("[Dashboard] ❌ Błąd pobierania credentials z bazy:", err);
-        });
-    }
+      setIsCheckingCredentials(false);
+    };
+    
+    checkCredentials();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -651,6 +661,25 @@ export default function DashboardPage() {
   }, [])
   
   const totalPnL = realisedPnL + unrealisedPnL
+
+  // ✅ LOADING SCREEN podczas sprawdzania credentials
+  if (isCheckingCredentials) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 md:p-6 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+        <Card className="max-w-md w-full border-gray-800 bg-gray-900/80 backdrop-blur-sm shadow-2xl">
+          <CardContent className="pt-6">
+            <div className="text-center py-8">
+              <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-500" />
+              <p className="text-lg font-medium text-white mb-2">Sprawdzanie konfiguracji...</p>
+              <p className="text-sm text-gray-400">
+                Wczytuję klucze API z localStorage i bazy danych
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!credentials) {
     console.log("[Dashboard] Renderuję komunikat o braku konfiguracji API");
