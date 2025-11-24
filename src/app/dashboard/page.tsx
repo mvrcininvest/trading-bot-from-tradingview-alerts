@@ -297,6 +297,40 @@ export default function DashboardPage() {
       autoImportBybitHistory(creds);
     } else {
       console.error("[Dashboard] ❌ Brak kluczy API w localStorage - wyświetlam komunikat błędu");
+      // ✅ NOWY FALLBACK: Spróbuj pobrać z bazy danych
+      console.log("[Dashboard] 🔄 Próbuję pobrać credentials z bazy danych...");
+      
+      fetch("/api/bot/credentials")
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.credentials && data.credentials.apiKey) {
+            console.log("[Dashboard] ✅ Credentials pobrane z bazy danych!");
+            const creds = {
+              exchange: "bybit",
+              environment: "mainnet",
+              apiKey: data.credentials.apiKey,
+              apiSecret: data.credentials.apiSecret,
+              savedAt: data.credentials.savedAt || new Date().toISOString()
+            };
+            
+            // Zapisz do localStorage aby działało następnym razem
+            localStorage.setItem("exchange_credentials", JSON.stringify(creds));
+            
+            setCredentials(creds);
+            fetchBalance(creds);
+            fetchPositions(creds);
+            fetchBotPositions();
+            fetchHistoryPositions();
+            fetchBotStatus();
+            fetchSymbolLocks();
+            autoImportBybitHistory(creds);
+          } else {
+            console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
+          }
+        })
+        .catch(err => {
+          console.error("[Dashboard] ❌ Błąd pobierania credentials z bazy:", err);
+        });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
