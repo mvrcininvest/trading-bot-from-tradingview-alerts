@@ -3,50 +3,12 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText, Link as LinkIcon, RefreshCw, AlertTriangle } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, BarChart3, Award, Target, DollarSign, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useRouter } from "next/navigation";
 
-interface HistoryPosition {
-  id: number;
-  positionId: number;
-  symbol: string;
-  side: string;
-  tier: string;
-  entryPrice: number;
-  closePrice: number;
-  quantity: number;
-  leverage: number;
-  pnl: number;
-  pnlPercent: number;
-  closeReason: string;
-  tp1Hit: boolean;
-  tp2Hit: boolean;
-  tp3Hit: boolean;
-  confirmationCount: number;
-  openedAt: string;
-  closedAt: string;
-  durationMinutes: number;
-  status?: string;
-  alertData?: string | null;
-}
-
-// ✅ NOWY: Interfejs dla statystyk Bybit
+// ✅ INTERFEJS: Tylko statystyki Bybit
 interface BybitStats {
   totalEquity: number;
   totalWalletBalance: number;
@@ -63,37 +25,24 @@ interface BybitStats {
   avgHoldingTime: number;
 }
 
-// ✅ NOWY: Interface dla odpowiedzi API
 interface BybitStatsResponse {
   success: boolean;
   stats: BybitStats;
   dataSource: "bybit" | "database";
-  warning?: string;
   daysBack: number;
   fetchedAt: string;
 }
 
 export default function BotHistoryPage() {
-  const [positions, setPositions] = useState<HistoryPosition[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<"all" | "profitable" | "loss">("all");
-  const [closeReasonFilter, setCloseReasonFilter] = useState<string>("all");
-  const [importingHistory, setImportingHistory] = useState(false);
-  const [matchingAlerts, setMatchingAlerts] = useState(false);
-  const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
-  const [showAlertDialog, setShowAlertDialog] = useState(false);
-  // ✅ NOWE: Stan dla statystyk Bybit
+  const router = useRouter();
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
-  // ✅ USUNIĘTE: ostrzeżenia
   const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   useEffect(() => {
-    fetchHistory();
     fetchBybitStats();
   }, []);
 
-  // ✅ ZAKTUALIZOWANA FUNKCJA: Bez ostrzeżeń
   const fetchBybitStats = async () => {
     setLoadingBybitStats(true);
     try {
@@ -105,162 +54,14 @@ export default function BotHistoryPage() {
         setBybitDataSource(data.dataSource);
       }
     } catch (err) {
-      console.error("Failed to fetch Bybit stats:", err);
+      console.error("Nie udało się pobrać statystyk Bybit:", err);
+      toast.error("Błąd pobierania statystyk z Bybit API");
     } finally {
       setLoadingBybitStats(false);
     }
   };
 
-  const fetchHistory = async () => {
-    setLoading(true);
-    try {
-      const positionsResponse = await fetch("/api/bot/history");
-      const positionsData = await positionsResponse.json();
-
-      if (positionsData.success && Array.isArray(positionsData.history)) {
-        const closedOnly = positionsData.history.filter((p: HistoryPosition) => 
-          !p.status || p.status !== 'open'
-        );
-        setPositions(closedOnly);
-        console.log(`[Historia] Załadowano ${closedOnly.length} zamkniętych pozycji (odfiltrowano ${positionsData.history.length - closedOnly.length} otwartych)`);
-      }
-    } catch (err) {
-      console.error("Failed to fetch history:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMatchAlertsToHistory = async () => {
-    setMatchingAlerts(true);
-    try {
-      toast.info("🔗 Dopasowywanie alertów do pozycji...", {
-        description: "Szukam alertów dla pozycji bez danych alertu"
-      });
-
-      const response = await fetch("/api/bot/match-alerts-to-history", {
-        method: "POST",
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        if (data.matched === 0 && data.total === 0) {
-          toast.success("✅ Wszystkie pozycje mają już przypisane alerty", {
-            description: "Nie znaleziono pozycji wymagających dopasowania"
-          });
-        } else {
-          toast.success(
-            `✅ Dopasowanie zakończone!`,
-            {
-              description: `🔗 ${data.matched} alertów dopasowano\n❌ ${data.unmatched} pozycji bez alertu\n📊 Sprawdzono ${data.total} pozycji`,
-              duration: 8000
-            }
-          );
-        }
-        await fetchHistory(); // Refresh history
-      } else {
-        toast.error(`❌ Błąd: ${data.error || data.message}`);
-      }
-    } catch (err) {
-      toast.error(`❌ Błąd dopasowywania: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
-    } finally {
-      setMatchingAlerts(false);
-    }
-  };
-
-  const handleImportBybitHistory = async () => {
-    setImportingHistory(true);
-    try {
-      // Get credentials from database first, then fallback to localStorage
-      let apiKey = "";
-      let apiSecret = "";
-
-      try {
-        const response = await fetch("/api/bot/credentials");
-        const data = await response.json();
-        
-        if (data.success && data.credentials) {
-          apiKey = data.credentials.apiKey || "";
-          apiSecret = data.credentials.apiSecret || "";
-          console.log("✅ Credentials loaded from database");
-        }
-      } catch (error) {
-        console.warn("Failed to load credentials from database, trying localStorage...");
-      }
-
-      // Fallback to localStorage if database didn't have credentials
-      if (!apiKey || !apiSecret) {
-        const stored = localStorage.getItem("exchange_credentials");
-        if (stored) {
-          const creds = JSON.parse(stored);
-          apiKey = creds.apiKey || "";
-          apiSecret = creds.apiSecret || "";
-          console.log("✅ Credentials loaded from localStorage");
-        }
-      }
-
-      // Check if we have valid credentials
-      if (!apiKey || !apiSecret) {
-        toast.error("❌ Brak konfiguracji API Bybit", {
-          description: "Przejdź do zakładki 'Test Połączenia' i skonfiguruj klucze API"
-        });
-        return;
-      }
-
-      toast.info("🔄 Importowanie historii z Bybit...", {
-        description: "Pobieranie wszystkich stron (może potrwać chwilę)"
-      });
-
-      const response = await fetch("/api/bot/import-bybit-history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey,
-          apiSecret,
-          daysBack: 30, // Last 30 days
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success(
-          `✅ Import zakończony!`,
-          {
-            description: `📊 ${data.imported} nowych pozycji zaimportowano\n✓ ${data.skipped} już było w historii\n📄 Przeszukano ${data.pages || 1} ${data.pages === 1 ? 'stronę' : 'stron'} (${data.total} pozycji na Bybit)`,
-            duration: 8000
-          }
-        );
-        await fetchHistory(); // Refresh history
-        await fetchBybitStats(); // ✅ NOWE: Odśwież statystyki po imporcie
-      } else {
-        toast.error(`❌ Błąd: ${data.message}`);
-      }
-    } catch (err) {
-      toast.error(`❌ Błąd importu: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
-    } finally {
-      setImportingHistory(false);
-    }
-  };
-
-  const handleShowAlertData = (alertDataString: string | null | undefined) => {
-    if (!alertDataString) {
-      toast.error("Brak danych alertu dla tej pozycji");
-      return;
-    }
-
-    try {
-      const alertData = JSON.parse(alertDataString);
-      setSelectedAlertData(alertData);
-      setShowAlertDialog(true);
-    } catch (error) {
-      toast.error("Nie można odczytać danych alertu");
-      console.error("Failed to parse alert data:", error);
-    }
-  };
-
-  // ✅ POPRAWIONE: Używaj TYLKO statystyk z Bybit API (usuń duplikaty z lokalnych pozycji)
+  // ✅ STATYSTYKI - tylko z Bybit API
   const stats = bybitStats ? {
     totalTrades: bybitStats.totalTrades,
     profitable: bybitStats.winningTrades,
@@ -268,78 +69,11 @@ export default function BotHistoryPage() {
     totalPnl: bybitStats.realisedPnL,
     winRate: bybitStats.winRate,
   } : {
-    // Fallback tylko jeśli nie ma bybitStats
     totalTrades: 0,
     profitable: 0,
     losses: 0,
     totalPnl: 0,
     winRate: 0,
-  };
-
-  // Filter positions
-  const filteredPositions = positions.filter((p) => {
-    if (filter === "profitable" && p.pnl <= 0) return false;
-    if (filter === "loss" && p.pnl >= 0) return false;
-    if (closeReasonFilter !== "all" && p.closeReason !== closeReasonFilter) return false;
-    return true;
-  });
-
-  // Get unique close reasons
-  const closeReasons = Array.from(new Set(positions.map((p) => p.closeReason)));
-
-  // ✅ ULEPSZONE ETYKIETY - dokładniejszy opis
-  const closeReasonLabels: Record<string, string> = {
-    // TP/SL Reasons
-    sl_hit: "🛑 Stop Loss",
-    tp_main_hit: "🎯 Take Profit (Main)",
-    tp1_hit: "🎯 TP1",
-    tp2_hit: "🎯 TP2", 
-    tp3_hit: "🎯 TP3",
-    
-    // Manual Closes
-    manual_close: "👤 Ręczne zamknięcie",
-    manual_close_all: "👤 Ręczne zamknięcie wszystkich",
-    closed_on_exchange: "🔄 Zamknięte na giełdzie (ręcznie)",
-    
-    // Alert-driven Closes
-    emergency_override: "⚠️ Emergency Override (silniejszy alert przejął kontrolę)",
-    opposite_direction: "🔄 Odwrócenie kierunku (alert w przeciwną stronę)",
-    
-    // Oko Saurona Actions
-    oko_emergency: "👁️ Oko Saurona - Emergency Close",
-    oko_sl_breach: "👁️ Oko Saurona - SL Breach Detection",
-    oko_account_drawdown: "👁️ Oko Saurona - Account Drawdown Protection",
-    oko_time_based_exit: "👁️ Oko Saurona - Time-Based Exit",
-    
-    // System Actions
-    ghost_position_cleanup: "👻 Ghost Position Cleanup",
-    emergency_verification_failure: "⚠️ Emergency Verification Failure",
-    migrated: "🔄 Migracja danych",
-  };
-
-  const getCloseReasonLabel = (reason: string) => {
-    return closeReasonLabels[reason] || `❓ ${reason}`;
-  };
-
-  // ✅ POPRAWIONY FORMAT CZASU
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) {
-      return `${Math.round(minutes)} min`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const mins = Math.round(minutes % 60);
-    if (hours < 24) {
-      if (mins > 0) {
-        return `${hours}h ${mins}min`;
-      }
-      return `${hours}h`;
-    }
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    if (remainingHours > 0) {
-      return `${days}d ${remainingHours}h`;
-    }
-    return `${days}d`;
   };
 
   return (
@@ -353,38 +87,20 @@ export default function BotHistoryPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                Historia Pozycji
+                Statystyki Tradingowe
               </h1>
               <p className="text-gray-200">
-                Zamknięte pozycje tradingowe
+                Dane z Bybit API - ostatnie 30 dni
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button 
-              onClick={handleMatchAlertsToHistory} 
-              disabled={matchingAlerts}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              <LinkIcon className="mr-2 h-4 w-4" />
-              {matchingAlerts ? "Dopasowywanie..." : "Dopasuj Alerty"}
-            </Button>
-            <Button 
-              onClick={handleImportBybitHistory} 
-              disabled={importingHistory}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              {importingHistory ? "Importowanie..." : "Import z Bybit"}
-            </Button>
-            <Button onClick={fetchHistory} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
-              <History className="mr-2 h-4 w-4" />
-              Odśwież
-            </Button>
-          </div>
+          <Button onClick={() => router.push("/dashboard")} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Activity className="mr-2 h-4 w-4" />
+            Powrót do Dashboard
+          </Button>
         </div>
 
-        {/* Statistics Cards */}
+        {/* Podstawowe Statystyki */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
@@ -433,16 +149,21 @@ export default function BotHistoryPage() {
           </Card>
         </div>
 
-        {/* ✅ ZAKTUALIZOWANE: Dodatkowe statystyki z badge'em źródła */}
+        {/* ✅ Rozszerzone statystyki z Bybit API */}
         {bybitStats && !loadingBybitStats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/60 backdrop-blur-sm hover:from-amber-900/40 transition-all">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between mb-1">
-                  <CardDescription className="text-amber-300">Profit Factor</CardDescription>
+                  <CardDescription className="text-amber-300">Współczynnik Zysku</CardDescription>
                   {bybitDataSource === "database" && (
                     <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50 bg-amber-500/10">
                       Lokalna baza
+                    </Badge>
+                  )}
+                  {bybitDataSource === "bybit" && (
+                    <Badge variant="outline" className="text-xs text-green-300 border-green-500/50 bg-green-500/10">
+                      Live z Bybit
                     </Badge>
                   )}
                 </div>
@@ -457,7 +178,7 @@ export default function BotHistoryPage() {
 
             <Card className="border-cyan-800 bg-gradient-to-br from-cyan-900/30 to-gray-900/60 backdrop-blur-sm hover:from-cyan-900/40 transition-all">
               <CardHeader className="pb-2">
-                <CardDescription className="text-cyan-300">Trading Volume</CardDescription>
+                <CardDescription className="text-cyan-300">Wolumen Tradingowy</CardDescription>
                 <CardTitle className="text-3xl text-white">
                   {(bybitStats.tradingVolume / 1000).toFixed(1)}K
                 </CardTitle>
@@ -467,443 +188,176 @@ export default function BotHistoryPage() {
 
             <Card className="border-orange-800 bg-gradient-to-br from-orange-900/30 to-gray-900/60 backdrop-blur-sm hover:from-orange-900/40 transition-all">
               <CardHeader className="pb-2">
-                <CardDescription className="text-orange-300">Avg Holding Time</CardDescription>
+                <CardDescription className="text-orange-300">Śr. Czas Trzymania</CardDescription>
                 <CardTitle className="text-3xl text-white">
                   {bybitStats.avgHoldingTime < 60 
                     ? `${Math.round(bybitStats.avgHoldingTime)}m`
                     : `${Math.round(bybitStats.avgHoldingTime / 60)}h`
                   }
                 </CardTitle>
-                <p className="text-xs text-orange-400 mt-1">per trade</p>
+                <p className="text-xs text-orange-400 mt-1">na transakcję</p>
               </CardHeader>
             </Card>
 
             <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/60 backdrop-blur-sm hover:from-purple-900/40 transition-all">
               <CardHeader className="pb-2">
-                <CardDescription className="text-purple-300">Total P&L</CardDescription>
+                <CardDescription className="text-purple-300">Całkowity P&L</CardDescription>
                 <CardTitle className={`text-3xl ${bybitStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {bybitStats.totalPnL >= 0 ? '+' : ''}{bybitStats.totalPnL.toFixed(2)}
                 </CardTitle>
                 <p className="text-xs text-purple-400 mt-1">
-                  Realised + Unrealised
+                  Zrealizowany + Niezrealizowany
                 </p>
               </CardHeader>
             </Card>
           </div>
         )}
 
-        {/* ✅ NOWY: Loading indicator dla statystyk Bybit */}
+        {/* ✅ Szczegółowe statystyki z Bybit API */}
+        {bybitStats && !loadingBybitStats && (
+          <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Database className="h-5 w-5 text-purple-400" />
+                    Szczegółowe Statystyki z Bybit API
+                    {bybitDataSource === "database" && (
+                      <Badge variant="outline" className="text-amber-300 border-amber-500/50 bg-amber-500/10">
+                        Lokalna baza
+                      </Badge>
+                    )}
+                    {bybitDataSource === "bybit" && (
+                      <Badge variant="outline" className="text-green-300 border-green-500/50 bg-green-500/10">
+                        Live z Bybit
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Kompletne dane z ostatnich 30 dni
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={() => router.push("/statystyki")}
+                  variant="outline"
+                  size="sm"
+                  className="border-purple-700 text-purple-300 hover:bg-purple-900/20"
+                >
+                  Pełna Analiza
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div className="p-3 rounded-lg bg-gradient-to-br from-blue-600/10 to-blue-900/5 border border-blue-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="h-4 w-4 text-blue-400" />
+                    <h4 className="text-xs font-medium text-blue-300">Transakcje</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">{bybitStats.totalTrades}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    <span className="text-green-400">✓{bybitStats.winningTrades}</span>
+                    {" / "}
+                    <span className="text-red-400">✗{bybitStats.losingTrades}</span>
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-green-600/10 to-green-900/5 border border-green-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="h-4 w-4 text-green-400" />
+                    <h4 className="text-xs font-medium text-green-300">Skuteczność</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">{bybitStats.winRate.toFixed(1)}%</p>
+                  <div className="mt-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${bybitStats.winRate}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-amber-600/10 to-amber-900/5 border border-amber-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Award className="h-4 w-4 text-amber-400" />
+                    <h4 className="text-xs font-medium text-amber-300">Profit Factor</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {bybitStats.profitFactor === 999 ? '∞' : bybitStats.profitFactor.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {bybitStats.profitFactor >= 2 ? '🔥 Doskonały' : bybitStats.profitFactor >= 1.5 ? '✅ Dobry' : '⚠️ Średni'}
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-purple-600/10 to-purple-900/5 border border-purple-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <DollarSign className="h-4 w-4 text-purple-400" />
+                    <h4 className="text-xs font-medium text-purple-300">PnL Zrealizowany</h4>
+                  </div>
+                  <p className={`text-2xl font-bold ${bybitStats.realisedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {bybitStats.realisedPnL >= 0 ? '+' : ''}{bybitStats.realisedPnL.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">USDT</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-cyan-600/10 to-cyan-900/5 border border-cyan-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Activity className="h-4 w-4 text-cyan-400" />
+                    <h4 className="text-xs font-medium text-cyan-300">Wolumen</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {(bybitStats.tradingVolume / 1000).toFixed(1)}K
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">USDT</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-orange-600/10 to-orange-900/5 border border-orange-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-orange-400" />
+                    <h4 className="text-xs font-medium text-orange-300">Śr. Czas</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {bybitStats.avgHoldingTime < 60 
+                      ? `${Math.round(bybitStats.avgHoldingTime)}m`
+                      : `${Math.round(bybitStats.avgHoldingTime / 60)}h`
+                    }
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">na transakcję</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Loading */}
         {loadingBybitStats && (
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
-            <CardContent className="py-8">
-              <div className="flex items-center justify-center gap-3">
-                <RefreshCw className="h-5 w-5 animate-spin text-blue-400" />
+            <CardContent className="py-12">
+              <div className="flex flex-col items-center justify-center gap-3">
+                <Activity className="h-8 w-8 animate-spin text-blue-400" />
                 <p className="text-sm text-gray-300">Ładowanie statystyk z Bybit API...</p>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Filters */}
-        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+        {/* Info */}
+        <Card className="border-blue-800 bg-gradient-to-br from-blue-900/30 to-gray-900/80 backdrop-blur-sm">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-white">
-                <Filter className="h-5 w-5" />
-                Filtry
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setFilter("all");
-                  setCloseReasonFilter("all");
-                }}
-                className="border-gray-700 bg-gray-800/50 hover:bg-gray-800 text-gray-200"
-              >
-                Wyczyść
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-200">Typ</label>
-                <Select value={filter} onValueChange={(v) => setFilter(v as any)}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Wszystkie</SelectItem>
-                    <SelectItem value="profitable">Tylko Zyskowne</SelectItem>
-                    <SelectItem value="loss">Tylko Stratne</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block text-gray-200">Powód Zamknięcia</label>
-                <Select value={closeReasonFilter} onValueChange={setCloseReasonFilter}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-gray-200">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Wszystkie</SelectItem>
-                    {closeReasons.map((reason) => (
-                      <SelectItem key={reason} value={reason}>
-                        {getCloseReasonLabel(reason)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Closed Positions */}
-        <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Activity className="h-5 w-5" />
-              Zamknięte Pozycje
-              <Badge variant="secondary" className="bg-gray-700 text-gray-200">{filteredPositions.length}</Badge>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Database className="h-5 w-5 text-blue-400" />
+              Informacja
             </CardTitle>
-            <CardDescription className="text-gray-300">
-              Historia zamkniętych pozycji (tylko closed positions)
-            </CardDescription>
           </CardHeader>
           <CardContent>
-            {loading && (
-              <div className="text-center py-8">
-                <Activity className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
-                <p className="text-sm text-gray-300">Ładowanie...</p>
-              </div>
-            )}
-
-            {!loading && filteredPositions.length === 0 && (
-              <div className="text-center py-8">
-                <History className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                <p className="text-sm text-gray-300">
-                  Brak pozycji
-                </p>
-              </div>
-            )}
-
-            {!loading && filteredPositions.length > 0 && (
-              <div className="space-y-3">
-                {filteredPositions.map((position) => {
-                  const isProfitable = position.pnl > 0;
-
-                  const tierColors: Record<string, string> = {
-                    Platinum: "bg-purple-500/10 text-purple-300 border-purple-500/50",
-                    Premium: "bg-blue-500/10 text-blue-300 border-blue-500/50",
-                    Standard: "bg-green-500/10 text-green-300 border-green-500/50",
-                    Quick: "bg-orange-500/10 text-orange-300 border-orange-500/50",
-                    Emergency: "bg-red-500/10 text-red-300 border-red-500/50",
-                  };
-
-                  return (
-                    <div
-                      key={position.id}
-                      className={`p-4 rounded-lg border-2 transition-colors ${
-                        isProfitable
-                          ? "border-green-500/20 bg-green-500/5"
-                          : "border-red-500/20 bg-red-500/5"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="font-bold text-lg text-white">{position.symbol}</span>
-                            <Badge variant="outline" className={tierColors[position.tier] || ""}>
-                              {position.tier}
-                            </Badge>
-                            <Badge
-                              variant={position.side === "Buy" ? "default" : "secondary"}
-                              className={
-                                position.side === "Buy"
-                                  ? "bg-green-500"
-                                  : "bg-red-500"
-                              }
-                            >
-                              {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
-                            </Badge>
-                            {position.alertData ? (
-                              <Button
-                                onClick={() => handleShowAlertData(position.alertData)}
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs border-blue-600 text-blue-400 hover:bg-blue-600/20 ml-2"
-                              >
-                                <FileText className="h-3 w-3 mr-1" />
-                                Zobacz Alert
-                              </Button>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-gray-500 border-gray-600 ml-2">
-                                Brak danych alertu
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-300 mb-1">
-                            {getCloseReasonLabel(position.closeReason)}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            Otwarto: {new Date(position.openedAt).toLocaleString("pl-PL")}
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div
-                            className={`text-xl font-bold ${
-                              isProfitable ? "text-green-500" : "text-red-500"
-                            }`}
-                          >
-                            {isProfitable ? "+" : ""}
-                            {position.pnl.toFixed(4)} USDT
-                          </div>
-                          <div
-                            className={`text-sm font-semibold ${
-                              isProfitable ? "text-green-500" : "text-red-500"
-                            }`}
-                          >
-                            ({isProfitable ? "+" : ""}
-                            {position.pnlPercent.toFixed(2)}%)
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
-                        <div>
-                          <div className="text-gray-300">Wejście</div>
-                          <div className="font-semibold text-white">{position.entryPrice.toFixed(4)}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Wyjście</div>
-                          <div className="font-semibold text-white">
-                            {position.closePrice && position.closePrice > 0 
-                              ? position.closePrice.toFixed(4) 
-                              : "N/A"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Rozmiar</div>
-                          <div className="font-semibold text-white">
-                            {position.quantity && position.quantity > 0 
-                              ? position.quantity.toFixed(4) 
-                              : "N/A"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Czas</div>
-                          <div className="font-semibold text-white">
-                            {formatDuration(position.durationMinutes)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs text-gray-300">
-                        <span>
-                          Zamknięto: {new Date(position.closedAt).toLocaleString("pl-PL")}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <p className="text-gray-300 text-sm">
+              📊 Wszystkie statystyki pochodzą bezpośrednio z <strong>Bybit API</strong> i przedstawiają rzeczywiste dane z ostatnich 30 dni.
+            </p>
+            <p className="text-gray-300 text-sm mt-2">
+              💡 Aby zobaczyć szczegółową historię pozycji, przejdź do zakładki <strong>"Pełna Analiza"</strong> lub <strong>"Dashboard"</strong>.
+            </p>
           </CardContent>
         </Card>
-
-        {/* Alert Data Dialog */}
-        <Dialog open={showAlertDialog} onOpenChange={setShowAlertDialog}>
-          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700">
-            <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-400" />
-                Dane Alertu - {selectedAlertData?.symbol}
-              </DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Wartości rynkowe z alertu TradingView w momencie otwarcia pozycji
-              </DialogDescription>
-            </DialogHeader>
-
-            {selectedAlertData && (
-              <div className="space-y-4">
-                {/* Podstawowe informacje */}
-                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Podstawowe Informacje</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-400">Symbol</div>
-                      <div className="font-semibold text-white">{selectedAlertData.symbol}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Kierunek</div>
-                      <Badge variant={selectedAlertData.side === "Buy" ? "default" : "secondary"}>
-                        {selectedAlertData.side === "Buy" ? "LONG" : "SHORT"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Tier</div>
-                      <Badge variant="outline" className="text-gray-300">
-                        {selectedAlertData.tier}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Siła Sygnału</div>
-                      <div className="font-semibold text-blue-400">
-                        {(selectedAlertData.strength * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Dźwignia</div>
-                      <div className="font-semibold text-white">{selectedAlertData.leverage}x</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Sesja</div>
-                      <div className="font-semibold text-white">{selectedAlertData.session}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Ceny wejścia i wyjścia */}
-                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Ceny Wejścia i Wyjścia</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-400">Entry Price</div>
-                      <div className="font-semibold text-green-400">{selectedAlertData.entryPrice}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Stop Loss</div>
-                      <div className="font-semibold text-red-400">{selectedAlertData.sl}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Main TP</div>
-                      <div className="font-semibold text-green-400">{selectedAlertData.mainTp}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">TP1</div>
-                      <div className="font-semibold text-green-300">{selectedAlertData.tp1}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">TP2</div>
-                      <div className="font-semibold text-green-300">{selectedAlertData.tp2}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">TP3</div>
-                      <div className="font-semibold text-green-300">{selectedAlertData.tp3}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Wskaźniki techniczne */}
-                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Wskaźniki Techniczne</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-400">ATR</div>
-                      <div className="font-semibold text-white">{selectedAlertData.atr}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Volume Ratio</div>
-                      <div className="font-semibold text-white">
-                        {selectedAlertData.volumeRatio?.toFixed(2) || "N/A"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">MTF Agreement</div>
-                      <div className="font-semibold text-blue-400">
-                        {(selectedAlertData.mtfAgreement * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Regime</div>
-                      <div className="font-semibold text-white">{selectedAlertData.regime}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Regime Confidence</div>
-                      <div className="font-semibold text-blue-400">
-                        {(selectedAlertData.regimeConfidence * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                    {selectedAlertData.latency && (
-                      <div>
-                        <div className="text-gray-400">Latencja</div>
-                        <div className="font-semibold text-white">{selectedAlertData.latency}ms</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Order Blocks & FVG */}
-                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Order Blocks & FVG</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-400">In OB</div>
-                      <Badge variant={selectedAlertData.inOb ? "default" : "secondary"}>
-                        {selectedAlertData.inOb ? "Tak" : "Nie"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">OB Score</div>
-                      <div className="font-semibold text-white">
-                        {selectedAlertData.obScore?.toFixed(2) || "N/A"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">In FVG</div>
-                      <Badge variant={selectedAlertData.inFvg ? "default" : "secondary"}>
-                        {selectedAlertData.inFvg ? "Tak" : "Nie"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">FVG Score</div>
-                      <div className="font-semibold text-white">
-                        {selectedAlertData.fvgScore?.toFixed(2) || "N/A"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Smart Money Indicators */}
-                {(selectedAlertData.institutionalFlow || selectedAlertData.accumulation || selectedAlertData.volumeClimax) && (
-                  <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                    <h3 className="text-sm font-semibold text-gray-300 mb-3">Smart Money</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                      {selectedAlertData.institutionalFlow !== undefined && (
-                        <div>
-                          <div className="text-gray-400">Institutional Flow</div>
-                          <div className="font-semibold text-purple-400">
-                            {selectedAlertData.institutionalFlow?.toFixed(2) || "N/A"}
-                          </div>
-                        </div>
-                      )}
-                      {selectedAlertData.accumulation !== undefined && (
-                        <div>
-                          <div className="text-gray-400">Accumulation</div>
-                          <div className="font-semibold text-purple-400">
-                            {selectedAlertData.accumulation?.toFixed(2) || "N/A"}
-                          </div>
-                        </div>
-                      )}
-                      {selectedAlertData.volumeClimax !== undefined && (
-                        <div>
-                          <div className="text-gray-400">Volume Climax</div>
-                          <Badge variant={selectedAlertData.volumeClimax ? "default" : "secondary"}>
-                            {selectedAlertData.volumeClimax ? "Tak" : "Nie"}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );

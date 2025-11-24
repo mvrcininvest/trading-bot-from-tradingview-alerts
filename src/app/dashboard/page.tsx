@@ -69,31 +69,6 @@ interface BotPosition {
   alertData?: string | null;
 }
 
-// ✅ NOWE: Interfejs dla zamkniętych pozycji z historii
-interface HistoryPosition {
-  id: number;
-  positionId: number | null;
-  symbol: string;
-  side: string;
-  tier: string;
-  entryPrice: number;
-  closePrice: number;
-  quantity: number;
-  leverage: number;
-  pnl: number;
-  pnlPercent: number;
-  closeReason: string;
-  tp1Hit: boolean;
-  tp2Hit: boolean;
-  tp3Hit: boolean;
-  confirmationCount: number;
-  openedAt: string;
-  closedAt: string;
-  durationMinutes: number;
-  status?: string;
-  alertData?: string | null;
-}
-
 interface SymbolLock {
   id: number;
   symbol: string;
@@ -137,7 +112,6 @@ export default function DashboardPage() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [botPositions, setBotPositions] = useState<BotPosition[]>([]);
-  const [historyPositions, setHistoryPositions] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPositions, setLoadingPositions] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,52 +157,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // ✅ NOWA FUNKCJA: Automatyczny import historii z Bybit
-  const autoImportBybitHistory = useCallback(async (creds: ExchangeCredentials) => {
-    console.log("[Dashboard] Checking if auto-import needed...");
-    
-    try {
-      // Sprawdź czy historia jest pusta
-      const historyResponse = await fetch("/api/bot/history?limit=10");
-      const historyData = await historyResponse.json();
-      
-      if (historyData.success && historyData.history && historyData.history.length === 0) {
-        console.log("[Dashboard] Historia pusta - rozpoczynam automatyczny import z Bybit...");
-        setAutoImporting(true);
-        
-        const response = await fetch("/api/bot/import-bybit-history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            apiKey: creds.apiKey,
-            apiSecret: creds.apiSecret,
-            daysBack: 90,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          console.log(`[Dashboard] ✅ Auto-import zakończony: ${data.imported} nowych, ${data.skipped} duplikatów`);
-          toast.success(`🚀 Automatyczny import historii zakończony!`, {
-            description: `Zaimportowano ${data.imported} pozycji z Bybit (${data.total} z ${data.pages} stron)`,
-          });
-          
-          // Odśwież historię
-          await fetchHistoryPositions();
-        } else {
-          console.error("[Dashboard] Błąd auto-importu:", data.message);
-        }
-      } else {
-        console.log(`[Dashboard] Historia zawiera ${historyData.history?.length || 0} pozycji - pomijam import`);
-      }
-    } catch (err) {
-      console.error("[Dashboard] Błąd automatycznego importu:", err);
-    } finally {
-      setAutoImporting(false);
-    }
-  }, []);
-
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) setLoadingPositions(true);
 
@@ -246,52 +174,6 @@ export default function DashboardPage() {
       if (!silent) setLoadingPositions(false);
     }
   }, []);
-
-  // ✅ NOWA FUNKCJA: Fetch history positions
-  const fetchHistoryPositions = useCallback(async () => {
-    try {
-      const response = await fetch("/api/bot/history?limit=5");
-      const data = await response.json();
-
-      if (data.success && Array.isArray(data.history)) {
-        const closedOnly = data.history.filter((p: HistoryPosition) => 
-          !p.status || p.status !== 'open'
-        );
-        console.log(`[Dashboard] Załadowano ${closedOnly.length} pozycji z historii`);
-        setHistoryPositions(closedOnly);
-      }
-    } catch (err) {
-      console.error("Failed to fetch history:", err);
-    }
-  }, []);
-
-  // ✅ PRZENIESIONE: Funkcje muszą być PRZED useEffect które ich używają
-  const signBybitRequest = async (apiKey: string, apiSecret: string, timestamp: number, params: Record<string, any>) => {
-    const queryString = Object.keys(params)
-      .sort()
-      .map(key => `${key}=${params[key]}`)
-      .join("&");
-    
-    const signString = timestamp + apiKey + 5000 + queryString;
-    
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(signString);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-    const hashArray = Array.from(new Uint8Array(signature));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-    
-    return hashHex;
-  };
 
   const fetchBalance = async (creds?: ExchangeCredentials) => {
     const credsToUse = creds || credentials;
@@ -475,6 +357,7 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Failed to fetch Bybit stats:", err);
+      // ✅ NOWE: Nie resetuj bybitStats w razie błędu - zostaw stare dane
     } finally {
       setLoadingBybitStats(false);
     }
@@ -484,7 +367,6 @@ export default function DashboardPage() {
     const checkCredentials = async () => {
       setIsCheckingCredentials(true);
       
-      // 1. Sprawdź localStorage
       const stored = localStorage.getItem("exchange_credentials");
       console.log("[Dashboard] Sprawdzanie credentials w localStorage:", stored ? "ZNALEZIONE" : "BRAK");
       
@@ -497,19 +379,15 @@ export default function DashboardPage() {
         fetchBalance(creds);
         fetchPositions(creds);
         fetchBotPositions();
-        fetchHistoryPositions();
         fetchBotStatus();
         fetchSymbolLocks();
-        autoImportBybitHistory(creds);
         autoMatchAlertsToOpen();
-        // ✅ POPRAWIONE: Wywołuj tylko raz przy starcie
         fetchBybitStats();
         
         setIsCheckingCredentials(false);
         return;
       }
       
-      // 2. Sprawdź bazę danych
       console.log("[Dashboard] 🔄 Próbuję pobrać credentials z bazy danych...");
       try {
         const response = await fetch("/api/bot/credentials");
@@ -531,12 +409,9 @@ export default function DashboardPage() {
           fetchBalance(creds);
           fetchPositions(creds);
           fetchBotPositions();
-          fetchHistoryPositions();
           fetchBotStatus();
           fetchSymbolLocks();
-          autoImportBybitHistory(creds);
           autoMatchAlertsToOpen();
-          // ✅ POPRAWIONE: Wywołuj tylko raz przy starcie
           fetchBybitStats();
         } else {
           console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
@@ -558,66 +433,21 @@ export default function DashboardPage() {
       fetchBotPositions(true);
       fetchPositions(credentials, true);
       fetchBotStatus(true);
-      fetchHistoryPositions();
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
+  }, [credentials, fetchBotPositions, fetchPositions]);
 
-  // ✅ NAPRAWIONY: Osobny interval dla statystyk - bez bybitStats w dependencies
+  // ✅ NAPRAWIONY: Interval dla statystyk - nie resetuj bybitStats przy błędzie
   useEffect(() => {
-    if (!credentials) return;
+    if (!credentials || !bybitStats) return; // ✅ DODANE: Nie odświeżaj jeśli nie ma jeszcze danych
 
     const statsInterval = setInterval(() => {
       fetchBybitStats();
-    }, 30000); // Co 30 sekund
+    }, 60000);
 
     return () => clearInterval(statsInterval);
-  }, [credentials, fetchBybitStats]);
-
-  // ✅ NOWY: Automatyczna synchronizacja z Bybit co 30 sekund
-  useEffect(() => {
-    if (!credentials) return;
-
-    const autoSync = async () => {
-      try {
-        console.log("[Dashboard] Automatyczna synchronizacja z Bybit...");
-        const response = await fetch("/api/bot/sync-positions", {
-          method: "POST",
-        });
-        const data = await response.json();
-
-        if (data.success && data.results.closed > 0) {
-          console.log(`[Dashboard] ✅ Auto-sync: ${data.results.closed} pozycji zamkniętych`);
-          toast.success(`🔄 Automatyczna synchronizacja: ${data.results.closed} pozycji przeniesiono do historii`, {
-            description: Object.entries(data.results.closeReasons)
-              .map(([reason, count]) => `${getCloseReasonLabel(reason)}: ${count}`)
-              .join(", ")
-          });
-          // Odśwież dane
-          await fetchBotPositions();
-          await fetchPositions(credentials);
-          await fetchHistoryPositions();
-        } else if (data.success) {
-          console.log(`[Dashboard] Auto-sync: wszystkie pozycje aktualne (${data.results.stillOpen} otwartych)`);
-        }
-      } catch (err) {
-        console.error("[Dashboard] Błąd automatycznej synchronizacji:", err);
-        // Nie pokazuj toast dla błędów synchronizacji (może spamować)
-      }
-    };
-
-    // Pierwsze wywołanie po 10 sekundach (daj czas na załadowanie)
-    const initialTimeout = setTimeout(autoSync, 10000);
-
-    // Następnie co 30 sekund
-    const syncInterval = setInterval(autoSync, 30000);
-
-    return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(syncInterval);
-    };
-  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
+  }, [credentials, fetchBybitStats, bybitStats]);
 
   const handleSyncPositions = async () => {
     setLoadingSync(true);
@@ -730,45 +560,6 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ NOWA FUNKCJA: Etykiety powodów zamknięcia
-  const getCloseReasonLabel = (reason: string) => {
-    const closeReasonLabels: Record<string, string> = {
-      sl_hit: "🛑 Stop Loss",
-      tp_main_hit: "🎯 Take Profit (Main)",
-      tp1_hit: "🎯 TP1",
-      tp2_hit: "🎯 TP2", 
-      tp3_hit: "🎯 TP3",
-      manual_close: "👤 Ręczne zamknięcie",
-      manual_close_all: "👤 Ręczne zamknięcie wszystkich",
-      closed_on_exchange: "🔄 Zamknięte na giełdzie",
-      emergency_override: "⚠️ Emergency Override",
-      opposite_direction: "🔄 Odwrócenie kierunku",
-      oko_emergency: "👁️ Oko Saurona - Emergency",
-      oko_sl_breach: "👁️ Oko - SL Breach",
-      oko_account_drawdown: "👁️ Oko - Drawdown",
-      oko_time_based_exit: "👁️ Oko - Time Exit",
-      ghost_position_cleanup: "👻 Ghost Cleanup",
-      emergency_verification_failure: "⚠️ Verification Failure",
-      migrated: "🔄 Migracja",
-    };
-    return closeReasonLabels[reason] || `❓ ${reason}`;
-  };
-
-  // ✅ NOWA FUNKCJA: Format czasu trwania
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) {
-      return `${Math.round(minutes)} min`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const mins = Math.round(minutes % 60);
-    if (hours < 24) {
-      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-    }
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
-  };
-
   // ✅ POPRAWIONE STATYSTYKI - używaj danych z Bybit jeśli dostępne
   const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0)
   const unrealisedPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0)
@@ -855,10 +646,8 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
-        {/* ✅ USUNIĘTY: Alert z ostrzeżeniem - nie pokazujemy już ostrzeżeń */}
-
-        {/* ✅ ZAKTUALIZOWANY: Widget Statystyk bez migoczenia */}
-        {bybitStats && (
+        {/* ✅ Widget Statystyk - bez migoczenia */}
+        {bybitStats && !loadingBybitStats && (
           <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -974,22 +763,6 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* ✅ NOWY: Auto-import status banner */}
-        {autoImporting && (
-          <Alert className="border-blue-800 bg-blue-900/30 text-blue-200">
-            <Database className="h-4 w-4 animate-pulse" />
-            <AlertDescription>
-              <div className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span className="text-sm font-medium">🔄 Automatyczny import historii z Bybit w toku...</span>
-              </div>
-              <p className="text-xs mt-1">
-                Pobieranie zamkniętych pozycji z ostatnich 90 dni. To może potrwać do 2 minut.
-              </p>
-            </AlertDescription>
-          </Alert>
         )}
 
         {/* Symbol Locks Alert */}
@@ -1465,166 +1238,6 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ✅ SEKCJA: Historia Pozycji (ostatnie 5) */}
-        <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/80 backdrop-blur-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-amber-400" />
-                  Historia Pozycji
-                  <Badge variant="secondary" className="bg-gray-700 text-gray-200">{historyPositions.length}</Badge>
-                </CardTitle>
-                <CardDescription className="text-gray-300">
-                  Ostatnie 5 zamkniętych pozycji (automatycznie synchronizowane z Bybit)
-                </CardDescription>
-              </div>
-              <Button
-                onClick={() => router.push("/bot-history")}
-                variant="outline"
-                size="sm"
-                className="border-amber-700 text-amber-300 hover:bg-amber-900/20"
-              >
-                Zobacz Wszystkie
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {historyPositions.length === 0 && !autoImporting && (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                <p className="text-sm text-gray-300">Brak zamkniętych pozycji</p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Historia będzie automatycznie zaimportowana z Bybit przy pierwszym uruchomieniu
-                </p>
-              </div>
-            )}
-
-            {historyPositions.length > 0 && (
-              <div className="space-y-3">
-                {historyPositions.map((position) => {
-                  const isProfitable = position.pnl > 0;
-
-                  const tierColors: Record<string, string> = {
-                    Platinum: "bg-purple-500/10 text-purple-300 border-purple-500/50",
-                    Premium: "bg-blue-500/10 text-blue-300 border-blue-500/50",
-                    Standard: "bg-green-500/10 text-green-300 border-green-500/50",
-                    Quick: "bg-orange-500/10 text-orange-300 border-orange-500/50",
-                    Emergency: "bg-red-500/10 text-red-300 border-red-500/50",
-                  };
-
-                  return (
-                    <div
-                      key={position.id}
-                      className={`p-4 rounded-lg border-2 transition-colors ${
-                        isProfitable
-                          ? "border-green-500/20 bg-green-500/5"
-                          : "border-red-500/20 bg-red-500/5"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="font-bold text-lg text-white">{position.symbol}</span>
-                            <Badge variant="outline" className={tierColors[position.tier] || ""}>
-                              {position.tier}
-                            </Badge>
-                            <Badge
-                              variant={position.side === "Buy" ? "default" : "secondary"}
-                              className={
-                                position.side === "Buy"
-                                  ? "bg-green-500"
-                                  : "bg-red-500"
-                              }
-                            >
-                              {position.side === "Buy" ? "LONG" : "SHORT"} {position.leverage}x
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-gray-300 mb-1">
-                            {getCloseReasonLabel(position.closeReason)}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            Zamknięto: {new Date(position.closedAt).toLocaleString("pl-PL")}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <div
-                              className={`text-xl font-bold ${
-                                isProfitable ? "text-green-500" : "text-red-500"
-                              }`}
-                            >
-                              {isProfitable ? "+" : ""}
-                              {position.pnl.toFixed(4)} USDT
-                            </div>
-                            <div
-                              className={`text-sm font-semibold ${
-                                isProfitable ? "text-green-500" : "text-red-500"
-                              }`}
-                            >
-                              ({isProfitable ? "+" : ""}
-                              {position.pnlPercent.toFixed(2)}%)
-                            </div>
-                          </div>
-
-                          {/* ✅ PRZYCISK "ZOBACZ ALERT" - zawsze widoczny */}
-                          {position.alertData && position.alertData !== "null" ? (
-                            <Button
-                              onClick={() => handleShowAlertData(position.alertData)}
-                              size="sm"
-                              variant="outline"
-                              className="h-9 border-blue-600 text-blue-400 hover:bg-blue-600/20"
-                            >
-                              <FileText className="h-4 w-4 mr-1" />
-                              Zobacz Alert
-                            </Button>
-                          ) : (
-                            <div className="h-9 flex items-center">
-                              <Badge variant="outline" className="text-xs text-gray-500 border-gray-600">
-                                Brak alertu
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div>
-                          <div className="text-gray-300">Wejście</div>
-                          <div className="font-semibold text-white">{position.entryPrice.toFixed(4)}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Wyjście</div>
-                          <div className="font-semibold text-white">
-                            {position.closePrice && position.closePrice > 0 
-                              ? position.closePrice.toFixed(4) 
-                              : "N/A"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Rozmiar</div>
-                          <div className="font-semibold text-white">
-                            {position.quantity && position.quantity > 0 
-                              ? position.quantity.toFixed(4) 
-                              : "N/A"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-300">Czas</div>
-                          <div className="font-semibold text-white">
-                            {formatDuration(position.durationMinutes)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
                 })}
               </div>
             )}
