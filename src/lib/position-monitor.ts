@@ -372,7 +372,6 @@ async function setAlgoOrder(
   
   // ✅ CRITICAL FIX: Use /v5/position/trading-stop endpoint instead of /v5/order/create
   // This endpoint is specifically designed for setting SL/TP on positions
-  // and returns success without needing an orderId
   const payload: any = {
     category: 'linear',
     symbol: symbol,
@@ -411,7 +410,6 @@ async function setAlgoOrder(
   console.error(`📥 [SET_ALGO] Bybit Response:`);
   console.error(`   Code: ${data.retCode}`);
   console.error(`   Message: ${data.retMsg}`);
-  console.error(`   Full response: ${JSON.stringify(data, null, 2)}`);
 
   if (data.retCode !== 0) {
     console.error(`❌ [SET_ALGO] Failed to set ${orderType.toUpperCase()}: ${data.retMsg} (code: ${data.retCode})`);
@@ -419,12 +417,11 @@ async function setAlgoOrder(
   }
 
   // ✅ SUCCESS: /v5/position/trading-stop doesn't return orderId, but operation succeeded
-  // Return a synthetic identifier to indicate success
-  const syntheticId = `${symbol}-${orderType}-${Date.now()}`;
+  // Return success indicator
   console.error(`✅ [SET_ALGO] Successfully set ${orderType.toUpperCase()} @ ${triggerPrice.toFixed(4)}`);
-  console.error(`   Synthetic ID: ${syntheticId}`);
-
-  return syntheticId;
+  
+  // Return success token instead of null
+  return "SUCCESS";
 }
 
 // ============================================
