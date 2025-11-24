@@ -21,7 +21,6 @@ import {
   Download,
   Brain,
   Zap,
-  TrendUp,
   Sparkles,
   Filter,
   CheckCircle2,
