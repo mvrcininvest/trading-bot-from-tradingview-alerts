@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { signBybitRequest } from "@/lib/bybit-utils";
 
 interface Balance {
   asset: string;
