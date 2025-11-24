@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle, BarChart3, Award } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -103,6 +103,23 @@ interface SymbolLock {
   unlockedAt: string | null;
 }
 
+// ✅ NOWY: Interfejs dla statystyk Bybit
+interface BybitStats {
+  totalEquity: number;
+  totalWalletBalance: number;
+  availableBalance: number;
+  realisedPnL: number;
+  unrealisedPnL: number;
+  totalPnL: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number;
+  tradingVolume: number;
+  avgHoldingTime: number;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
@@ -125,6 +142,8 @@ export default function DashboardPage() {
   const [realisedPnL, setRealisedPnL] = useState(0);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
+  const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
+  const [loadingBybitStats, setLoadingBybitStats] = useState(false);
 
   // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
   const autoMatchAlertsToOpen = useCallback(async () => {
@@ -430,6 +449,25 @@ export default function DashboardPage() {
     }
   }, [credentials]);
 
+  // ✅ NOWA FUNKCJA: Pobierz statystyki Bybit
+  const fetchBybitStats = useCallback(async () => {
+    if (!credentials) return;
+    
+    setLoadingBybitStats(true);
+    try {
+      const response = await fetch('/api/analytics/bybit-stats?days=30');
+      const data = await response.json();
+      
+      if (data.success) {
+        setBybitStats(data.stats);
+      }
+    } catch (err) {
+      console.error("Failed to fetch Bybit stats:", err);
+    } finally {
+      setLoadingBybitStats(false);
+    }
+  }, [credentials]);
+
   useEffect(() => {
     const checkCredentials = async () => {
       setIsCheckingCredentials(true);
@@ -452,6 +490,7 @@ export default function DashboardPage() {
         fetchSymbolLocks();
         autoImportBybitHistory(creds);
         autoMatchAlertsToOpen();
+        fetchBybitStats(); // ✅ NOWE
         
         setIsCheckingCredentials(false);
         return;
@@ -484,6 +523,7 @@ export default function DashboardPage() {
           fetchSymbolLocks();
           autoImportBybitHistory(creds);
           autoMatchAlertsToOpen();
+          fetchBybitStats(); // ✅ NOWE
         } else {
           console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
         }
@@ -504,11 +544,12 @@ export default function DashboardPage() {
       fetchBotPositions(true);
       fetchPositions(credentials, true);
       fetchBotStatus(true);
-      fetchHistoryPositions(); // ✅ DODANO - odświeżaj historię co 2s
+      fetchHistoryPositions();
+      fetchBybitStats(); // ✅ NOWE - odświeżaj co 2s
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
+  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions, fetchBybitStats]);
 
   // ✅ NOWY: Automatyczna synchronizacja z Bybit co 30 sekund
   useEffect(() => {
@@ -704,26 +745,12 @@ export default function DashboardPage() {
     return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
   };
 
-  // ✅ POPRAWIONE STATYSTYKI - dodane całkowity PnL
+  // ✅ POPRAWIONE STATYSTYKI - używaj danych z Bybit jeśli dostępne
   const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0)
   const unrealisedPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0)
   
-  useEffect(() => {
-    const fetchRealisedPnL = async () => {
-      try {
-        const response = await fetch("/api/bot/history?limit=1000")
-        const data = await response.json()
-        if (data.success && data.history) {
-          const total = data.history.reduce((sum: number, p: any) => sum + p.pnl, 0)
-          setRealisedPnL(total)
-        }
-      } catch (err) {
-        console.error("Failed to fetch realised PnL:", err)
-      }
-    }
-    fetchRealisedPnL()
-  }, [])
-  
+  // ✅ NOWE: Używaj realised PnL z Bybit stats
+  const realisedPnL = bybitStats?.realisedPnL || 0
   const totalPnL = realisedPnL + unrealisedPnL
 
   // ✅ LOADING SCREEN podczas sprawdzania credentials
@@ -804,6 +831,112 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
+        {/* ✅ NOWY: Widget Statystyk Bybit */}
+        {bybitStats && !loadingBybitStats && (
+          <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Database className="h-5 w-5 text-purple-400" />
+                    Statystyki Tradingowe (ostatnie 30 dni)
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Dane live z Bybit API - kliknij aby zobaczyć pełną analizę
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={() => router.push("/statystyki")}
+                  variant="outline"
+                  size="sm"
+                  className="border-purple-700 text-purple-300 hover:bg-purple-900/20"
+                >
+                  Pełne Statystyki
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div className="p-3 rounded-lg bg-gradient-to-br from-blue-600/10 to-blue-900/5 border border-blue-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="h-4 w-4 text-blue-400" />
+                    <h4 className="text-xs font-medium text-blue-300">Trades</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">{bybitStats.totalTrades}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    <span className="text-green-400">✓{bybitStats.winningTrades}</span>
+                    {" / "}
+                    <span className="text-red-400">✗{bybitStats.losingTrades}</span>
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-green-600/10 to-green-900/5 border border-green-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="h-4 w-4 text-green-400" />
+                    <h4 className="text-xs font-medium text-green-300">Win Rate</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">{bybitStats.winRate.toFixed(1)}%</p>
+                  <div className="mt-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${bybitStats.winRate}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-amber-600/10 to-amber-900/5 border border-amber-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Award className="h-4 w-4 text-amber-400" />
+                    <h4 className="text-xs font-medium text-amber-300">Profit Factor</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {bybitStats.profitFactor === 999 ? '∞' : bybitStats.profitFactor.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {bybitStats.profitFactor >= 2 ? '🔥 Excellent' : bybitStats.profitFactor >= 1.5 ? '✅ Good' : '⚠️ Average'}
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-purple-600/10 to-purple-900/5 border border-purple-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <DollarSign className="h-4 w-4 text-purple-400" />
+                    <h4 className="text-xs font-medium text-purple-300">Realised PnL</h4>
+                  </div>
+                  <p className={`text-2xl font-bold ${bybitStats.realisedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {bybitStats.realisedPnL >= 0 ? '+' : ''}{bybitStats.realisedPnL.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">USDT</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-cyan-600/10 to-cyan-900/5 border border-cyan-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Activity className="h-4 w-4 text-cyan-400" />
+                    <h4 className="text-xs font-medium text-cyan-300">Volume</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {(bybitStats.tradingVolume / 1000).toFixed(1)}K
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">USDT</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gradient-to-br from-orange-600/10 to-orange-900/5 border border-orange-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-orange-400" />
+                    <h4 className="text-xs font-medium text-orange-300">Avg Time</h4>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {bybitStats.avgHoldingTime < 60 
+                      ? `${Math.round(bybitStats.avgHoldingTime)}m`
+                      : `${Math.round(bybitStats.avgHoldingTime / 60)}h`
+                    }
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">per trade</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ✅ NOWY: Auto-import status banner */}
         {autoImporting && (
           <Alert className="border-blue-800 bg-blue-900/30 text-blue-200">
@@ -873,7 +1006,7 @@ export default function DashboardPage() {
               <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
                 {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
               </p>
-              <p className="text-xs text-amber-400">USDT (zrealizowany + niezrealizowany)</p>
+              <p className="text-xs text-amber-400">USDT (Bybit live)</p>
             </div>
 
             <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
