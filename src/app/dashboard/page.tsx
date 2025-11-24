@@ -103,6 +103,7 @@ interface BybitStatsResponse {
   dataSource: "bybit";
   daysBack: number;
   fetchedAt: string;
+  message?: string;
 }
 
 export default function DashboardPage() {
