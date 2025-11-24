@@ -986,6 +986,54 @@ export async function POST(request: Request) {
       trackingId = await lockSymbolForOpening(symbol, side);
       console.log(`✅ Symbol locked with tracking ID: ${trackingId}`);
 
+      // ============================================
+      // 🔒 ATOMIC DOUBLE-CHECK: Max positions limit
+      // ============================================
+      console.log(`\n🔒 [ATOMIC CHECK] Re-checking max positions limit...`);
+      const atomicCheck = await db
+        .select()
+        .from(botPositions)
+        .where(
+          or(
+            eq(botPositions.status, 'open'),
+            eq(botPositions.status, 'partial_close')
+          )
+        );
+      
+      const currentCount = atomicCheck.length;
+      const maxLimit = botConfig.maxConcurrentPositions;
+      
+      console.log(`   Current positions: ${currentCount}/${maxLimit}`);
+      
+      if (currentCount >= maxLimit) {
+        console.log(`   ❌ RACE CONDITION PREVENTED: Limit reached after initial check!`);
+        
+        if (trackingId) {
+          await markPositionOpenFailed(trackingId);
+        }
+        
+        await db.update(alerts).set({ 
+          executionStatus: 'rejected', 
+          rejectionReason: 'max_positions_reached_atomic' 
+        }).where(eq(alerts.id, alert.id));
+        
+        await logToBot('warning', 'rejected_atomic_check', `Max positions reached (atomic check): ${currentCount}/${maxLimit}`, { 
+          currentCount,
+          maxLimit,
+          raceConditionPrevented: true
+        }, alert.id);
+        
+        return NextResponse.json({ 
+          success: true, 
+          alert_id: alert.id, 
+          message: `Max concurrent positions reached (${currentCount}/${maxLimit}) - race condition prevented`,
+          rejected: true,
+          atomicCheck: true
+        });
+      }
+      
+      console.log(`   ✅ Atomic check passed: ${currentCount}/${maxLimit}\n`);
+
       await logToBot('info', 'opening_position', `Opening ${symbol} ${side} ${leverage}x on Bybit`, { 
         symbol, 
         side, 
