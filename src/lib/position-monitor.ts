@@ -166,6 +166,59 @@ async function closePositionPartial(
 }
 
 // ============================================
+// 🛡️ VERIFY POSITION IS ACTUALLY CLOSED
+// ============================================
+
+async function verifyPositionClosed(
+  symbol: string,
+  apiKey: string,
+  apiSecret: string,
+  maxAttempts: number = 5,
+  delayMs: number = 2000
+): Promise<{ isClosed: boolean; finalSize: number; error?: string }> {
+  console.log(`\n🔍 [VERIFY] Checking if ${symbol} position is actually closed...`);
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
+      const positions = await getBybitPositions(apiKey, apiSecret);
+      const position = positions.find((p: any) => p.symbol === symbol && parseFloat(p.size) > 0);
+      
+      if (!position) {
+        console.log(`   ✅ [VERIFY] Attempt ${attempt}/${maxAttempts}: Position CONFIRMED CLOSED on exchange`);
+        return { isClosed: true, finalSize: 0 };
+      }
+      
+      const size = parseFloat(position.size);
+      console.warn(`   ⚠️ [VERIFY] Attempt ${attempt}/${maxAttempts}: Position STILL OPEN - Size: ${size}`);
+      
+      if (attempt === maxAttempts) {
+        console.error(`   ❌ [VERIFY] All ${maxAttempts} attempts failed - position still exists!`);
+        return { 
+          isClosed: false, 
+          finalSize: size,
+          error: `Position still open after ${maxAttempts} verification attempts (size: ${size})`
+        };
+      }
+      
+    } catch (error: any) {
+      console.error(`   ❌ [VERIFY] Attempt ${attempt} error: ${error.message}`);
+      
+      if (attempt === maxAttempts) {
+        return {
+          isClosed: false,
+          finalSize: -1,
+          error: `Verification failed: ${error.message}`
+        };
+      }
+    }
+  }
+  
+  return { isClosed: false, finalSize: -1, error: 'Unknown verification failure' };
+}
+
+// ============================================
 // 🛡️ RE-VERIFY AND RESTORE SL/TP AFTER PARTIAL CLOSE
 // ============================================
 
@@ -1495,8 +1548,43 @@ export async function monitorAndManagePositions(silent = true) {
             console.error(`   🚨 EMERGENCY: Closing position ${symbol} - cannot set SL after 3 attempts!`);
             
             try {
+              // Step 1: Close the position
               const closeOrderId = await closePositionPartial(symbol, side, quantity, apiKey, apiSecret);
+              console.log(`   📋 Close order submitted: ${closeOrderId}`);
               
+              // Step 2: 🛡️ CRITICAL - VERIFY position is actually closed
+              const verification = await verifyPositionClosed(symbol, apiKey, apiSecret, 5, 2000);
+              
+              if (!verification.isClosed) {
+                // 🚨🚨🚨 CRITICAL FAILURE - Position still open!
+                console.error(`   ❌❌❌ CRITICAL: Position ${symbol} STILL OPEN after close attempt!`);
+                console.error(`   Final size: ${verification.finalSize}`);
+                console.error(`   Error: ${verification.error}`);
+                
+                await logOkoAction(
+                  dbPos.id,
+                  'CLOSE_VERIFICATION_FAILED',
+                  'emergency_close_failed',
+                  `CRITICAL: Emergency close failed - position still open (size: ${verification.finalSize})`,
+                  1,
+                  { 
+                    symbol, 
+                    closeOrderId, 
+                    finalSize: verification.finalSize,
+                    verificationError: verification.error 
+                  }
+                );
+                
+                // DO NOT mark as closed in DB - keep it for retry
+                // DO NOT ban symbol - we need to keep trying
+                errors.push(`CRITICAL: ${symbol} - Emergency close verification failed`);
+                continue;
+              }
+              
+              // ✅ Verification passed - position is actually closed
+              console.log(`   ✅✅✅ VERIFIED: Position ${symbol} is closed on exchange`);
+              
+              // Step 3: Mark as closed in DB
               await db.update(botPositions)
                 .set({
                   status: "closed",
@@ -1505,7 +1593,10 @@ export async function monitorAndManagePositions(silent = true) {
                 })
                 .where(eq(botPositions.id, dbPos.id));
 
+              // Step 4: Save to history
               await savePositionToHistory(dbPos, currentPrice, 'emergency_no_sl', closeOrderId, apiKey, apiSecret);
+              
+              // Step 5: Cleanup orphaned orders
               await cleanupOrphanedOrders(symbol, apiKey, apiSecret, 3);
               
               emergencyClosed++;
@@ -1515,30 +1606,44 @@ export async function monitorAndManagePositions(silent = true) {
                 dbPos.id,
                 'EMERGENCY_CLOSE',
                 'no_sl_emergency_close',
-                `Position closed after failing to set SL (3 attempts failed)`,
+                `Position closed after failing to set SL (3 attempts failed) - VERIFIED CLOSED`,
                 1,
-                { symbol, attempts: 3, pnl: livePnl }
+                { symbol, attempts: 3, pnl: livePnl, closeOrderId, verified: true }
               );
+              
+              // Step 6: NOW we can safely ban the symbol
+              await banSymbol(
+                symbol,
+                `Critical: Failed to set SL after 3 attempts - position verified closed`,
+                48 // 48 hour ban
+              );
+              
+              console.log(`   🚫 Symbol ${symbol} BANNED (position safely closed and verified)`);
               
               details.push({
                 symbol,
                 side,
                 action: "emergency_no_sl",
-                reason: "Failed to set SL after 3 attempts - closed for safety"
+                reason: "Failed to set SL after 3 attempts - closed for safety (verified)"
               });
               
-              console.log(`   ✅ Position CLOSED for safety`);
+              console.log(`   ✅ Position CLOSED and VERIFIED - symbol banned`);
               continue;
+              
             } catch (error: any) {
               console.error(`   ❌ CRITICAL: Failed to close position without SL: ${error.message}`);
               errors.push(`CRITICAL: ${symbol} - Failed to close position without SL`);
               
-              // Ban symbol immediately
-              await banSymbol(
-                symbol,
-                `Critical safety failure: Cannot close position without SL`,
-                48 // 48 hour ban
+              await logOkoAction(
+                dbPos.id,
+                'EMERGENCY_CLOSE_ERROR',
+                'emergency_close_exception',
+                `Exception during emergency close: ${error.message}`,
+                1,
+                { symbol, error: error.message }
               );
+              
+              // DO NOT ban symbol if we couldn't close - keep position in DB for retry
             }
           }
         }
