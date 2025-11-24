@@ -240,8 +240,10 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Calculate PnL percentage
-      const pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100 * (bybitPos.side === "Buy" ? 1 : -1);
+      // ✅ POPRAWKA: Oblicz ROE (pnlPercent po dźwigni)
+      const positionValue = qty * entryPrice;
+      const initialMargin = positionValue / leverage;
+      const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
 
       // Duration in minutes
       const durationMs = closedAt.getTime() - openedAt.getTime();

@@ -270,6 +270,11 @@ export async function GET(request: NextRequest) {
               const avgExitPrice = parseFloat(p.avgExitPrice || avgEntryPrice);
               const quantity = Math.abs(parseFloat(p.qty || "0"));
               
+              // ✅ POPRAWKA: Oblicz initialMargin i ROE (pnlPercent po dźwigni)
+              const positionValue = quantity * avgEntryPrice;
+              const initialMargin = positionValue / leverage;
+              const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
+              
               const tempPosition = {
                 pnl,
                 tp1Hit: false,
@@ -289,7 +294,7 @@ export async function GET(request: NextRequest) {
                 quantity,
                 leverage,
                 pnl,
-                pnlPercent: avgEntryPrice > 0 ? ((avgExitPrice - avgEntryPrice) / avgEntryPrice * 100 * (side === "Buy" ? 1 : -1)) : 0,
+                pnlPercent,
                 closeReason: classifyCloseReason(tempPosition),
                 tp1Hit: false,
                 tp2Hit: false,
