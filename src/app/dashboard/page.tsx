@@ -278,6 +278,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const stored = localStorage.getItem("exchange_credentials");
+    console.log("[Dashboard] Sprawdzanie credentials w localStorage:", stored ? "ZNALEZIONE" : "BRAK");
+    
     if (stored) {
       const creds = JSON.parse(stored);
       creds.exchange = "bybit";
@@ -293,6 +295,8 @@ export default function DashboardPage() {
       
       // ✅ NOWE: Automatyczny import przy starcie
       autoImportBybitHistory(creds);
+    } else {
+      console.error("[Dashboard] ❌ Brak kluczy API w localStorage - wyświetlam komunikat błędu");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -615,12 +619,13 @@ export default function DashboardPage() {
   const totalPnL = realisedPnL + unrealisedPnL
 
   if (!credentials) {
+    console.log("[Dashboard] Renderuję komunikat o braku konfiguracji API");
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 md:p-6">
-        <Card className="max-w-2xl w-full border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm">
+      <div className="min-h-screen flex items-center justify-center p-4 md:p-6 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+        <Card className="max-w-2xl w-full border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm shadow-2xl">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-300">
-              <AlertCircle className="h-6 w-6" />
+            <CardTitle className="flex items-center gap-2 text-red-300 text-2xl">
+              <AlertCircle className="h-8 w-8" />
               ⚠️ Brak konfiguracji Bybit!
             </CardTitle>
           </CardHeader>
@@ -634,15 +639,31 @@ export default function DashboardPage() {
                   Musisz skonfigurować klucze API Bybit Mainnet aby korzystać z bota.
                 </p>
               </div>
+              
+              <Alert className="border-yellow-800 bg-yellow-900/30">
+                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                <AlertDescription className="text-yellow-200 text-sm">
+                  <strong>Instrukcja:</strong>
+                  <ol className="list-decimal list-inside mt-2 space-y-1">
+                    <li>Kliknij przycisk poniżej</li>
+                    <li>Wprowadź swoje klucze API z Bybit</li>
+                    <li>Przetestuj połączenie</li>
+                    <li>Zapisz i wróć tutaj</li>
+                  </ol>
+                </AlertDescription>
+              </Alert>
             </div>
 
             <Button 
-              onClick={() => router.push("/exchange-test")} 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => {
+                console.log("[Dashboard] Przekierowuję do /exchange-test");
+                router.push("/exchange-test");
+              }} 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg py-6"
               size="lg"
             >
-              <Settings className="mr-2 h-5 w-5" />
-              Konfiguracja API
+              <Settings className="mr-2 h-6 w-6" />
+              Konfiguracja API (Kliknij tutaj!)
             </Button>
           </CardContent>
         </Card>
@@ -650,6 +671,8 @@ export default function DashboardPage() {
     );
   }
 
+  console.log("[Dashboard] Renderuję główną zawartość dashboard - credentials:", credentials.exchange);
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
