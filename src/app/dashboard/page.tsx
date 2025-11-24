@@ -153,8 +153,7 @@ export default function DashboardPage() {
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
-  // ✅ NOWE: Stan dla ostrzeżenia o źródle danych
-  const [bybitStatsWarning, setBybitStatsWarning] = useState<string | null>(null);
+  // ✅ USUNIĘTE: ostrzeżenia - zostaw tylko dataSource
   const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
@@ -461,7 +460,7 @@ export default function DashboardPage() {
     }
   }, [credentials]);
 
-  // ✅ ZAKTUALIZOWANA FUNKCJA: Obsługa warning i dataSource
+  // ✅ ZAKTUALIZOWANA FUNKCJA: Bez ostrzeżeń, tylko źródło danych
   const fetchBybitStats = useCallback(async () => {
     if (!credentials) return;
     
@@ -473,18 +472,9 @@ export default function DashboardPage() {
       if (data.success) {
         setBybitStats(data.stats);
         setBybitDataSource(data.dataSource);
-        setBybitStatsWarning(data.warning || null);
-        
-        // Log info o źródle danych
-        if (data.dataSource === "database") {
-          console.log("[Dashboard] ⚠️ Using local database stats (Bybit API unavailable)");
-        } else {
-          console.log("[Dashboard] ✅ Using live Bybit API stats");
-        }
       }
     } catch (err) {
       console.error("Failed to fetch Bybit stats:", err);
-      setBybitStatsWarning("Unable to load statistics");
     } finally {
       setLoadingBybitStats(false);
     }
@@ -512,7 +502,8 @@ export default function DashboardPage() {
         fetchSymbolLocks();
         autoImportBybitHistory(creds);
         autoMatchAlertsToOpen();
-        fetchBybitStats(); // ✅ NOWE
+        // ✅ POPRAWIONE: Wywołuj tylko raz przy starcie
+        fetchBybitStats();
         
         setIsCheckingCredentials(false);
         return;
@@ -545,7 +536,8 @@ export default function DashboardPage() {
           fetchSymbolLocks();
           autoImportBybitHistory(creds);
           autoMatchAlertsToOpen();
-          fetchBybitStats(); // ✅ NOWE
+          // ✅ POPRAWIONE: Wywołuj tylko raz przy starcie
+          fetchBybitStats();
         } else {
           console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
         }
@@ -567,11 +559,23 @@ export default function DashboardPage() {
       fetchPositions(credentials, true);
       fetchBotStatus(true);
       fetchHistoryPositions();
-      fetchBybitStats(); // ✅ NOWE - odświeżaj co 2s
+      // ✅ USUNIĘTE: nie odświeżaj co 2s (powoduje migoczenie)
+      // fetchBybitStats();
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions, fetchBybitStats]);
+  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
+
+  // ✅ NOWY: Osobny interval dla statystyk Bybit - odśwież co 30s zamiast co 2s
+  useEffect(() => {
+    if (!credentials || !bybitStats) return;
+
+    const statsInterval = setInterval(() => {
+      fetchBybitStats();
+    }, 30000); // Co 30 sekund
+
+    return () => clearInterval(statsInterval);
+  }, [credentials, bybitStats, fetchBybitStats]);
 
   // ✅ NOWY: Automatyczna synchronizacja z Bybit co 30 sekund
   useEffect(() => {
@@ -853,23 +857,10 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
-        {/* ✅ NOWY: Ostrzeżenie o źródle danych */}
-        {bybitStatsWarning && (
-          <Alert className="border-amber-800 bg-amber-900/30 text-amber-200">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">⚠️ Statystyki z lokalnej bazy danych</span>
-              </div>
-              <p className="text-xs mt-1">
-                {bybitStatsWarning}. Statystyki są obliczane na podstawie danych z lokalnej historii pozycji.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* ✅ USUNIĘTY: Alert z ostrzeżeniem - nie pokazujemy już ostrzeżeń */}
 
-        {/* ✅ ZAKTUALIZOWANY: Widget Statystyk Bybit z oznaczeniem źródła */}
-        {bybitStats && !loadingBybitStats && (
+        {/* ✅ ZAKTUALIZOWANY: Widget Statystyk bez migoczenia */}
+        {bybitStats && (
           <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -890,7 +881,7 @@ export default function DashboardPage() {
                   </CardTitle>
                   <CardDescription className="text-gray-400">
                     {bybitDataSource === "database" 
-                      ? "Dane z lokalnej historii pozycji (Bybit API niedostępne)"
+                      ? "Dane z lokalnej historii pozycji"
                       : "Dane live z Bybit API - kliknij aby zobaczyć pełną analizę"
                     }
                   </CardDescription>

@@ -90,7 +90,6 @@ export default function AlertsPage() {
         
         setStats({ total, buy, sell, avgLatency: Math.round(avgLatency) });
         
-        // Type-safe symbol extraction
         const symbolsArray = data.alerts.map((a: AlertData) => a.symbol) as string[];
         const uniqueSymbols = Array.from(new Set(symbolsArray)).sort();
         setSymbols(uniqueSymbols);
@@ -141,13 +140,11 @@ export default function AlertsPage() {
         toast.success(data.message);
         fetchAlerts();
       } else {
-        // ✅ POPRAWKA: Pokazuj szczegółowy komunikat błędu
         const errorMsg = data.message || data.error || "Nie udało się wyczyścić alertów";
         toast.error(`❌ ${errorMsg}`);
         console.error("[Cleanup Error]", data);
       }
     } catch (error) {
-      // ✅ POPRAWKA: Lepsze komunikaty błędów
       console.error("[Cleanup Error]", error);
       const errorMsg = error instanceof Error ? error.message : "Błąd czyszczenia alertów";
       toast.error(`❌ ${errorMsg}`);
@@ -179,7 +176,6 @@ export default function AlertsPage() {
 
   const sendTestAlert = async () => {
     try {
-      // Wysyłamy prawdziwy testowy alert POST jak TradingView
       const testAlertData = {
         symbol: "BTCUSDT",
         side: "BUY",
@@ -220,7 +216,6 @@ export default function AlertsPage() {
         body: JSON.stringify(testAlertData)
       });
 
-      // Sprawdź czy response jest OK
       if (!response.ok) {
         const text = await response.text();
         console.error("Response error:", text);
@@ -228,7 +223,6 @@ export default function AlertsPage() {
         return;
       }
 
-      // Próbuj sparsować JSON
       let result;
       try {
         result = await response.json();
@@ -241,7 +235,6 @@ export default function AlertsPage() {
       
       if (result.success) {
         toast.success(`✅ Alert testowy zapisany! ID: ${result.alert_id}`);
-        // Odśwież listę alertów
         setTimeout(() => fetchAlerts(), 1000);
       } else {
         toast.error(`❌ Błąd: ${result.error || result.message || "Nieznany błąd"}`);
@@ -440,7 +433,7 @@ export default function AlertsPage() {
           </Card>
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-300">Sygnały BUY</CardDescription>
+              <CardDescription className="text-gray-300">Sygnały KUPNA</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-green-400">{stats.buy}</div>
@@ -448,7 +441,7 @@ export default function AlertsPage() {
           </Card>
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-300">Sygnały SELL</CardDescription>
+              <CardDescription className="text-gray-300">Sygnały SPRZEDAŻY</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-red-400">{stats.sell}</div>
@@ -456,7 +449,7 @@ export default function AlertsPage() {
           </Card>
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-300">Śr. Latencja</CardDescription>
+              <CardDescription className="text-gray-300">Śr. Opóźnienie</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-white">{stats.avgLatency}ms</div>

@@ -85,8 +85,7 @@ export default function BotHistoryPage() {
   // ✅ NOWE: Stan dla statystyk Bybit
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
-  // ✅ NOWE: Stan dla ostrzeżenia
-  const [bybitStatsWarning, setBybitStatsWarning] = useState<string | null>(null);
+  // ✅ USUNIĘTE: ostrzeżenia
   const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   useEffect(() => {
@@ -94,7 +93,7 @@ export default function BotHistoryPage() {
     fetchBybitStats();
   }, []);
 
-  // ✅ ZAKTUALIZOWANA FUNKCJA: Pobierz statystyki z Bybit API
+  // ✅ ZAKTUALIZOWANA FUNKCJA: Bez ostrzeżeń
   const fetchBybitStats = async () => {
     setLoadingBybitStats(true);
     try {
@@ -104,17 +103,9 @@ export default function BotHistoryPage() {
       if (data.success) {
         setBybitStats(data.stats);
         setBybitDataSource(data.dataSource);
-        setBybitStatsWarning(data.warning || null);
-        
-        if (data.dataSource === "database") {
-          console.log("[Bot History] ⚠️ Using local database stats (Bybit API unavailable)");
-        } else {
-          console.log("[Bot History] ✅ Using live Bybit API stats");
-        }
       }
     } catch (err) {
       console.error("Failed to fetch Bybit stats:", err);
-      setBybitStatsWarning("Unable to load statistics");
     } finally {
       setLoadingBybitStats(false);
     }
@@ -269,7 +260,7 @@ export default function BotHistoryPage() {
     }
   };
 
-  // ✅ POPRAWIONE: Używaj statystyk z Bybit API jeśli dostępne
+  // ✅ POPRAWIONE: Używaj TYLKO statystyk z Bybit API (usuń duplikaty z lokalnych pozycji)
   const stats = bybitStats ? {
     totalTrades: bybitStats.totalTrades,
     profitable: bybitStats.winningTrades,
@@ -277,14 +268,12 @@ export default function BotHistoryPage() {
     totalPnl: bybitStats.realisedPnL,
     winRate: bybitStats.winRate,
   } : {
-    totalTrades: positions.length,
-    profitable: positions.filter((p) => p.pnl > 0).length,
-    losses: positions.filter((p) => p.pnl < 0).length,
-    totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0),
-    winRate:
-      positions.length > 0
-        ? (positions.filter((p) => p.pnl > 0).length / positions.length) * 100
-        : 0,
+    // Fallback tylko jeśli nie ma bybitStats
+    totalTrades: 0,
+    profitable: 0,
+    losses: 0,
+    totalPnl: 0,
+    winRate: 0,
   };
 
   // Filter positions
@@ -395,26 +384,6 @@ export default function BotHistoryPage() {
           </div>
         </div>
 
-        {/* ✅ NOWY: Ostrzeżenie o źródle danych */}
-        {bybitStatsWarning && (
-          <Alert className="border-amber-800 bg-amber-900/30 text-amber-200">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">⚠️ Statystyki z lokalnej bazy danych</span>
-                {bybitDataSource === "database" && (
-                  <Badge variant="outline" className="text-amber-300 border-amber-500/50 bg-amber-500/10 text-xs">
-                    Lokalna baza
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs mt-1">
-                {bybitStatsWarning}. Statystyki są obliczane na podstawie danych z lokalnej historii pozycji.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
@@ -464,17 +433,24 @@ export default function BotHistoryPage() {
           </Card>
         </div>
 
-        {/* ✅ NOWE: Dodatkowe statystyki z Bybit API */}
+        {/* ✅ ZAKTUALIZOWANE: Dodatkowe statystyki z badge'em źródła */}
         {bybitStats && !loadingBybitStats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/60 backdrop-blur-sm hover:from-amber-900/40 transition-all">
               <CardHeader className="pb-2">
-                <CardDescription className="text-amber-300">Profit Factor</CardDescription>
+                <div className="flex items-center justify-between mb-1">
+                  <CardDescription className="text-amber-300">Profit Factor</CardDescription>
+                  {bybitDataSource === "database" && (
+                    <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50 bg-amber-500/10">
+                      Lokalna baza
+                    </Badge>
+                  )}
+                </div>
                 <CardTitle className="text-3xl text-white">
                   {bybitStats.profitFactor === 999 ? '∞' : bybitStats.profitFactor.toFixed(2)}
                 </CardTitle>
                 <p className="text-xs text-amber-400 mt-1">
-                  {bybitStats.profitFactor >= 2 ? '🔥 Excellent' : bybitStats.profitFactor >= 1.5 ? '✅ Good' : '⚠️ Average'}
+                  {bybitStats.profitFactor >= 2 ? '🔥 Doskonały' : bybitStats.profitFactor >= 1.5 ? '✅ Dobry' : '⚠️ Średni'}
                 </p>
               </CardHeader>
             </Card>
