@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -51,6 +51,7 @@ export default function BotHistoryPage() {
   const [filter, setFilter] = useState<"all" | "profitable" | "loss">("all");
   const [closeReasonFilter, setCloseReasonFilter] = useState<string>("all");
   const [importingHistory, setImportingHistory] = useState(false);
+  const [matchingAlerts, setMatchingAlerts] = useState(false);
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
 
@@ -75,6 +76,44 @@ export default function BotHistoryPage() {
       console.error("Failed to fetch history:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMatchAlertsToHistory = async () => {
+    setMatchingAlerts(true);
+    try {
+      toast.info("🔗 Dopasowywanie alertów do pozycji...", {
+        description: "Szukam alertów dla pozycji bez danych alertu"
+      });
+
+      const response = await fetch("/api/bot/match-alerts-to-history", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.matched === 0 && data.total === 0) {
+          toast.success("✅ Wszystkie pozycje mają już przypisane alerty", {
+            description: "Nie znaleziono pozycji wymagających dopasowania"
+          });
+        } else {
+          toast.success(
+            `✅ Dopasowanie zakończone!`,
+            {
+              description: `🔗 ${data.matched} alertów dopasowano\n❌ ${data.unmatched} pozycji bez alertu\n📊 Sprawdzono ${data.total} pozycji`,
+              duration: 8000
+            }
+          );
+        }
+        await fetchHistory(); // Refresh history
+      } else {
+        toast.error(`❌ Błąd: ${data.error || data.message}`);
+      }
+    } catch (err) {
+      toast.error(`❌ Błąd dopasowywania: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setMatchingAlerts(false);
     }
   };
 
@@ -265,6 +304,14 @@ export default function BotHistoryPage() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button 
+              onClick={handleMatchAlertsToHistory} 
+              disabled={matchingAlerts}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <LinkIcon className="mr-2 h-4 w-4" />
+              {matchingAlerts ? "Dopasowywanie..." : "Dopasuj Alerty"}
+            </Button>
             <Button 
               onClick={handleImportBybitHistory} 
               disabled={importingHistory}
