@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle, BarChart3, Award } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle, BarChart3, Award, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -120,6 +120,16 @@ interface BybitStats {
   avgHoldingTime: number;
 }
 
+// ✅ NOWY: Interface dla odpowiedzi API
+interface BybitStatsResponse {
+  success: boolean;
+  stats: BybitStats;
+  dataSource: "bybit" | "database";
+  warning?: string;
+  daysBack: number;
+  fetchedAt: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
@@ -143,6 +153,9 @@ export default function DashboardPage() {
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
+  // ✅ NOWE: Stan dla ostrzeżenia o źródle danych
+  const [bybitStatsWarning, setBybitStatsWarning] = useState<string | null>(null);
+  const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
   const autoMatchAlertsToOpen = useCallback(async () => {
@@ -448,20 +461,30 @@ export default function DashboardPage() {
     }
   }, [credentials]);
 
-  // ✅ NOWA FUNKCJA: Pobierz statystyki Bybit
+  // ✅ ZAKTUALIZOWANA FUNKCJA: Obsługa warning i dataSource
   const fetchBybitStats = useCallback(async () => {
     if (!credentials) return;
     
     setLoadingBybitStats(true);
     try {
       const response = await fetch('/api/analytics/bybit-stats?days=30');
-      const data = await response.json();
+      const data: BybitStatsResponse = await response.json();
       
       if (data.success) {
         setBybitStats(data.stats);
+        setBybitDataSource(data.dataSource);
+        setBybitStatsWarning(data.warning || null);
+        
+        // Log info o źródle danych
+        if (data.dataSource === "database") {
+          console.log("[Dashboard] ⚠️ Using local database stats (Bybit API unavailable)");
+        } else {
+          console.log("[Dashboard] ✅ Using live Bybit API stats");
+        }
       }
     } catch (err) {
       console.error("Failed to fetch Bybit stats:", err);
+      setBybitStatsWarning("Unable to load statistics");
     } finally {
       setLoadingBybitStats(false);
     }
@@ -830,7 +853,22 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
-        {/* ✅ NOWY: Widget Statystyk Bybit */}
+        {/* ✅ NOWY: Ostrzeżenie o źródle danych */}
+        {bybitStatsWarning && (
+          <Alert className="border-amber-800 bg-amber-900/30 text-amber-200">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">⚠️ Statystyki z lokalnej bazy danych</span>
+              </div>
+              <p className="text-xs mt-1">
+                {bybitStatsWarning}. Statystyki są obliczane na podstawie danych z lokalnej historii pozycji.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* ✅ ZAKTUALIZOWANY: Widget Statystyk Bybit z oznaczeniem źródła */}
         {bybitStats && !loadingBybitStats && (
           <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -839,9 +877,22 @@ export default function DashboardPage() {
                   <CardTitle className="text-white flex items-center gap-2">
                     <Database className="h-5 w-5 text-purple-400" />
                     Statystyki Tradingowe (ostatnie 30 dni)
+                    {bybitDataSource === "database" && (
+                      <Badge variant="outline" className="text-amber-300 border-amber-500/50 bg-amber-500/10">
+                        Lokalna baza
+                      </Badge>
+                    )}
+                    {bybitDataSource === "bybit" && (
+                      <Badge variant="outline" className="text-green-300 border-green-500/50 bg-green-500/10">
+                        Live z Bybit
+                      </Badge>
+                    )}
                   </CardTitle>
                   <CardDescription className="text-gray-400">
-                    Dane live z Bybit API - kliknij aby zobaczyć pełną analizę
+                    {bybitDataSource === "database" 
+                      ? "Dane z lokalnej historii pozycji (Bybit API niedostępne)"
+                      : "Dane live z Bybit API - kliknij aby zobaczyć pełną analizę"
+                    }
                   </CardDescription>
                 </div>
                 <Button

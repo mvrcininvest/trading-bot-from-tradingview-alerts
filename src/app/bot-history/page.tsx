@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText, Link as LinkIcon, RefreshCw } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Filter, Download, FileText, Link as LinkIcon, RefreshCw, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface HistoryPosition {
   id: number;
@@ -62,6 +63,16 @@ interface BybitStats {
   avgHoldingTime: number;
 }
 
+// ✅ NOWY: Interface dla odpowiedzi API
+interface BybitStatsResponse {
+  success: boolean;
+  stats: BybitStats;
+  dataSource: "bybit" | "database";
+  warning?: string;
+  daysBack: number;
+  fetchedAt: string;
+}
+
 export default function BotHistoryPage() {
   const [positions, setPositions] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,24 +85,36 @@ export default function BotHistoryPage() {
   // ✅ NOWE: Stan dla statystyk Bybit
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
+  // ✅ NOWE: Stan dla ostrzeżenia
+  const [bybitStatsWarning, setBybitStatsWarning] = useState<string | null>(null);
+  const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   useEffect(() => {
     fetchHistory();
-    fetchBybitStats(); // ✅ NOWE
+    fetchBybitStats();
   }, []);
 
-  // ✅ NOWA FUNKCJA: Pobierz statystyki z Bybit API
+  // ✅ ZAKTUALIZOWANA FUNKCJA: Pobierz statystyki z Bybit API
   const fetchBybitStats = async () => {
     setLoadingBybitStats(true);
     try {
       const response = await fetch('/api/analytics/bybit-stats?days=30');
-      const data = await response.json();
+      const data: BybitStatsResponse = await response.json();
       
       if (data.success) {
         setBybitStats(data.stats);
+        setBybitDataSource(data.dataSource);
+        setBybitStatsWarning(data.warning || null);
+        
+        if (data.dataSource === "database") {
+          console.log("[Bot History] ⚠️ Using local database stats (Bybit API unavailable)");
+        } else {
+          console.log("[Bot History] ✅ Using live Bybit API stats");
+        }
       }
     } catch (err) {
       console.error("Failed to fetch Bybit stats:", err);
+      setBybitStatsWarning("Unable to load statistics");
     } finally {
       setLoadingBybitStats(false);
     }
@@ -371,6 +394,26 @@ export default function BotHistoryPage() {
             </Button>
           </div>
         </div>
+
+        {/* ✅ NOWY: Ostrzeżenie o źródle danych */}
+        {bybitStatsWarning && (
+          <Alert className="border-amber-800 bg-amber-900/30 text-amber-200">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">⚠️ Statystyki z lokalnej bazy danych</span>
+                {bybitDataSource === "database" && (
+                  <Badge variant="outline" className="text-amber-300 border-amber-500/50 bg-amber-500/10 text-xs">
+                    Lokalna baza
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs mt-1">
+                {bybitStatsWarning}. Statystyki są obliczane na podstawie danych z lokalnej historii pozycji.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

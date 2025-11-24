@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { botSettings } from "@/db/schema";
+import { botSettings, positionHistory } from "@/db/schema";
 import crypto from "crypto";
+import { eq, gte, sql } from "drizzle-orm";
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER
@@ -19,6 +20,62 @@ function createBybitSignature(
 }
 
 // ============================================
+// 📊 GET STATS FROM LOCAL DATABASE (FALLBACK)
+// ============================================
+
+async function getStatsFromDatabase(daysBack: number = 90) {
+  const cutoffDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  
+  // Fetch closed positions from database
+  const closedPositions = await db
+    .select()
+    .from(positionHistory)
+    .where(gte(positionHistory.closedAt, cutoffDate));
+  
+  // Calculate statistics
+  const realisedPnL = closedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+  const totalTrades = closedPositions.length;
+  const winningTrades = closedPositions.filter(p => (p.pnl || 0) > 0).length;
+  const losingTrades = closedPositions.filter(p => (p.pnl || 0) < 0).length;
+  const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+  
+  // Profit factor
+  const wins = closedPositions.filter(p => (p.pnl || 0) > 0);
+  const losses = closedPositions.filter(p => (p.pnl || 0) < 0);
+  const totalWins = wins.reduce((sum, p) => sum + (p.pnl || 0), 0);
+  const totalLosses = Math.abs(losses.reduce((sum, p) => sum + (p.pnl || 0), 0));
+  const profitFactor = totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0);
+  
+  // Trading volume
+  const tradingVolume = closedPositions.reduce((sum, p) => {
+    const qty = p.quantity || 0;
+    const price = p.entryPrice || 0;
+    return sum + (qty * price);
+  }, 0);
+  
+  // Average holding time
+  const avgHoldingTime = totalTrades > 0
+    ? closedPositions.reduce((sum, p) => sum + (p.durationMinutes || 0), 0) / totalTrades
+    : 0;
+  
+  return {
+    totalEquity: 0,
+    totalWalletBalance: 0,
+    availableBalance: 0,
+    realisedPnL,
+    unrealisedPnL: 0,
+    totalPnL: realisedPnL,
+    totalTrades,
+    winningTrades,
+    losingTrades,
+    winRate,
+    profitFactor,
+    tradingVolume,
+    avgHoldingTime,
+  };
+}
+
+// ============================================
 // 📊 GET CLOSED PNL FROM BYBIT (ALL PAGES)
 // ============================================
 
@@ -33,7 +90,7 @@ async function getAllClosedPnL(
   let allPositions: any[] = [];
   let cursor: string | null = null;
   let pageCount = 0;
-  const maxPages = 50; // Safety limit
+  const maxPages = 50;
 
   do {
     pageCount++;
@@ -70,6 +127,19 @@ async function getAllClosedPnL(
       },
     });
     
+    // ✅ NOWE: Sprawdź czy to błąd 403 (geo-blocking)
+    if (response.status === 403) {
+      const text = await response.text();
+      if (text.includes('CloudFront') || text.includes('country')) {
+        throw new Error('GEO_BLOCKED');
+      }
+      throw new Error(`Bybit API 403: ${text.substring(0, 200)}`);
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Bybit API error: ${response.status}`);
+    }
+    
     const data = await response.json();
     
     if (data.retCode !== 0) {
@@ -81,15 +151,10 @@ async function getAllClosedPnL(
     
     cursor = data.result?.nextPageCursor || null;
     
-    console.log(`[Bybit Stats] Page ${pageCount}: ${positions.length} positions, Total: ${allPositions.length}`);
-    
     if (pageCount >= maxPages) {
-      console.log(`[Bybit Stats] Reached safety limit of ${maxPages} pages`);
       break;
     }
   } while (cursor);
-  
-  console.log(`[Bybit Stats] ✅ Fetched ${allPositions.length} total positions from Bybit`);
   
   return allPositions;
 }
@@ -116,6 +181,11 @@ async function getWalletBalance(apiKey: string, apiSecret: string) {
       "X-BAPI-RECV-WINDOW": recvWindow,
     },
   });
+  
+  // ✅ NOWE: Sprawdź geo-blocking
+  if (response.status === 403) {
+    throw new Error('GEO_BLOCKED');
+  }
   
   const data = await response.json();
   
@@ -158,6 +228,11 @@ async function getOpenPositions(apiKey: string, apiSecret: string) {
     },
   });
   
+  // ✅ NOWE: Sprawdź geo-blocking
+  if (response.status === 403) {
+    throw new Error('GEO_BLOCKED');
+  }
+  
   const data = await response.json();
   
   if (data.retCode !== 0) {
@@ -173,50 +248,28 @@ async function getOpenPositions(apiKey: string, apiSecret: string) {
 // ============================================
 
 function calculateBybitStatistics(closedPositions: any[], openPositions: any[], balance: any) {
-  // Total realised PnL from closed positions
   const realisedPnL = closedPositions.reduce((sum, p) => sum + parseFloat(p.closedPnl || "0"), 0);
-  
-  // Unrealised PnL from open positions
   const unrealisedPnL = openPositions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0);
+  const totalPnL = realisedPnL + unrealisedPnl;
   
-  // Total PnL
-  const totalPnL = realisedPnL + unrealisedPnL;
-  
-  // Trade counts
   const totalTrades = closedPositions.length;
   const winningTrades = closedPositions.filter(p => parseFloat(p.closedPnl) > 0).length;
   const losingTrades = closedPositions.filter(p => parseFloat(p.closedPnl) < 0).length;
   const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
   
-  // Best and worst trades
-  const pnls = closedPositions.map(p => parseFloat(p.closedPnl || "0"));
-  const bestTrade = pnls.length > 0 ? Math.max(...pnls) : 0;
-  const worstTrade = pnls.length > 0 ? Math.min(...pnls) : 0;
-  
-  // Average win/loss
   const wins = closedPositions.filter(p => parseFloat(p.closedPnl) > 0);
   const losses = closedPositions.filter(p => parseFloat(p.closedPnl) < 0);
   
-  const avgWin = wins.length > 0 
-    ? wins.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0) / wins.length 
-    : 0;
-  
-  const totalLossSum = losses.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0);
-  const avgLoss = losses.length > 0 ? Math.abs(totalLossSum / losses.length) : 0;
-  
-  // Profit Factor
   const totalWins = wins.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0);
   const totalLosses = Math.abs(losses.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0));
   const profitFactor = totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0);
   
-  // Trading volume
   const tradingVolume = closedPositions.reduce((sum, p) => {
     const qty = parseFloat(p.qty || "0");
     const avgPrice = parseFloat(p.avgEntryPrice || "0");
     return sum + (qty * avgPrice);
   }, 0);
   
-  // Average holding time (in minutes)
   const avgHoldingTime = totalTrades > 0
     ? closedPositions.reduce((sum, p) => {
         const created = parseInt(p.createdTime);
@@ -225,92 +278,20 @@ function calculateBybitStatistics(closedPositions: any[], openPositions: any[], 
       }, 0) / totalTrades
     : 0;
   
-  // Time-based stats
-  const now = Date.now();
-  const last7Days = closedPositions.filter(p => (now - parseInt(p.updatedTime)) <= 7 * 24 * 60 * 60 * 1000);
-  const last30Days = closedPositions.filter(p => (now - parseInt(p.updatedTime)) <= 30 * 24 * 60 * 60 * 1000);
-  
-  const last7DaysStats = {
-    totalTrades: last7Days.length,
-    winRate: last7Days.length > 0 ? (last7Days.filter(p => parseFloat(p.closedPnl) > 0).length / last7Days.length) * 100 : 0,
-    totalPnL: last7Days.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0),
-  };
-  
-  const last30DaysStats = {
-    totalTrades: last30Days.length,
-    winRate: last30Days.length > 0 ? (last30Days.filter(p => parseFloat(p.closedPnl) > 0).length / last30Days.length) * 100 : 0,
-    totalPnL: last30Days.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0),
-  };
-  
-  // Symbol-based stats
-  const symbolMap = new Map<string, { wins: number; total: number; pnl: number; volume: number }>();
-  closedPositions.forEach(p => {
-    const symbol = p.symbol;
-    if (!symbolMap.has(symbol)) {
-      symbolMap.set(symbol, { wins: 0, total: 0, pnl: 0, volume: 0 });
-    }
-    const data = symbolMap.get(symbol)!;
-    data.total++;
-    const pnl = parseFloat(p.closedPnl);
-    if (pnl > 0) data.wins++;
-    data.pnl += pnl;
-    data.volume += parseFloat(p.qty) * parseFloat(p.avgEntryPrice);
-  });
-  
-  const symbolStats = Array.from(symbolMap.entries())
-    .map(([symbol, data]) => ({
-      symbol,
-      totalTrades: data.total,
-      winRate: data.total > 0 ? (data.wins / data.total) * 100 : 0,
-      avgPnL: data.total > 0 ? data.pnl / data.total : 0,
-      totalPnL: data.pnl,
-      volume: data.volume,
-    }))
-    .sort((a, b) => b.totalPnL - a.totalPnL)
-    .slice(0, 15); // Top 15 symbols
-  
   return {
-    // Account metrics
     totalEquity: balance.totalEquity,
     totalWalletBalance: balance.totalWalletBalance,
     availableBalance: balance.totalAvailableBalance,
-    
-    // PnL metrics
     realisedPnL,
     unrealisedPnL,
     totalPnL,
-    
-    // Trading metrics
     totalTrades,
     winningTrades,
     losingTrades,
     winRate,
-    bestTrade,
-    worstTrade,
-    avgWin,
-    avgLoss,
     profitFactor,
     tradingVolume,
     avgHoldingTime,
-    
-    // Open positions
-    openPositionsCount: openPositions.length,
-    openPositions: openPositions.map((p: any) => ({
-      symbol: p.symbol,
-      side: p.side,
-      size: parseFloat(p.size),
-      leverage: parseFloat(p.leverage),
-      unrealisedPnl: parseFloat(p.unrealisedPnl),
-      entryPrice: parseFloat(p.avgPrice),
-      markPrice: parseFloat(p.markPrice),
-    })),
-    
-    // Time-based
-    last7Days: last7DaysStats,
-    last30Days: last30DaysStats,
-    
-    // Symbol breakdown
-    symbolStats,
   };
 }
 
@@ -323,7 +304,6 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const daysBack = parseInt(searchParams.get("days") || "90");
     
-    // Validate days parameter
     if (isNaN(daysBack) || daysBack <= 0 || daysBack > 365) {
       return NextResponse.json(
         { success: false, message: "Days must be between 1 and 365" },
@@ -331,48 +311,91 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Get API credentials from database
     const settings = await db.select().from(botSettings).limit(1);
     
     if (settings.length === 0 || !settings[0].apiKey || !settings[0].apiSecret) {
-      return NextResponse.json(
-        { success: false, message: "Bybit API credentials not configured" },
-        { status: 400 }
-      );
+      // ✅ Fallback na dane z bazy jeśli brak credentials
+      console.log(`[Bybit Stats] No credentials - using database fallback`);
+      const stats = await getStatsFromDatabase(daysBack);
+      
+      return NextResponse.json({
+        success: true,
+        stats,
+        dataSource: "database",
+        warning: "Bybit credentials not configured - using local data",
+        daysBack,
+        fetchedAt: new Date().toISOString(),
+      });
     }
     
     const { apiKey, apiSecret } = settings[0];
     
     console.log(`[Bybit Stats] Fetching data for last ${daysBack} days...`);
     
-    // Fetch all data from Bybit
-    const [closedPositions, openPositions, balance] = await Promise.all([
-      getAllClosedPnL(apiKey!, apiSecret!, daysBack),
-      getOpenPositions(apiKey!, apiSecret!),
-      getWalletBalance(apiKey!, apiSecret!),
-    ]);
-    
-    console.log(`[Bybit Stats] Data fetched: ${closedPositions.length} closed, ${openPositions.length} open positions`);
-    
-    // Calculate statistics
-    const stats = calculateBybitStatistics(closedPositions, openPositions, balance);
-    
-    return NextResponse.json({
-      success: true,
-      stats,
-      dataSource: "bybit",
-      daysBack,
-      fetchedAt: new Date().toISOString(),
-    });
+    try {
+      // Próbuj pobrać dane z Bybit
+      const [closedPositions, openPositions, balance] = await Promise.all([
+        getAllClosedPnL(apiKey!, apiSecret!, daysBack),
+        getOpenPositions(apiKey!, apiSecret!),
+        getWalletBalance(apiKey!, apiSecret!),
+      ]);
+      
+      console.log(`[Bybit Stats] ✅ Data fetched: ${closedPositions.length} closed, ${openPositions.length} open positions`);
+      
+      const stats = calculateBybitStatistics(closedPositions, openPositions, balance);
+      
+      return NextResponse.json({
+        success: true,
+        stats,
+        dataSource: "bybit",
+        daysBack,
+        fetchedAt: new Date().toISOString(),
+      });
+      
+    } catch (bybitError) {
+      // ✅ NOWY: Jeśli Bybit jest zablokowany, użyj fallback
+      if (bybitError instanceof Error && bybitError.message === 'GEO_BLOCKED') {
+        console.log(`[Bybit Stats] ⚠️ Bybit geo-blocked - falling back to database`);
+        const stats = await getStatsFromDatabase(daysBack);
+        
+        return NextResponse.json({
+          success: true,
+          stats,
+          dataSource: "database",
+          warning: "Bybit API is geo-blocked on this server - using local data",
+          daysBack,
+          fetchedAt: new Date().toISOString(),
+        });
+      }
+      
+      // Inny błąd - przepuść dalej
+      throw bybitError;
+    }
     
   } catch (error) {
     console.error("[Bybit Stats] Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    
+    // ✅ OSTATNIA DESKA RATUNKU: Zawsze zwróć coś z bazy
+    try {
+      const daysBack = parseInt(request.nextUrl.searchParams.get("days") || "90");
+      const stats = await getStatsFromDatabase(daysBack);
+      
+      return NextResponse.json({
+        success: true,
+        stats,
+        dataSource: "database",
+        warning: `Error fetching from Bybit: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        daysBack,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (dbError) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error",
+        },
+        { status: 500 }
+      );
+    }
   }
 }
