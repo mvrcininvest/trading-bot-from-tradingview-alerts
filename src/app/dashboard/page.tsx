@@ -309,6 +309,50 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
 
+  // ✅ NOWY: Automatyczna synchronizacja z Bybit co 30 sekund
+  useEffect(() => {
+    if (!credentials) return;
+
+    const autoSync = async () => {
+      try {
+        console.log("[Dashboard] Automatyczna synchronizacja z Bybit...");
+        const response = await fetch("/api/bot/sync-positions", {
+          method: "POST",
+        });
+        const data = await response.json();
+
+        if (data.success && data.results.closed > 0) {
+          console.log(`[Dashboard] ✅ Auto-sync: ${data.results.closed} pozycji zamkniętych`);
+          toast.success(`🔄 Automatyczna synchronizacja: ${data.results.closed} pozycji przeniesiono do historii`, {
+            description: Object.entries(data.results.closeReasons)
+              .map(([reason, count]) => `${getCloseReasonLabel(reason)}: ${count}`)
+              .join(", ")
+          });
+          // Odśwież dane
+          await fetchBotPositions();
+          await fetchPositions(credentials);
+          await fetchHistoryPositions();
+        } else if (data.success) {
+          console.log(`[Dashboard] Auto-sync: wszystkie pozycje aktualne (${data.results.stillOpen} otwartych)`);
+        }
+      } catch (err) {
+        console.error("[Dashboard] Błąd automatycznej synchronizacji:", err);
+        // Nie pokazuj toast dla błędów synchronizacji (może spamować)
+      }
+    };
+
+    // Pierwsze wywołanie po 10 sekundach (daj czas na załadowanie)
+    const initialTimeout = setTimeout(autoSync, 10000);
+
+    // Następnie co 30 sekund
+    const syncInterval = setInterval(autoSync, 30000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(syncInterval);
+    };
+  }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
+
   const fetchSymbolLocks = async () => {
     try {
       const response = await fetch("/api/bot/diagnostics/locks");
