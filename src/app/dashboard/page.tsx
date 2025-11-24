@@ -106,7 +106,7 @@ interface SymbolLock {
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
-  const [isCheckingCredentials, setIsCheckingCredentials] = useState(true); // ✅ NOWY STAN
+  const [isCheckingCredentials, setIsCheckingCredentials] = useState(true);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [botPositions, setBotPositions] = useState<BotPosition[]>([]);
@@ -123,7 +123,34 @@ export default function DashboardPage() {
   const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [autoImporting, setAutoImporting] = useState(false);
   const [realisedPnL, setRealisedPnL] = useState(0);
-  const [loadingCredentials, setLoadingCredentials] = useState(true); // ✅ NOWY STATE
+  const [loadingCredentials, setLoadingCredentials] = useState(true);
+
+  // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
+  const autoMatchAlertsToOpen = useCallback(async () => {
+    console.log("[Dashboard] Checking if open positions need alert matching...");
+    
+    try {
+      const response = await fetch("/api/bot/match-alerts-to-open", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.matched > 0) {
+        console.log(`[Dashboard] ✅ Auto-matched ${data.matched} alerts to open positions`);
+        toast.success(`🔗 Dopasowano ${data.matched} alertów do otwartych pozycji`, {
+          description: `${data.unmatched} pozycji bez dopasowania`
+        });
+        
+        // Odśwież pozycje
+        await fetchBotPositions();
+      } else if (data.success) {
+        console.log(`[Dashboard] All open positions already have alerts`);
+      }
+    } catch (err) {
+      console.error("[Dashboard] Błąd dopasowania alertów:", err);
+    }
+  }, []);
 
   // ✅ NOWA FUNKCJA: Automatyczny import historii z Bybit
   const autoImportBybitHistory = useCallback(async (creds: ExchangeCredentials) => {
@@ -423,6 +450,7 @@ export default function DashboardPage() {
         fetchBotStatus();
         fetchSymbolLocks();
         autoImportBybitHistory(creds);
+        autoMatchAlertsToOpen();
         
         setIsCheckingCredentials(false);
         return;
@@ -444,7 +472,6 @@ export default function DashboardPage() {
             savedAt: data.credentials.savedAt || new Date().toISOString()
           };
           
-          // Zapisz do localStorage aby działało następnym razem
           localStorage.setItem("exchange_credentials", JSON.stringify(creds));
           
           setCredentials(creds);
@@ -455,6 +482,7 @@ export default function DashboardPage() {
           fetchBotStatus();
           fetchSymbolLocks();
           autoImportBybitHistory(creds);
+          autoMatchAlertsToOpen();
         } else {
           console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
         }
@@ -887,9 +915,9 @@ export default function DashboardPage() {
                     ? `${durationHours}h ${durationMinutes}m` 
                     : `${durationMinutes}m`
 
-                  // Odległość do SL/TP
-                  const slPrice = botPos?.liveSlPrice ? parseFloat(String(botPos.liveSlPrice)) : 0
-                  const tp1Price = botPos?.liveTp1Price ? parseFloat(String(botPos.liveTp1Price)) : 0
+                  // ✅ POPRAWIONE: Odległość do SL/TP - używaj danych z Bybit position, a jako fallback botPos
+                  const slPrice = parseFloat(position.stopLoss || "0") || (botPos?.liveSlPrice ? parseFloat(String(botPos.liveSlPrice)) : 0)
+                  const tp1Price = parseFloat(position.takeProfit || "0") || (botPos?.liveTp1Price ? parseFloat(String(botPos.liveTp1Price)) : 0)
                   
                   const distanceToSl = slPrice > 0 
                     ? position.side === "Buy" 
@@ -1073,7 +1101,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Sekcja 3: SL/TP Levels */}
+                        {/* Sekcja 3: SL/TP Levels - ✅ POPRAWIONE WYŚWIETLANIE */}
                         <div className="p-3 rounded-lg bg-gradient-to-br from-gray-800/60 to-gray-800/30 border border-gray-700/50">
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
@@ -1098,13 +1126,13 @@ export default function DashboardPage() {
                           </div>
                           
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                            {/* Stop Loss */}
+                            {/* ✅ POPRAWIONY Stop Loss - priorytet dla position.stopLoss */}
                             <div className="p-2 rounded bg-red-500/10 border border-red-500/30">
                               <div className="text-gray-400 text-xs mb-1">Stop Loss</div>
-                              {botPos?.liveSlPrice && parseFloat(String(botPos.liveSlPrice)) > 0 ? (
+                              {slPrice > 0 ? (
                                 <>
                                   <div className="font-semibold text-red-400">
-                                    {parseFloat(String(botPos.liveSlPrice)).toFixed(4)}
+                                    {slPrice.toFixed(4)}
                                   </div>
                                   {distanceToSl !== null && (
                                     <div className="text-xs text-red-300 mt-1">
@@ -1117,13 +1145,13 @@ export default function DashboardPage() {
                               )}
                             </div>
                             
-                            {/* TP1 */}
+                            {/* ✅ POPRAWIONY TP1 - priorytet dla position.takeProfit */}
                             <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
                               <div className="text-gray-400 text-xs mb-1">Take Profit 1</div>
-                              {botPos?.liveTp1Price && parseFloat(String(botPos.liveTp1Price)) > 0 ? (
+                              {tp1Price > 0 ? (
                                 <>
                                   <div className="font-semibold text-green-400">
-                                    {parseFloat(String(botPos.liveTp1Price)).toFixed(4)}
+                                    {tp1Price.toFixed(4)}
                                   </div>
                                   {distanceToTp1 !== null && (
                                     <div className="text-xs text-green-300 mt-1">
@@ -1136,7 +1164,7 @@ export default function DashboardPage() {
                               )}
                             </div>
                             
-                            {/* TP2 */}
+                            {/* TP2 - z botPos (nie ma w position) */}
                             <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
                               <div className="text-gray-400 text-xs mb-1">Take Profit 2</div>
                               {botPos?.liveTp2Price && parseFloat(String(botPos.liveTp2Price)) > 0 ? (
@@ -1148,7 +1176,7 @@ export default function DashboardPage() {
                               )}
                             </div>
                             
-                            {/* TP3 */}
+                            {/* TP3 - z botPos (nie ma w position) */}
                             <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
                               <div className="text-gray-400 text-xs mb-1">Take Profit 3</div>
                               {botPos?.liveTp3Price && parseFloat(String(botPos.liveTp3Price)) > 0 ? (
