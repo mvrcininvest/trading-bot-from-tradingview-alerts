@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { botPositions, botSettings } from '@/db/schema';
 import { eq, like, desc, and, or } from 'drizzle-orm';
-import { getBybitPositions, getBybitAlgoOrders, convertSymbolToBybit } from '@/lib/bybit-helpers';
+import { getBybitPositions, convertSymbolToBybit } from '@/lib/bybit-helpers';
 
 // ============================================
-// 🎯 HELPER: MAP ALGO ORDERS TO POSITIONS
+// 🎯 HELPER: EXTRACT SL/TP FROM BYBIT POSITIONS
 // ============================================
 
-function mapAlgoOrdersToPositions(
-  bybitAlgoOrders: any[],
+function extractSlTpFromBybitPositions(
+  bybitPositions: any[],
   positions: any[]
 ): Map<number, {
   liveSlPrice: number | null;
@@ -19,67 +19,50 @@ function mapAlgoOrdersToPositions(
 }> {
   const positionOrdersMap = new Map();
 
-  console.log(`\n🗺️ [API /positions] Mapping algo orders to ${positions.length} positions...`);
+  console.log(`\n🗺️ [API /positions] Extracting SL/TP from ${bybitPositions.length} Bybit positions...`);
 
   for (const pos of positions) {
     const bybitSymbol = convertSymbolToBybit(pos.symbol);
     
-    console.log(`  📊 [${pos.symbol}] Looking for orders: ${bybitSymbol}`);
-    
-    // Filter orders for this symbol
-    const relevantOrders = bybitAlgoOrders.filter((order: any) => {
-      const matchesSymbol = order.symbol === bybitSymbol;
-      console.log(`    Order ${order.orderId}: symbol=${order.symbol}, side=${order.side}, matches=${matchesSymbol}`);
-      return matchesSymbol;
+    // Find matching Bybit position
+    const bybitPos = bybitPositions.find((bp: any) => 
+      bp.symbol === bybitSymbol && 
+      bp.side === pos.side
+    );
+
+    if (!bybitPos) {
+      console.log(`  ⚠️ [${pos.symbol}] No matching Bybit position found`);
+      continue;
+    }
+
+    console.log(`  📊 [${pos.symbol}] Bybit position data:`, {
+      stopLoss: bybitPos.stopLoss,
+      takeProfit: bybitPos.takeProfit,
+      tpslMode: bybitPos.tpslMode
     });
 
-    console.log(`  ✅ [${pos.symbol}] Found ${relevantOrders.length} relevant orders`);
-
-    let liveSlPrice: number | null = null;
-    const tpPrices: number[] = [];
-
-    // Extract SL and TP prices from Bybit orders
-    for (const order of relevantOrders) {
-      console.log(`    Order details: stopLoss=${order.stopLoss}, takeProfit=${order.takeProfit}, qty=${order.qty}`);
-      
-      // Stop Loss
-      if (order.stopLoss && parseFloat(order.stopLoss) > 0) {
-        liveSlPrice = parseFloat(order.stopLoss);
-        console.log(`    Found SL: ${liveSlPrice}`);
-      }
-      
-      // Take Profit
-      if (order.takeProfit && parseFloat(order.takeProfit) > 0) {
-        const tpPrice = parseFloat(order.takeProfit);
-        tpPrices.push(tpPrice);
-        console.log(`    Found TP: ${tpPrice}`);
-      }
-    }
-
-    // Sort TP prices (closest to entry price = TP1, farthest = TP3)
-    const entryPrice = pos.entryPrice;
+    // Extract SL and TP from position object
+    const liveSlPrice = bybitPos.stopLoss && parseFloat(bybitPos.stopLoss) > 0 
+      ? parseFloat(bybitPos.stopLoss) 
+      : null;
     
-    if (pos.side === 'Buy') {
-      // Long: TP prices above entry, sort ascending
-      tpPrices.sort((a, b) => a - b);
-    } else {
-      // Short: TP prices below entry, sort descending
-      tpPrices.sort((a, b) => b - a);
-    }
+    const liveTpPrice = bybitPos.takeProfit && parseFloat(bybitPos.takeProfit) > 0 
+      ? parseFloat(bybitPos.takeProfit) 
+      : null;
 
     const result = {
       liveSlPrice,
-      liveTp1Price: tpPrices[0] || null,
-      liveTp2Price: tpPrices[1] || null,
-      liveTp3Price: tpPrices[2] || null,
+      liveTp1Price: liveTpPrice, // In Bybit V5, there's typically one TP set
+      liveTp2Price: null,        // Multiple TPs would be in separate orders
+      liveTp3Price: null,
     };
 
-    console.log(`  📋 [${pos.symbol}] Final mapping:`, result);
+    console.log(`  ✅ [${pos.symbol}] Extracted SL/TP:`, result);
 
     positionOrdersMap.set(pos.id, result);
   }
 
-  console.log(`✅ [API /positions] Mapping complete\n`);
+  console.log(`✅ [API /positions] Extraction complete\n`);
   return positionOrdersMap;
 }
 
@@ -138,7 +121,6 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(botPositions.openedAt));
 
     console.log(`\n📊 [API /positions] Found ${positions.length} positions in DB`);
-    console.log(`📋 [API /positions] Sample position fields:`, positions[0] ? Object.keys(positions[0]).join(', ') : 'No positions');
 
     // ============================================
     // 🔥 FETCH LIVE PNL AND SL/TP FROM BYBIT
@@ -158,15 +140,12 @@ export async function GET(request: NextRequest) {
         console.log(`🌐 [API /positions] Environment: Bybit Mainnet`);
         
         try {
-          console.log(`\n🚀 [API /positions] Starting parallel Bybit fetch...`);
+          console.log(`\n🚀 [API /positions] Fetching live positions from Bybit...`);
           
-          // Fetch live positions and algo orders from Bybit in parallel
-          const [bybitPositions, bybitAlgoOrders] = await Promise.all([
-            getBybitPositions(apiKey, apiSecret),
-            getBybitAlgoOrders(apiKey, apiSecret)
-          ]);
+          // Fetch live positions from Bybit
+          const bybitPositions = await getBybitPositions(apiKey, apiSecret);
           
-          console.log(`📊 [API /positions] Bybit Results: ${bybitPositions.length} positions, ${bybitAlgoOrders.length} algo orders`);
+          console.log(`📊 [API /positions] Bybit Results: ${bybitPositions.length} positions`);
           
           // Create map for quick lookup: "SYMBOL_SIDE" -> Bybit position
           const bybitPositionsMap = new Map(
@@ -179,15 +158,15 @@ export async function GET(request: NextRequest) {
           
           console.log(`🗺️ [API /positions] Created position map with ${bybitPositionsMap.size} entries`);
           
-          // Map algo orders to positions
-          const positionOrdersMap = mapAlgoOrdersToPositions(bybitAlgoOrders, positions);
+          // Extract SL/TP directly from Bybit positions
+          const positionSlTpMap = extractSlTpFromBybitPositions(bybitPositions, positions);
           
           // Update each position with live PnL and SL/TP from Bybit
           const updatedPositions = positions.map(pos => {
             const bybitSymbol = convertSymbolToBybit(pos.symbol);
             const posKey = `${bybitSymbol}_${pos.side}`;
             const bybitPos = bybitPositionsMap.get(posKey) as any;
-            const algoOrders = positionOrdersMap.get(pos.id);
+            const slTpData = positionSlTpMap.get(pos.id);
             
             let updatedPos = { ...pos };
             
@@ -201,23 +180,23 @@ export async function GET(request: NextRequest) {
             }
             
             // Update live SL/TP
-            if (algoOrders) {
-              console.log(`✅ [${pos.symbol} ${pos.side}] Mapped orders:`, {
-                SL: algoOrders.liveSlPrice,
-                TP1: algoOrders.liveTp1Price,
-                TP2: algoOrders.liveTp2Price,
-                TP3: algoOrders.liveTp3Price
+            if (slTpData) {
+              console.log(`✅ [${pos.symbol} ${pos.side}] Live SL/TP:`, {
+                SL: slTpData.liveSlPrice,
+                TP1: slTpData.liveTp1Price,
+                TP2: slTpData.liveTp2Price,
+                TP3: slTpData.liveTp3Price
               });
               
               return {
                 ...updatedPos,
-                liveSlPrice: algoOrders.liveSlPrice,
-                liveTp1Price: algoOrders.liveTp1Price,
-                liveTp2Price: algoOrders.liveTp2Price,
-                liveTp3Price: algoOrders.liveTp3Price,
+                liveSlPrice: slTpData.liveSlPrice,
+                liveTp1Price: slTpData.liveTp1Price,
+                liveTp2Price: slTpData.liveTp2Price,
+                liveTp3Price: slTpData.liveTp3Price,
               };
             } else {
-              console.log(`⚠️ [${pos.symbol} ${pos.side}] No algo orders mapped`);
+              console.log(`⚠️ [${pos.symbol} ${pos.side}] No SL/TP data extracted`);
             }
             
             return updatedPos;

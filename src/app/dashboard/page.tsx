@@ -192,7 +192,7 @@ export default function DashboardPage() {
   // ✅ NOWA FUNKCJA: Fetch history positions
   const fetchHistoryPositions = useCallback(async () => {
     try {
-      const response = await fetch("/api/bot/history?limit=10");
+      const response = await fetch("/api/bot/history?limit=5");
       const data = await response.json();
 
       if (data.success && Array.isArray(data.history)) {
@@ -206,6 +206,130 @@ export default function DashboardPage() {
       console.error("Failed to fetch history:", err);
     }
   }, []);
+
+  // ✅ PRZENIESIONE: Funkcje muszą być PRZED useEffect które ich używają
+  const signBybitRequest = async (apiKey: string, apiSecret: string, timestamp: number, params: Record<string, any>) => {
+    const queryString = Object.keys(params)
+      .sort()
+      .map(key => `${key}=${params[key]}`)
+      .join("&");
+    
+    const signString = timestamp + apiKey + 5000 + queryString;
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiSecret);
+    const messageData = encoder.encode(signString);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+    const hashArray = Array.from(new Uint8Array(signature));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    
+    return hashHex;
+  };
+
+  const fetchBalance = async (creds?: ExchangeCredentials) => {
+    const credsToUse = creds || credentials;
+    if (!credsToUse) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const timestamp = Date.now();
+      const params: Record<string, any> = {
+        accountType: "UNIFIED"
+      };
+      
+      const signature = await signBybitRequest(
+        credsToUse.apiKey,
+        credsToUse.apiSecret,
+        timestamp,
+        params
+      );
+      
+      const baseUrl = "https://api.bybit.com";
+      
+      const queryString = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${params[key]}`)
+        .join("&");
+      
+      const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
+      
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-BAPI-API-KEY": credsToUse.apiKey,
+          "X-BAPI-TIMESTAMP": timestamp.toString(),
+          "X-BAPI-SIGN": signature,
+          "X-BAPI-RECV-WINDOW": "5000",
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.retCode === 0 && data.result?.list) {
+        const walletData = data.result.list[0];
+        if (walletData?.coin) {
+          const filteredBalances = walletData.coin
+            .filter((c: any) => parseFloat(c.walletBalance || 0) > 0)
+            .map((c: any) => ({
+              asset: c.coin,
+              free: c.availableToWithdraw || "0",
+              locked: (parseFloat(c.walletBalance || 0) - parseFloat(c.availableToWithdraw || 0)).toFixed(8),
+              total: c.walletBalance || "0"
+            }));
+          
+          setBalances(filteredBalances);
+          setError(null);
+        } else {
+          setError("Brak danych o saldzie w odpowiedzi API");
+        }
+      } else {
+        setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
+      }
+    } catch (err) {
+      setError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSymbolLocks = async () => {
+    try {
+      const response = await fetch("/api/bot/diagnostics/locks");
+      const data = await response.json();
+      if (data.success) {
+        const activeLocks = data.locks.filter((lock: SymbolLock) => !lock.unlockedAt);
+        setSymbolLocks(activeLocks);
+      }
+    } catch (error) {
+      console.error("Failed to fetch symbol locks:", error);
+    }
+  };
+
+  const fetchBotStatus = async (silent = false) => {
+    try {
+      const response = await fetch("/api/bot/settings");
+      const data = await response.json();
+      
+      if (data.success && data.settings) {
+        setBotEnabled(data.settings.botEnabled);
+      }
+    } catch (err) {
+      if (!silent) {
+        console.error("Failed to fetch bot status:", err);
+      }
+    }
+  };
 
   const fetchPositions = useCallback(async (creds?: ExchangeCredentials, silent = false) => {
     const credsToUse = creds || credentials;
@@ -336,13 +460,13 @@ export default function DashboardPage() {
         }
       } catch (err) {
         console.error("[Dashboard] ❌ Błąd pobierania credentials z bazy:", err);
+      } finally {
+        setIsCheckingCredentials(false);
       }
-      
-      setIsCheckingCredentials(false);
     };
     
     checkCredentials();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!credentials) return;
@@ -400,129 +524,6 @@ export default function DashboardPage() {
       clearInterval(syncInterval);
     };
   }, [credentials, fetchBotPositions, fetchPositions, fetchHistoryPositions]);
-
-  const fetchSymbolLocks = async () => {
-    try {
-      const response = await fetch("/api/bot/diagnostics/locks");
-      const data = await response.json();
-      if (data.success) {
-        const activeLocks = data.locks.filter((lock: SymbolLock) => !lock.unlockedAt);
-        setSymbolLocks(activeLocks);
-      }
-    } catch (error) {
-      console.error("Failed to fetch symbol locks:", error);
-    }
-  };
-
-  const fetchBotStatus = async (silent = false) => {
-    try {
-      const response = await fetch("/api/bot/settings");
-      const data = await response.json();
-      
-      if (data.success && data.settings) {
-        setBotEnabled(data.settings.botEnabled);
-      }
-    } catch (err) {
-      if (!silent) {
-        console.error("Failed to fetch bot status:", err);
-      }
-    }
-  };
-
-  const signBybitRequest = async (apiKey: string, apiSecret: string, timestamp: number, params: Record<string, any>) => {
-    const queryString = Object.keys(params)
-      .sort()
-      .map(key => `${key}=${params[key]}`)
-      .join("&");
-    
-    const signString = timestamp + apiKey + 5000 + queryString;
-    
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(apiSecret);
-    const messageData = encoder.encode(signString);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-    const hashArray = Array.from(new Uint8Array(signature));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-    
-    return hashHex;
-  };
-
-  const fetchBalance = async (creds?: ExchangeCredentials) => {
-    const credsToUse = creds || credentials;
-    if (!credsToUse) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const timestamp = Date.now();
-      const params: Record<string, any> = {
-        accountType: "UNIFIED"
-      };
-      
-      const signature = await signBybitRequest(
-        credsToUse.apiKey,
-        credsToUse.apiSecret,
-        timestamp,
-        params
-      );
-      
-      const baseUrl = "https://api.bybit.com";
-      
-      const queryString = Object.keys(params)
-        .sort()
-        .map(key => `${key}=${params[key]}`)
-        .join("&");
-      
-      const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-BAPI-API-KEY": credsToUse.apiKey,
-          "X-BAPI-TIMESTAMP": timestamp.toString(),
-          "X-BAPI-SIGN": signature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-      });
-
-      const data = await response.json();
-
-      if (data.retCode === 0 && data.result?.list) {
-        const walletData = data.result.list[0];
-        if (walletData?.coin) {
-          const filteredBalances = walletData.coin
-            .filter((c: any) => parseFloat(c.walletBalance || 0) > 0)
-            .map((c: any) => ({
-              asset: c.coin,
-              free: c.availableToWithdraw || "0",
-              locked: (parseFloat(c.walletBalance || 0) - parseFloat(c.availableToWithdraw || 0)).toFixed(8),
-              total: c.walletBalance || "0"
-            }));
-          
-          setBalances(filteredBalances);
-          setError(null);
-        } else {
-          setError("Brak danych o saldzie w odpowiedzi API");
-        }
-      } else {
-        setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
-      }
-    } catch (err) {
-      setError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSyncPositions = async () => {
     setLoadingSync(true);
@@ -1195,7 +1196,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* ✅ SEKCJA: Historia Pozycji (ostatnie 10) */}
+        {/* ✅ SEKCJA: Historia Pozycji (ostatnie 5) */}
         <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1206,7 +1207,7 @@ export default function DashboardPage() {
                   <Badge variant="secondary" className="bg-gray-700 text-gray-200">{historyPositions.length}</Badge>
                 </CardTitle>
                 <CardDescription className="text-gray-300">
-                  Ostatnie 10 zamkniętych pozycji (automatycznie synchronizowane z Bybit)
+                  Ostatnie 5 zamkniętych pozycji (automatycznie synchronizowane z Bybit)
                 </CardDescription>
               </div>
               <Button

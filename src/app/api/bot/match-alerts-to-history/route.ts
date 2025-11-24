@@ -8,7 +8,7 @@ import { isNull, eq, and, between, or } from 'drizzle-orm';
  * 
  * Automatically matches alerts to positions in history based on:
  * 1. Symbol (must match exactly)
- * 2. Timestamp (openedAt vs alert timestamp - max 10s difference)
+ * 2. Timestamp (openedAt vs alert timestamp - max 30s difference)
  * 3. Side (must match if both available)
  * 
  * Note: We don't filter by alert status because position in history
@@ -58,7 +58,7 @@ export async function POST() {
       
       // Find matching alert:
       // 1. Same symbol
-      // 2. Timestamp within ±10 seconds of position open time (increased from 5s)
+      // 2. Timestamp within ±30 seconds of position open time (increased from 10s)
       // 3. Side matches (case-insensitive comparison)
       const matchingAlert = allAlerts.find(alert => {
         const alertTime = alert.timestamp;
@@ -67,8 +67,8 @@ export async function POST() {
         // Symbol must match
         if (alert.symbol !== position.symbol) return false;
         
-        // Time difference must be ≤10 seconds (10000ms) - increased window
-        if (timeDiff > 10000) return false;
+        // Time difference must be ≤30 seconds (30000ms) - increased window
+        if (timeDiff > 30000) return false;
         
         // Side should match (case-insensitive if both are available)
         if (alert.side && position.side) {
@@ -140,7 +140,7 @@ export async function POST() {
           side: position.side,
           openedAt: position.openedAt,
           matched: false,
-          reason: 'No matching alert found within 10s window'
+          reason: 'No matching alert found within 30s window'
         });
 
         console.log(`[Match Alerts] ❌ No match for position #${position.id} (${position.symbol} @ ${position.openedAt})`);
