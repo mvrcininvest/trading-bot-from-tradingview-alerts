@@ -28,7 +28,7 @@ interface BybitStats {
 interface BybitStatsResponse {
   success: boolean;
   stats: BybitStats;
-  dataSource: "bybit" | "database";
+  dataSource: "bybit";
   daysBack: number;
   fetchedAt: string;
 }
@@ -37,7 +37,6 @@ export default function BotHistoryPage() {
   const router = useRouter();
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
-  const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   useEffect(() => {
     fetchBybitStats();
@@ -51,7 +50,9 @@ export default function BotHistoryPage() {
       
       if (data.success) {
         setBybitStats(data.stats);
-        setBybitDataSource(data.dataSource);
+      } else {
+        console.error("Nie udało się pobrać statystyk Bybit:", data.message);
+        toast.error("Błąd pobierania statystyk z Bybit API");
       }
     } catch (err) {
       console.error("Nie udało się pobrać statystyk Bybit:", err);
@@ -154,19 +155,7 @@ export default function BotHistoryPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="border-amber-800 bg-gradient-to-br from-amber-900/30 to-gray-900/60 backdrop-blur-sm hover:from-amber-900/40 transition-all">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between mb-1">
-                  <CardDescription className="text-amber-300">Współczynnik Zysku</CardDescription>
-                  {bybitDataSource === "database" && (
-                    <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50 bg-amber-500/10">
-                      Lokalna baza
-                    </Badge>
-                  )}
-                  {bybitDataSource === "bybit" && (
-                    <Badge variant="outline" className="text-xs text-green-300 border-green-500/50 bg-green-500/10">
-                      Live z Bybit
-                    </Badge>
-                  )}
-                </div>
+                <CardDescription className="text-amber-300">Współczynnik Zysku</CardDescription>
                 <CardTitle className="text-3xl text-white">
                   {bybitStats.profitFactor === 999 ? '∞' : bybitStats.profitFactor.toFixed(2)}
                 </CardTitle>
@@ -213,7 +202,7 @@ export default function BotHistoryPage() {
           </div>
         )}
 
-        {/* ✅ Szczegółowe statystyki z Bybit API */}
+        {/* ✅ Szczegółowe statystyki z Bybit API - bez badge */}
         {bybitStats && !loadingBybitStats && (
           <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -222,16 +211,6 @@ export default function BotHistoryPage() {
                   <CardTitle className="text-white flex items-center gap-2">
                     <Database className="h-5 w-5 text-purple-400" />
                     Szczegółowe Statystyki z Bybit API
-                    {bybitDataSource === "database" && (
-                      <Badge variant="outline" className="text-amber-300 border-amber-500/50 bg-amber-500/10">
-                        Lokalna baza
-                      </Badge>
-                    )}
-                    {bybitDataSource === "bybit" && (
-                      <Badge variant="outline" className="text-green-300 border-green-500/50 bg-green-500/10">
-                        Live z Bybit
-                      </Badge>
-                    )}
                   </CardTitle>
                   <CardDescription className="text-gray-400">
                     Kompletne dane z ostatnich 30 dni

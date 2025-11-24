@@ -99,8 +99,7 @@ interface BybitStats {
 interface BybitStatsResponse {
   success: boolean;
   stats: BybitStats;
-  dataSource: "bybit" | "database";
-  warning?: string;
+  dataSource: "bybit";
   daysBack: number;
   fetchedAt: string;
 }
@@ -127,8 +126,6 @@ export default function DashboardPage() {
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
-  // ✅ Tylko dataSource - bez ostrzeżeń
-  const [bybitDataSource, setBybitDataSource] = useState<"bybit" | "database" | null>(null);
 
   // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
   const autoMatchAlertsToOpen = useCallback(async () => {
@@ -342,7 +339,7 @@ export default function DashboardPage() {
     }
   }, [credentials]);
 
-  // ✅ POPRAWIONA FUNKCJA: Fetch Bybit stats
+  // ✅ POPRAWIONA FUNKCJA: Fetch Bybit stats - bez dependencies
   const fetchBybitStats = useCallback(async () => {
     if (!credentials) return;
     
@@ -353,11 +350,11 @@ export default function DashboardPage() {
       
       if (data.success) {
         setBybitStats(data.stats);
-        setBybitDataSource(data.dataSource);
+      } else {
+        console.error("Failed to fetch Bybit stats:", data.message);
       }
     } catch (err) {
       console.error("Failed to fetch Bybit stats:", err);
-      // ✅ NOWE: Nie resetuj bybitStats w razie błędu - zostaw stare dane
     } finally {
       setLoadingBybitStats(false);
     }
@@ -438,16 +435,16 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [credentials, fetchBotPositions, fetchPositions]);
 
-  // ✅ NAPRAWIONY: Interval dla statystyk - nie resetuj bybitStats przy błędzie
+  // ✅ NAPRAWIONY: Interval dla statystyk - tylko gdy są credentials, refresh co 60s
   useEffect(() => {
-    if (!credentials || !bybitStats) return; // ✅ DODANE: Nie odświeżaj jeśli nie ma jeszcze danych
+    if (!credentials) return;
 
     const statsInterval = setInterval(() => {
       fetchBybitStats();
-    }, 60000);
+    }, 60000); // 60 sekund
 
     return () => clearInterval(statsInterval);
-  }, [credentials, fetchBybitStats, bybitStats]);
+  }, [credentials, fetchBybitStats]);
 
   const handleSyncPositions = async () => {
     setLoadingSync(true);
@@ -646,7 +643,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
-        {/* ✅ Widget Statystyk - bez migoczenia */}
+        {/* ✅ Widget Statystyk - bez ostrzeżeń i badge */}
         {bybitStats && !loadingBybitStats && (
           <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -655,22 +652,9 @@ export default function DashboardPage() {
                   <CardTitle className="text-white flex items-center gap-2">
                     <Database className="h-5 w-5 text-purple-400" />
                     Statystyki Tradingowe (ostatnie 30 dni)
-                    {bybitDataSource === "database" && (
-                      <Badge variant="outline" className="text-amber-300 border-amber-500/50 bg-amber-500/10">
-                        Lokalna baza
-                      </Badge>
-                    )}
-                    {bybitDataSource === "bybit" && (
-                      <Badge variant="outline" className="text-green-300 border-green-500/50 bg-green-500/10">
-                        Live z Bybit
-                      </Badge>
-                    )}
                   </CardTitle>
                   <CardDescription className="text-gray-400">
-                    {bybitDataSource === "database" 
-                      ? "Dane z lokalnej historii pozycji"
-                      : "Dane live z Bybit API - kliknij aby zobaczyć pełną analizę"
-                    }
+                    Dane live z Bybit API - kliknij aby zobaczyć pełną analizę
                   </CardDescription>
                 </div>
                 <Button
