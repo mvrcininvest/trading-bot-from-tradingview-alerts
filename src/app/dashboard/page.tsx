@@ -216,12 +216,11 @@ export default function DashboardPage() {
     }
   };
 
-  const handleClosePosition = async (symbol: string) => {
-    if (!confirm(`Czy na pewno chcesz zamknąć pozycję ${symbol}?`)) {
-      return
-    }
+  const handleClosePosition = async (symbol: string, positionId: number) => {
+    const confirmed = window.confirm(`Czy na pewno chcesz zamknąć pozycję ${symbol}?`);
+    if (!confirmed) return;
 
-    setClosingPosition(symbol)
+    setClosingPosition(symbol);
     
     try {
       const response = await fetch("/api/exchange/close-position", {
@@ -233,22 +232,22 @@ export default function DashboardPage() {
           apiSecret: credentials?.apiSecret,
           symbol,
         }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (data.success) {
-        toast.success(`✅ Pozycja ${symbol} zamknięta!`)
-        await fetchBotPositions()
+        toast.success(`✅ Pozycja ${symbol} zamknięta!`);
+        await fetchBotPositions();
       } else {
-        toast.error(`❌ Błąd: ${data.message}`)
+        toast.error(`❌ Błąd: ${data.message}`);
       }
     } catch (err) {
-      toast.error(`❌ Błąd: ${err instanceof Error ? err.message : "Nieznany błąd"}`)
+      toast.error(`❌ Błąd: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
     } finally {
-      setClosingPosition(null)
+      setClosingPosition(null);
     }
-  }
+  };
 
   const handleShowAlertData = (alertDataString: string | null | undefined) => {
     if (!alertDataString) {
@@ -292,8 +291,7 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ Oblicz statystyki z lokalnych danych
-  const unrealisedPnL = botPositions.reduce((sum, p) => sum + (p.unrealisedPnl || 0), 0)
+  const unrealisedPnL = botPositions.reduce((sum, p) => sum + (p.unrealisedPnl || 0), 0);
 
   if (isCheckingCredentials) {
     return (
@@ -338,14 +336,6 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
-        
-        <Alert className="border-blue-700 bg-blue-900/20">
-          <Database className="h-4 w-4 text-blue-400" />
-          <AlertDescription className="text-sm text-blue-200">
-            <strong>📊 Dashboard używa lokalnej bazy danych</strong><br/>
-            Pozycje i PnL pobierane z <code>bot_positions</code>. Saldo portfela niedostępne przez geo-blocking Bybit API.
-          </AlertDescription>
-        </Alert>
 
         {symbolLocks.length > 0 && (
           <Alert className="border-red-800 bg-red-900/30 text-red-200">
@@ -368,7 +358,7 @@ export default function DashboardPage() {
             <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
               {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
             </p>
-            <p className="text-xs text-blue-400">USDT (z lokalnej bazy)</p>
+            <p className="text-xs text-blue-400">USDT</p>
           </div>
 
           <div className="p-4 rounded-lg bg-gradient-to-br from-amber-900/30 to-amber-800/50 border border-amber-800/30 backdrop-blur-sm">
@@ -452,30 +442,30 @@ export default function DashboardPage() {
             {!loadingPositions && botPositions.length > 0 && (
               <div className="space-y-4">
                 {botPositions.map((botPos, idx) => {
-                  const pnl = botPos.unrealisedPnl || 0
-                  const isProfitable = pnl > 0
-                  const entryPrice = botPos.entryPrice
-                  const quantity = botPos.quantity
-                  const leverage = botPos.leverage
-                  const posValue = entryPrice * quantity
-                  const margin = posValue / leverage
+                  const pnl = botPos.unrealisedPnl || 0;
+                  const isProfitable = pnl > 0;
+                  const entryPrice = botPos.entryPrice;
+                  const quantity = botPos.quantity;
+                  const leverage = botPos.leverage;
+                  const posValue = entryPrice * quantity;
+                  const margin = posValue / leverage;
                   
-                  const roe = (pnl / margin) * 100
+                  const roe = (pnl / margin) * 100;
                   
-                  const openedAt = new Date(botPos.openedAt)
-                  const durationMs = Date.now() - openedAt.getTime()
-                  const durationHours = Math.floor(durationMs / (1000 * 60 * 60))
-                  const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+                  const openedAt = new Date(botPos.openedAt);
+                  const durationMs = Date.now() - openedAt.getTime();
+                  const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+                  const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
                   const durationText = durationHours > 0 
                     ? `${durationHours}h ${durationMinutes}m` 
-                    : `${durationMinutes}m`
+                    : `${durationMinutes}m`;
 
-                  const slPrice = botPos.liveSlPrice || botPos.stopLoss || 0
-                  const tp1Price = botPos.liveTp1Price || botPos.mainTpPrice || 0
-                  const tp2Price = botPos.liveTp2Price || 0
-                  const tp3Price = botPos.liveTp3Price || 0
+                  const slPrice = botPos.liveSlPrice || botPos.stopLoss || 0;
+                  const tp1Price = botPos.liveTp1Price || botPos.mainTpPrice || 0;
+                  const tp2Price = botPos.liveTp2Price || 0;
+                  const tp3Price = botPos.liveTp3Price || 0;
                   
-                  const roeColor = roe >= 5 ? "bg-green-500" : roe >= 0 ? "bg-green-400" : roe >= -5 ? "bg-orange-400" : "bg-red-500"
+                  const roeColor = roe >= 5 ? "bg-green-500" : roe >= 0 ? "bg-green-400" : roe >= -5 ? "bg-orange-400" : "bg-red-500";
 
                   return (
                     <div
@@ -534,7 +524,7 @@ export default function DashboardPage() {
                           </div>
                           
                           <Button
-                            onClick={() => handleClosePosition(botPos.symbol)}
+                            onClick={() => handleClosePosition(botPos.symbol, botPos.id)}
                             disabled={closingPosition === botPos.symbol}
                             size="sm"
                             variant="destructive"
