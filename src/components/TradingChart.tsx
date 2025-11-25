@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Activity } from "lucide-react";
+import { Activity, AlertCircle } from "lucide-react";
 
 interface TradingChartProps {
   symbol: string;
@@ -24,26 +24,48 @@ export function TradingChart({
   const chartRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartLibLoaded, setChartLibLoaded] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const initChart = async () => {
       if (!chartContainerRef.current) return;
 
       try {
-        // Load lightweight-charts from CDN to bypass webpack
+        // ✅ Add timeout for CDN loading
+        timeoutId = setTimeout(() => {
+          if (!chartLibLoaded && isMounted) {
+            console.error("Chart library timeout");
+            setError("Timeout ładowania biblioteki wykresu");
+            setLoading(false);
+          }
+        }, 10000); // 10 second timeout
+
+        // Load lightweight-charts from CDN
         if (!(window as any).LightweightCharts) {
+          console.log("📊 Loading chart library from CDN...");
+          
           await new Promise<void>((resolve, reject) => {
             const script = document.createElement('script');
             script.src = 'https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js';
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Failed to load chart library'));
+            script.async = true;
+            script.onload = () => {
+              console.log("✅ Chart library loaded");
+              resolve();
+            };
+            script.onerror = () => {
+              console.error("❌ Failed to load chart library");
+              reject(new Error('Failed to load chart library from CDN'));
+            };
             document.head.appendChild(script);
           });
         }
         
         if (!isMounted) return;
+        clearTimeout(timeoutId);
+        setChartLibLoaded(true);
 
         const { createChart } = (window as any).LightweightCharts;
 
@@ -87,6 +109,7 @@ export function TradingChart({
         // Fetch data
         const fetchChartData = async () => {
           try {
+            console.log(`📊 Fetching chart data for ${symbol}...`);
             setLoading(true);
             setError(null);
 
@@ -94,10 +117,12 @@ export function TradingChart({
             const endTime = new Date(closedAt).getTime();
 
             const response = await fetch(
-              `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=5`
+              `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=5`,
+              { signal: AbortSignal.timeout(15000) } // 15 second timeout
             );
 
             const data = await response.json();
+            console.log(`📊 Chart data response:`, data);
 
             if (!data.success) {
               throw new Error(data.message || "Failed to fetch chart data");
@@ -132,9 +157,10 @@ export function TradingChart({
             // Fit content
             chart.timeScale().fitContent();
 
+            console.log("✅ Chart loaded successfully");
             setLoading(false);
           } catch (err: any) {
-            console.error("Chart data error:", err);
+            console.error("❌ Chart data error:", err);
             setError(err.message || "Failed to load chart");
             setLoading(false);
           }
@@ -162,9 +188,10 @@ export function TradingChart({
           }
         };
       } catch (err: any) {
-        console.error("Failed to load chart library:", err);
-        setError("Failed to load chart library");
+        console.error("❌ Failed to initialize chart:", err);
+        setError(err.message || "Failed to load chart library");
         setLoading(false);
+        clearTimeout(timeoutId);
       }
     };
 
@@ -172,15 +199,19 @@ export function TradingChart({
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
     };
-  }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side]);
+  }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side, chartLibLoaded]);
 
   if (loading) {
     return (
-      <div className="w-full h-[400px] bg-slate-950 rounded-lg flex items-center justify-center">
+      <div className="w-full h-[400px] bg-slate-950 rounded-lg flex items-center justify-center border border-gray-800">
         <div className="flex flex-col items-center gap-3">
           <Activity className="h-8 w-8 animate-spin text-blue-400" />
           <p className="text-sm text-gray-400">Ładowanie wykresu...</p>
+          <p className="text-xs text-gray-500">
+            {chartLibLoaded ? "Pobieranie danych..." : "Ładowanie biblioteki..."}
+          </p>
         </div>
       </div>
     );
@@ -188,17 +219,21 @@ export function TradingChart({
 
   if (error) {
     return (
-      <div className="w-full h-[400px] bg-slate-950 rounded-lg flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-sm text-red-400">❌ {error}</p>
-          <p className="text-xs text-gray-500">Dane wykresu mogą być niedostępne dla tego zakresu czasowego</p>
+      <div className="w-full h-[400px] bg-slate-950 rounded-lg flex items-center justify-center border border-red-800/30">
+        <div className="flex flex-col items-center gap-2 p-6 text-center">
+          <AlertCircle className="h-8 w-8 text-red-400" />
+          <p className="text-sm text-red-400 font-semibold">Błąd wykresu</p>
+          <p className="text-xs text-gray-400 max-w-md">{error}</p>
+          <p className="text-xs text-gray-500 mt-2">
+            Dane wykresu mogą być niedostępne dla tego zakresu czasowego
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-slate-950 rounded-lg p-2">
+    <div className="w-full bg-slate-950 rounded-lg p-2 border border-gray-800">
       <div ref={chartContainerRef} className="w-full" />
     </div>
   );
