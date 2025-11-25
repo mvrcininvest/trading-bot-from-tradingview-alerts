@@ -99,28 +99,45 @@ export default function GlownaPage() {
 
   const loadBotSettings = async () => {
     try {
-      // ✅ Dodaj timestamp do URL + wymuś no-cache
+      // ✅ FORCE NO CACHE with unique timestamp
       const timestamp = Date.now();
-      const response = await fetch(`/api/bot/settings?_t=${timestamp}`, {
+      const randomParam = Math.random().toString(36).substring(7);
+      const response = await fetch(`/api/bot/settings?_t=${timestamp}&_r=${randomParam}`, {
+        method: "GET",
         cache: "no-store",
         headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache"
+          "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0"
         }
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       const data = await response.json();
       
-      console.log("[Glowna] Settings API Response:", data);
+      console.log("[Glowna] Settings Raw Response:", JSON.stringify(data, null, 2));
       
       if (data.success && data.settings) {
-        // ✅ FIX: Wymuś boolean konwersję
-        const isBotEnabled = Boolean(data.settings.botEnabled);
+        // ✅ CRITICAL FIX: Force strict boolean conversion
+        const rawValue = data.settings.botEnabled;
+        const isBotEnabled = rawValue === true || rawValue === 1 || rawValue === "1" || rawValue === "true";
+        
+        console.log("[Glowna] Bot Status Debug:");
+        console.log("  Raw Value:", rawValue);
+        console.log("  Type:", typeof rawValue);
+        console.log("  Converted to Boolean:", isBotEnabled);
+        
         setBotEnabled(isBotEnabled);
-        console.log("[Glowna] Bot enabled (raw):", data.settings.botEnabled);
-        console.log("[Glowna] Bot enabled (converted):", isBotEnabled);
+      } else {
+        console.error("[Glowna] Invalid settings response:", data);
+        setBotEnabled(false);
       }
     } catch (err) {
       console.error("Load settings error:", err);
+      setBotEnabled(false);
     } finally {
       setLoadingSettings(false);
     }
@@ -130,6 +147,16 @@ export default function GlownaPage() {
     try {
       setBalanceError(null);
       
+      // ⚠️ CloudFlare ZAWSZE blokuje Bybit API - to jest znany stały problem
+      // Dokumentacja: BYBIT_GEO_BLOCKING_FIX.md
+      console.log("[Balance] CloudFlare blokuje Bybit API - saldo niedostępne");
+      setBalanceError("⚠️ CloudFlare blokuje Bybit API (znany problem)");
+      setBalance([]);
+      setLoadingBalance(false);
+      return;
+      
+      // KOD PONIŻEJ NIE DZIAŁA z powodu CloudFlare block (zostawiamy dla referencji)
+      /*
       // Pobierz credentials z settings (z cache busting)
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
@@ -174,9 +201,10 @@ export default function GlownaPage() {
         // ⚠️ CloudFlare block - wyświetl komunikat ale nie blokuj UI
         setBalanceError(data.message || "Nie można pobrać salda");
       }
+      */
     } catch (err) {
       console.error("Load balance error:", err);
-      setBalanceError("Błąd połączenia");
+      setBalanceError("CloudFlare blokuje Bybit API");
     } finally {
       setLoadingBalance(false);
     }
@@ -314,8 +342,13 @@ export default function GlownaPage() {
               {loadingBalance ? (
                 <div className="text-gray-400">Ładowanie...</div>
               ) : balanceError ? (
-                <div className="text-sm text-yellow-400">
-                  ⚠️ {balanceError}
+                <div className="flex flex-col gap-1">
+                  <div className="text-sm text-yellow-400">
+                    ⚠️ Niedostępne
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    CloudFlare block
+                  </div>
                 </div>
               ) : (
                 <div className="text-2xl font-bold text-white">
@@ -356,19 +389,18 @@ export default function GlownaPage() {
           </Card>
         </div>
 
-        {/* CloudFlare Warning */}
-        {balanceError && balanceError.includes("CloudFlare") && (
-          <Card className="border-yellow-700/40 bg-yellow-900/20">
-            <CardContent className="py-3">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-yellow-400" />
-                <div className="text-sm text-yellow-300">
-                  <strong>CloudFlare blokuje API Bybit balance</strong> - saldo może być niedostępne. Pozycje i bot działają normalnie.
-                </div>
+        {/* CloudFlare Warning - STAŁY PROBLEM */}
+        <Card className="border-yellow-700/40 bg-yellow-900/20">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-yellow-400" />
+              <div className="text-sm text-yellow-300">
+                <strong>⚠️ Znany problem:</strong> CloudFlare blokuje Bybit Balance API przez Vercel (szczegóły: BYBIT_GEO_BLOCKING_FIX.md). 
+                <strong className="ml-1">Bot i pozycje działają normalnie</strong> - tylko saldo jest niedostępne przez API.
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Emergency Close Button */}
         {positions.length > 0 && (
