@@ -6,7 +6,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle, BarChart3, Award, AlertTriangle } from "lucide-react";
+import { TrendingUp, Wallet, RefreshCw, AlertCircle, Settings, Activity, Bot, X, FileText, Clock, Target, TrendingDown, Percent, DollarSign, Zap, Download, Database, CheckCircle2, XCircle, BarChart3, Award, AlertTriangle, History } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,13 @@ interface SymbolLock {
   unlockedAt: string | null;
 }
 
+interface HistoryStats {
+  totalPositions: number;
+  totalPnl: number;
+  avgPnl: number;
+  winRate: number;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
@@ -71,6 +78,25 @@ export default function DashboardPage() {
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null);
+
+  const fetchHistoryStats = useCallback(async (silent = false) => {
+    if (!silent) setLoadingHistory(true);
+    
+    try {
+      const response = await fetch("/api/bot/history?limit=1000&source=database");
+      const data = await response.json();
+      
+      if (data.success && data.stats) {
+        setHistoryStats(data.stats);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history stats:", err);
+    } finally {
+      if (!silent) setLoadingHistory(false);
+    }
+  }, []);
 
   const autoMatchAlertsToOpen = useCallback(async () => {
     try {
@@ -151,6 +177,7 @@ export default function DashboardPage() {
         fetchBotStatus();
         fetchSymbolLocks();
         autoMatchAlertsToOpen();
+        fetchHistoryStats();
         
         setIsCheckingCredentials(false);
         return;
@@ -176,6 +203,7 @@ export default function DashboardPage() {
           fetchBotStatus();
           fetchSymbolLocks();
           autoMatchAlertsToOpen();
+          fetchHistoryStats();
         }
       } catch (err) {
         console.error("[Dashboard] Credential fetch error:", err);
@@ -193,10 +221,11 @@ export default function DashboardPage() {
     const interval = setInterval(() => {
       fetchBotPositions(true);
       fetchBotStatus(true);
+      fetchHistoryStats(true);
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [credentials, fetchBotPositions]);
+  }, [credentials, fetchBotPositions, fetchHistoryStats]);
 
   const handleSyncPositions = async () => {
     setLoadingSync(true);
@@ -352,7 +381,7 @@ export default function DashboardPage() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-blue-800/50 border border-blue-800/30 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-blue-300">PnL Niezrealizowany</h3>
@@ -361,7 +390,7 @@ export default function DashboardPage() {
             <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
               {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
             </p>
-            <p className="text-xs text-blue-400">USDT</p>
+            <p className="text-xs text-blue-400">USDT (otwarte)</p>
           </div>
 
           <div className="p-4 rounded-lg bg-gradient-to-br from-amber-900/30 to-amber-800/50 border border-amber-800/30 backdrop-blur-sm">
@@ -372,23 +401,91 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-amber-100">
               {botPositions.length}
             </p>
-            <p className="text-xs text-amber-400">pozycji</p>
+            <p className="text-xs text-amber-400">aktywnych</p>
+          </div>
+
+          <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-green-300">Total PnL</h3>
+              <History className="h-4 w-4 text-green-400" />
+            </div>
+            {loadingHistory ? (
+              <div className="h-8 flex items-center">
+                <RefreshCw className="h-4 w-4 animate-spin text-green-400" />
+              </div>
+            ) : historyStats ? (
+              <>
+                <p className={`text-2xl font-bold ${historyStats.totalPnl >= 0 ? 'text-green-100' : 'text-red-100'}`}>
+                  {historyStats.totalPnl >= 0 ? '+' : ''}{historyStats.totalPnl.toFixed(2)}
+                </p>
+                <p className="text-xs text-green-400">
+                  {historyStats.totalPositions} zamkniętych
+                </p>
+              </>
+            ) : (
+              <p className="text-2xl font-bold text-gray-500">---</p>
+            )}
           </div>
 
           <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-purple-300">Status Bota</h3>
-              <Bot className="h-4 w-4 text-purple-400" />
+              <h3 className="text-sm font-medium text-purple-300">Win Rate</h3>
+              <Award className="h-4 w-4 text-purple-400" />
             </div>
-            <p className={`text-2xl font-bold ${botEnabled ? 'text-green-100' : 'text-red-100'}`}>
-              {botEnabled ? 'Aktywny' : 'Wyłączony'}
-            </p>
-            <p className="text-xs text-purple-400">
-              <div className={`h-2 w-2 rounded-full inline-block mr-1 ${botEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
-              {botEnabled ? 'Działa' : 'Zatrzymany'}
-            </p>
+            {loadingHistory ? (
+              <div className="h-8 flex items-center">
+                <RefreshCw className="h-4 w-4 animate-spin text-purple-400" />
+              </div>
+            ) : historyStats ? (
+              <>
+                <p className="text-2xl font-bold text-purple-100">
+                  {historyStats.winRate.toFixed(1)}%
+                </p>
+                <p className="text-xs text-purple-400">
+                  skuteczność
+                </p>
+              </>
+            ) : (
+              <p className="text-2xl font-bold text-gray-500">---</p>
+            )}
           </div>
         </div>
+
+        <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Bot className={`h-5 w-5 ${botEnabled ? 'text-green-400' : 'text-red-400'}`} />
+                <span className="text-sm text-gray-300">
+                  Status Bota: <span className={`font-semibold ${botEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                    {botEnabled ? 'Aktywny' : 'Wyłączony'}
+                  </span>
+                </span>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => router.push("/bot-history")}
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-700 text-blue-300 hover:bg-blue-900/20"
+                >
+                  <History className="h-4 w-4 mr-1" />
+                  Historia
+                </Button>
+                <Button
+                  onClick={() => router.push("/ustawienia-bota")}
+                  variant="outline"
+                  size="sm"
+                  className="border-purple-700 text-purple-300 hover:bg-purple-900/20"
+                >
+                  <Settings className="h-4 w-4 mr-1" />
+                  Ustawienia
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
@@ -438,7 +535,17 @@ export default function DashboardPage() {
             {!loadingPositions && botPositions.length === 0 && (
               <div className="text-center py-8">
                 <Activity className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                <p className="text-sm text-gray-300">Brak otwartych pozycji</p>
+                <p className="text-sm text-gray-300 mb-4">Brak otwartych pozycji</p>
+                {historyStats && historyStats.totalPositions > 0 && (
+                  <Button
+                    onClick={() => router.push("/bot-history")}
+                    variant="outline"
+                    className="border-blue-700 text-blue-300 hover:bg-blue-900/20"
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    Zobacz Historię ({historyStats.totalPositions} pozycji)
+                  </Button>
+                )}
               </div>
             )}
 
