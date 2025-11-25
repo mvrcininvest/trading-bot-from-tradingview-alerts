@@ -97,8 +97,14 @@ async function fetchBybitHistoryPage(
 
   const data = await response.json();
 
+  // ✅ ADD DETAILED LOGGING
+  console.log(`[Import] Bybit API Response Status: ${response.status}`);
+  console.log(`[Import] Bybit API Response:`, JSON.stringify(data, null, 2));
+
   if (data.retCode !== 0) {
-    throw new Error(`Bybit API error: ${data.retMsg}`);
+    console.error(`[Import] ❌ Bybit API Error - retCode: ${data.retCode}, retMsg: ${data.retMsg}`);
+    console.error(`[Import] ❌ Full response:`, data);
+    throw new Error(`Bybit API error: ${data.retMsg || 'Unknown error'} (retCode: ${data.retCode})`);
   }
 
   return {
