@@ -44,11 +44,188 @@ async function createBybitSignature(
 // 📊 FETCH FROM BYBIT API (REAL DATA)
 // ============================================
 
+async function fetchTransactionFees(
+  apiKey: string,
+  apiSecret: string,
+  symbol: string,
+  startTime: number,
+  endTime: number
+): Promise<{ tradingFees: number; fundingFees: number }> {
+  console.log(`[Fees] Fetching fees for ${symbol} from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+  
+  let totalTradingFees = 0;
+  let totalFundingFees = 0;
+  
+  // Split into 7-day segments (API limit)
+  const segmentMs = 7 * 24 * 60 * 60 * 1000;
+  const segments: Array<{ start: number; end: number }> = [];
+  let currentStart = startTime;
+  
+  while (currentStart < endTime) {
+    const currentEnd = Math.min(currentStart + segmentMs, endTime);
+    segments.push({ start: currentStart, end: currentEnd });
+    currentStart = currentEnd;
+  }
+  
+  // Fetch trading fees
+  for (const segment of segments) {
+    try {
+      let cursor: string | null = null;
+      let pageCount = 0;
+      const maxPages = 5;
+      
+      do {
+        pageCount++;
+        const timestamp = Date.now().toString();
+        const recvWindow = "5000";
+        
+        const params: Record<string, string> = {
+          accountType: "UNIFIED",
+          category: "linear",
+          symbol,
+          type: "TRADING_FEE",
+          startTime: segment.start.toString(),
+          endTime: segment.end.toString(),
+          limit: "50",
+        };
+        
+        if (cursor) params.cursor = cursor;
+        
+        const queryString = Object.keys(params)
+          .sort()
+          .map((key) => `${key}=${params[key]}`)
+          .join("&");
+        
+        const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+        
+        const url = `https://api.bybit.com/v5/account/transaction-log?${queryString}`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "X-BAPI-API-KEY": apiKey,
+            "X-BAPI-TIMESTAMP": timestamp,
+            "X-BAPI-SIGN": signature,
+            "X-BAPI-RECV-WINDOW": recvWindow,
+            "Content-Type": "application/json",
+          },
+        });
+        
+        if (!response.ok) {
+          console.error(`[Fees] Trading fee fetch failed: ${response.status}`);
+          break;
+        }
+        
+        const data = await response.json();
+        
+        if (data.retCode !== 0) {
+          console.error(`[Fees] Trading fee API error:`, data.retMsg);
+          break;
+        }
+        
+        const transactions = data.result?.list || [];
+        transactions.forEach((tx: any) => {
+          const fee = parseFloat(tx.fee || "0");
+          totalTradingFees += Math.abs(fee); // Fees are negative, take absolute
+        });
+        
+        cursor = data.result?.nextPageCursor || null;
+        
+        if (pageCount >= maxPages) break;
+      } while (cursor);
+    } catch (error) {
+      console.error(`[Fees] Error fetching trading fees:`, error);
+    }
+  }
+  
+  // Fetch funding fees
+  for (const segment of segments) {
+    try {
+      let cursor: string | null = null;
+      let pageCount = 0;
+      const maxPages = 5;
+      
+      do {
+        pageCount++;
+        const timestamp = Date.now().toString();
+        const recvWindow = "5000";
+        
+        const params: Record<string, string> = {
+          accountType: "UNIFIED",
+          category: "linear",
+          symbol,
+          type: "SETTLEMENT",
+          startTime: segment.start.toString(),
+          endTime: segment.end.toString(),
+          limit: "50",
+        };
+        
+        if (cursor) params.cursor = cursor;
+        
+        const queryString = Object.keys(params)
+          .sort()
+          .map((key) => `${key}=${params[key]}`)
+          .join("&");
+        
+        const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+        
+        const url = `https://api.bybit.com/v5/account/transaction-log?${queryString}`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "X-BAPI-API-KEY": apiKey,
+            "X-BAPI-TIMESTAMP": timestamp,
+            "X-BAPI-SIGN": signature,
+            "X-BAPI-RECV-WINDOW": recvWindow,
+            "Content-Type": "application/json",
+          },
+        });
+        
+        if (!response.ok) {
+          console.error(`[Fees] Funding fee fetch failed: ${response.status}`);
+          break;
+        }
+        
+        const data = await response.json();
+        
+        if (data.retCode !== 0) {
+          console.error(`[Fees] Funding fee API error:`, data.retMsg);
+          break;
+        }
+        
+        const transactions = data.result?.list || [];
+        transactions.forEach((tx: any) => {
+          const funding = parseFloat(tx.funding || "0");
+          // Negative funding = you paid, positive = you received
+          if (funding < 0) {
+            totalFundingFees += Math.abs(funding);
+          }
+        });
+        
+        cursor = data.result?.nextPageCursor || null;
+        
+        if (pageCount >= maxPages) break;
+      } while (cursor);
+    } catch (error) {
+      console.error(`[Fees] Error fetching funding fees:`, error);
+    }
+  }
+  
+  console.log(`[Fees] ${symbol} - Trading: ${totalTradingFees.toFixed(4)}, Funding: ${totalFundingFees.toFixed(4)}`);
+  
+  return {
+    tradingFees: totalTradingFees,
+    fundingFees: totalFundingFees,
+  };
+}
+
 async function fetchFromBybitAPI(
   apiKey: string,
   apiSecret: string,
   limit: number,
-  daysBack: number = 90
+  daysBack: number = 90,
+  includeFees: boolean = true
 ) {
   console.log(`[History API] 🌐 Fetching REAL data from Bybit API (last ${daysBack} days)...`);
   
@@ -177,7 +354,7 @@ async function fetchFromBybitAPI(
     // Transform and aggregate
     const formattedHistory: any[] = [];
     
-    positionGroups.forEach((group, groupKey) => {
+    for (const [groupKey, group] of positionGroups.entries()) {
       // Sort by updatedTime to get chronological order
       group.sort((a, b) => parseInt(a.updatedTime) - parseInt(b.updatedTime));
       
@@ -200,9 +377,28 @@ async function fetchFromBybitAPI(
       const closedAt = new Date(parseInt(lastClose.updatedTime));
       const openedAt = new Date(parseInt(firstClose.createdTime));
       
+      // ✅ FETCH FEES for this position
+      let tradingFees = 0;
+      let fundingFees = 0;
+      
+      if (includeFees) {
+        const fees = await fetchTransactionFees(
+          apiKey,
+          apiSecret,
+          firstClose.symbol,
+          parseInt(firstClose.createdTime),
+          parseInt(lastClose.updatedTime)
+        );
+        tradingFees = fees.tradingFees;
+        fundingFees = fees.fundingFees;
+      }
+      
+      const totalFees = tradingFees + fundingFees;
+      const netPnl = totalPnl - totalFees;
+      
       const positionValue = totalQty * entryPrice;
       const initialMargin = positionValue / leverage;
-      const pnlPercent = initialMargin > 0 ? (totalPnl / initialMargin) * 100 : 0;
+      const pnlPercent = initialMargin > 0 ? (netPnl / initialMargin) * 100 : 0;
       
       const durationMs = closedAt.getTime() - openedAt.getTime();
       const durationMinutes = Math.round(durationMs / 60000);
@@ -214,7 +410,7 @@ async function fetchFromBybitAPI(
       let tp3Hit = false;
       let closeReason = "closed_on_exchange";
       
-      if (totalPnl > 0) {
+      if (netPnl > 0) {
         // Profitable - assume TPs hit in order
         if (partialCloseCount >= 3) {
           tp1Hit = tp2Hit = tp3Hit = true;
@@ -226,7 +422,7 @@ async function fetchFromBybitAPI(
           tp1Hit = true;
           closeReason = "tp1_hit";
         }
-      } else if (totalPnl < 0) {
+      } else if (netPnl < 0) {
         closeReason = "sl_hit";
       }
       
@@ -241,7 +437,11 @@ async function fetchFromBybitAPI(
         closePrice: avgExitPrice,
         quantity: totalQty,
         leverage,
-        pnl: totalPnl,
+        pnl: netPnl, // ✅ NET PNL (after fees)
+        grossPnl: totalPnl, // ✅ GROSS PNL (before fees)
+        tradingFees,
+        fundingFees,
+        totalFees,
         pnlPercent,
         closeReason,
         tp1Hit,
@@ -254,7 +454,7 @@ async function fetchFromBybitAPI(
         durationMinutes,
         source: "bybit" as const,
       });
-    });
+    }
     
     // Sort by closedAt desc
     formattedHistory.sort((a, b) => 
@@ -358,7 +558,7 @@ export async function GET(request: NextRequest) {
       const { apiKey, apiSecret } = settings[0];
       
       try {
-        const result = await fetchFromBybitAPI(apiKey!, apiSecret!, limit, daysBack);
+        const result = await fetchFromBybitAPI(apiKey!, apiSecret!, limit, daysBack, true);
         
         // Calculate statistics
         const totalPnl = result.history.reduce((sum, p) => sum + p.pnl, 0);

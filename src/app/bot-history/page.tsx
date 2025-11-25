@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download, AlertTriangle, CheckCircle } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download, AlertTriangle, CheckCircle, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-// ✅ v3.0.0 - SIMPLIFIED: One button, local database only
+// ✅ v4.0.0 - FEES SUPPORT: Show trading + funding fees
 interface HistoryPosition {
   id: string;
   symbol: string;
@@ -25,7 +25,11 @@ interface HistoryPosition {
   closePrice: number;
   quantity: number;
   leverage: number;
-  pnl: number;
+  pnl: number; // NET PNL (after fees)
+  grossPnl?: number; // GROSS PNL (before fees)
+  tradingFees?: number;
+  fundingFees?: number;
+  totalFees?: number;
   pnlPercent: number;
   closeReason: string;
   openedAt: string;
@@ -185,12 +189,16 @@ export default function BotHistoryPage() {
     }
   };
 
-  // Obliczenia statystyk
+  // ✅ ENHANCED STATS: Include fees breakdown
   const stats = {
     totalTrades: history.length,
     profitable: history.filter(h => h.pnl > 0).length,
     losses: history.filter(h => h.pnl < 0).length,
     totalPnl: history.reduce((sum, h) => sum + h.pnl, 0),
+    totalGrossPnl: history.reduce((sum, h) => sum + (h.grossPnl || h.pnl), 0),
+    totalTradingFees: history.reduce((sum, h) => sum + (h.tradingFees || 0), 0),
+    totalFundingFees: history.reduce((sum, h) => sum + (h.fundingFees || 0), 0),
+    totalFees: history.reduce((sum, h) => sum + (h.totalFees || 0), 0),
     winRate: history.length > 0 ? (history.filter(h => h.pnl > 0).length / history.length) * 100 : 0,
   };
 
@@ -289,7 +297,7 @@ export default function BotHistoryPage() {
               <p className="text-sm text-purple-200">
                 <Download className="inline h-4 w-4 text-purple-400 mr-1" />
                 <strong>Synchronizuj:</strong> Usuwa wszystkie pozycje z lokalnej bazy i importuje 
-                świeżą historię z Bybit (ostatnie 30 dni).
+                świeżą historię z Bybit (ostatnie 30 dni) wraz z opłatami transakcyjnymi i fundingowymi.
               </p>
             </div>
 
@@ -309,8 +317,8 @@ export default function BotHistoryPage() {
           </CardContent>
         </Card>
 
-        {/* Podstawowe Statystyki */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {/* ✅ ENHANCED STATISTICS: Show fees breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
               <CardDescription className="text-gray-300">Łącznie</CardDescription>
@@ -347,13 +355,31 @@ export default function BotHistoryPage() {
 
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
-              <CardDescription className="text-gray-300">Łączny PnL</CardDescription>
+              <CardDescription className="text-gray-300">Net PnL</CardDescription>
               <CardTitle
                 className={`text-3xl ${stats.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}
               >
                 {stats.totalPnl >= 0 ? "+" : ""}
-                {stats.totalPnl.toFixed(2)} USDT
+                {stats.totalPnl.toFixed(2)}
               </CardTitle>
+              <CardDescription className="text-xs text-gray-400">
+                po opłatach
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-yellow-800 bg-yellow-900/20 backdrop-blur-sm hover:bg-yellow-900/30 transition-all">
+            <CardHeader className="pb-2">
+              <CardDescription className="text-yellow-300 flex items-center gap-1">
+                <DollarSign className="h-3 w-3" />
+                Opłaty
+              </CardDescription>
+              <CardTitle className="text-3xl text-yellow-400">
+                -{stats.totalFees.toFixed(2)}
+              </CardTitle>
+              <CardDescription className="text-xs text-yellow-300/70">
+                trading + funding
+              </CardDescription>
             </CardHeader>
           </Card>
         </div>
@@ -370,7 +396,7 @@ export default function BotHistoryPage() {
           </Card>
         )}
 
-        {/* History List */}
+        {/* ✅ ENHANCED HISTORY LIST: Show fees per position */}
         {!loading && history.length > 0 && (
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -379,80 +405,122 @@ export default function BotHistoryPage() {
                 Zamknięte Pozycje ({history.length})
               </CardTitle>
               <CardDescription>
-                Pozycje z lokalnej bazy danych - kliknij "Diagnozuj" jeśli dane się nie zgadzają z Bybit
+                Net PnL uwzględnia opłaty transakcyjne i fundingowe pobrane z Bybit transaction log
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {history.map((pos, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-4 rounded-lg border-2 transition-colors ${
-                      pos.pnl > 0
-                        ? "border-green-500/20 bg-green-500/5"
-                        : "border-red-500/20 bg-red-500/5"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="font-bold text-lg text-white">{pos.symbol}</span>
-                          <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
-                            {pos.side === "Buy" ? "Long" : "Short"}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
+                {history.map((pos, idx) => {
+                  const hasFeeData = (pos.tradingFees !== undefined && pos.fundingFees !== undefined);
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        pos.pnl > 0
+                          ? "border-green-500/20 bg-green-500/5"
+                          : "border-red-500/20 bg-red-500/5"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-bold text-lg text-white">{pos.symbol}</span>
+                            <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
+                              {pos.side === "Buy" ? "Long" : "Short"}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
+                            
+                            {(pos.tp1Hit || pos.tp2Hit || pos.tp3Hit) && (
+                              <div className="flex items-center gap-1 ml-2">
+                                {pos.tp1Hit && (
+                                  <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    TP1
+                                  </Badge>
+                                )}
+                                {pos.tp2Hit && (
+                                  <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    TP2
+                                  </Badge>
+                                )}
+                                {pos.tp3Hit && (
+                                  <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    TP3
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            
+                            {pos.partialCloseCount && pos.partialCloseCount > 1 && (
+                              <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50">
+                                {pos.partialCloseCount} częściowych zamknięć
+                              </Badge>
+                            )}
+                          </div>
                           
-                          {/* ✅ SHOW ACHIEVED TPs */}
-                          {(pos.tp1Hit || pos.tp2Hit || pos.tp3Hit) && (
-                            <div className="flex items-center gap-1 ml-2">
-                              {pos.tp1Hit && (
-                                <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  TP1
-                                </Badge>
-                              )}
-                              {pos.tp2Hit && (
-                                <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  TP2
-                                </Badge>
-                              )}
-                              {pos.tp3Hit && (
-                                <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  TP3
-                                </Badge>
-                              )}
+                          <div className="text-sm text-gray-300">
+                            Entry: {pos.entryPrice.toFixed(4)} → Close: {pos.closePrice.toFixed(4)} | 
+                            Qty: {pos.quantity} | Leverage: {pos.leverage}x
+                          </div>
+                          
+                          <div className="text-xs text-gray-400 mt-1">
+                            {new Date(pos.closedAt).toLocaleString('pl-PL')} | 
+                            Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
+                          </div>
+
+                          {/* ✅ SHOW FEES BREAKDOWN */}
+                          {hasFeeData && (
+                            <div className="mt-2 p-2 rounded bg-gray-800/50 border border-gray-700/50">
+                              <div className="grid grid-cols-3 gap-3 text-xs">
+                                <div>
+                                  <div className="text-gray-400">Gross PnL:</div>
+                                  <div className={`font-semibold ${(pos.grossPnl || pos.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {(pos.grossPnl || pos.pnl) >= 0 ? '+' : ''}{(pos.grossPnl || pos.pnl).toFixed(4)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400">Trading:</div>
+                                  <div className="font-semibold text-yellow-400">
+                                    -{(pos.tradingFees || 0).toFixed(4)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400">Funding:</div>
+                                  <div className="font-semibold text-orange-400">
+                                    -{(pos.fundingFees || 0).toFixed(4)}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-2 pt-2 border-t border-gray-700/50 flex justify-between items-center">
+                                <div className="text-xs text-gray-400">Total Fees:</div>
+                                <div className="text-xs font-bold text-red-400">
+                                  -{(pos.totalFees || 0).toFixed(4)} USDT
+                                </div>
+                              </div>
                             </div>
                           )}
-                          
-                          {/* Show partial close count if available */}
-                          {pos.partialCloseCount && pos.partialCloseCount > 1 && (
-                            <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50">
-                              {pos.partialCloseCount} częściowych zamknięć
-                            </Badge>
+                        </div>
+                        
+                        <div className="text-right">
+                          <div className={`text-xl font-bold ${pos.pnl > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(4)} USDT
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            {pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}% ROE
+                          </div>
+                          {hasFeeData && (
+                            <div className="mt-1 text-xs text-yellow-300/70">
+                              (po opłatach)
+                            </div>
                           )}
-                        </div>
-                        <div className="text-sm text-gray-300">
-                          Entry: {pos.entryPrice.toFixed(4)} → Close: {pos.closePrice.toFixed(4)} | 
-                          Qty: {pos.quantity} | Leverage: {pos.leverage}x
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">
-                          {new Date(pos.closedAt).toLocaleString('pl-PL')} | 
-                          Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
-                        </div>
-                      </div>
-                      <div className="text-right ml-4">
-                        <div className={`text-xl font-bold ${pos.pnl > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(4)} USDT
-                        </div>
-                        <div className="text-sm text-gray-400">
-                          {pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}% ROE
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

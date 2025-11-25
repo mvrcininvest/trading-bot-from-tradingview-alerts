@@ -1,18 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "bun run build",
-  "devCommand": "bun run dev",
-  "installCommand": "bun install",
-  "framework": null,
-  "outputDirectory": ".next",
-  "regions": ["sin1", "hkg1", "icn1"],
-  "functions": {
-    "app/api/**/*.ts": {
-      "runtime": "edge"
-    }
-  },
-  "env": {
-    "FORCE_REBUILD_TIMESTAMP": "2025-11-25T14:00:00.000Z",
-    "BUILD_HASH": "v7.0.0-fix-slow-deployment"
-  }
+  "buildHash": "v8.0.0-transaction-fees",
+  "buildTimestamp": "2025-11-25T14:30:00.000Z"
 }
