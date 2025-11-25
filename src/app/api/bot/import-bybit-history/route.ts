@@ -7,11 +7,13 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 // ✅ MULTI-PROXY STRATEGY: Try multiple proxy URLs
-const PROXY_URLS = [
-  process.env.BYBIT_PROXY_URL, // Fly.io proxy (Amsterdam)
-  `/api/bybit-edge-proxy`, // Vercel Edge proxy (Singapore/Asia)
-  "https://api.bybit.com", // Direct (last resort)
-];
+function getProxyUrls(host: string): string[] {
+  return [
+    process.env.BYBIT_PROXY_URL, // Fly.io proxy (Amsterdam)
+    `https://${host}/api/bybit-edge-proxy`, // Vercel Edge proxy (Singapore/Asia)
+    "https://api.bybit.com", // Direct (last resort)
+  ].filter(Boolean) as string[];
+}
 
 interface BybitHistoryPosition {
   symbol: string;
@@ -60,12 +62,13 @@ async function signBybitRequest(
   return hashHex;
 }
 
-// ✅ NOWA FUNKCJA: Try multiple proxies until one works
+// ✅ FIXED: Use full URL for Vercel Edge proxy
 async function fetchBybitHistoryPage(
   apiKey: string,
   apiSecret: string,
   startTime: number,
   endTime: number,
+  host: string,
   cursor?: string
 ): Promise<{ positions: BybitHistoryPosition[]; nextCursor: string | null }> {
   const timestamp = Date.now();
@@ -93,28 +96,24 @@ async function fetchBybitHistoryPage(
     "X-BAPI-TIMESTAMP": timestamp.toString(),
     "X-BAPI-SIGN": signature,
     "X-BAPI-RECV-WINDOW": "5000",
+    "Content-Type": "application/json",
   };
 
   // ✅ Try each proxy until one works
+  const PROXY_URLS = getProxyUrls(host);
   let lastError: Error | null = null;
   
   for (const proxyUrl of PROXY_URLS) {
     if (!proxyUrl) continue;
 
     try {
-      const isRelativeUrl = proxyUrl.startsWith('/');
-      const fullUrl = isRelativeUrl
-        ? `${proxyUrl}/v5/position/closed-pnl?${queryString}`
-        : `${proxyUrl}/v5/position/closed-pnl?${queryString}`;
+      const fullUrl = `${proxyUrl}/v5/position/closed-pnl?${queryString}`;
 
       console.log(`[Import] Trying proxy: ${proxyUrl}`);
 
       const response = await fetch(fullUrl, {
         method: "GET",
-        headers: isRelativeUrl ? headers : {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers,
       });
 
       const data = await response.json();
@@ -154,7 +153,8 @@ async function fetchBybitHistorySegment(
   apiKey: string,
   apiSecret: string,
   startTime: number,
-  endTime: number
+  endTime: number,
+  host: string
 ): Promise<BybitHistoryPosition[]> {
   let allPositions: BybitHistoryPosition[] = [];
   let cursor: string | null = null;
@@ -167,6 +167,7 @@ async function fetchBybitHistorySegment(
       apiSecret,
       startTime,
       endTime,
+      host,
       cursor || undefined
     );
 
@@ -193,6 +194,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get host for Vercel Edge proxy URL
+    const host = request.headers.get("host") || "localhost:3000";
 
     console.log(`[Import Bybit History] 🚀 Starting import for last ${daysBack} days using multi-proxy strategy...`);
 
@@ -226,7 +230,8 @@ export async function POST(request: NextRequest) {
           apiKey,
           apiSecret,
           segment.start,
-          segment.end
+          segment.end,
+          host
         );
 
         allPositions = [...allPositions, ...segmentPositions];
@@ -242,7 +247,7 @@ export async function POST(request: NextRequest) {
     if (allPositions.length === 0) {
       return NextResponse.json({
         success: false,
-        message: "Nie udało się pobrać danych z Bybit - wszystkie proxy zablokowali CloudFront",
+        message: "Nie udało się pobrać danych z Bybit - wszystkie proxy zablokowały CloudFront",
         imported: 0,
         skipped: 0,
         total: 0,
