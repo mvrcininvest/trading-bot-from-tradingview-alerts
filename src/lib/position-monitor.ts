@@ -111,6 +111,164 @@ async function getAlgoOrders(
 }
 
 // ============================================
+// 📊 GET RECENT CLOSED POSITIONS FROM BYBIT (LAST 24H)
+// ============================================
+
+async function getRecentClosedPositionsFromBybit(
+  apiKey: string,
+  apiSecret: string
+): Promise<any[]> {
+  try {
+    const timestamp = Date.now().toString();
+    const recvWindow = "5000";
+    
+    // Get closed positions from last 24 hours
+    const endTime = Date.now();
+    const startTime = endTime - (24 * 60 * 60 * 1000); // 24 hours ago
+    
+    const params = `category=linear&startTime=${startTime}&endTime=${endTime}&limit=50`;
+    const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, params);
+    
+    const headers: Record<string, string> = {
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-SIGN": signature,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-SIGN-TYPE": "2",
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "Content-Type": "application/json",
+    };
+    
+    const response = await fetch(`${BYBIT_PROXY_URL}/v5/position/closed-pnl?${params}`, {
+      method: "GET",
+      headers,
+    });
+
+    const data = await response.json();
+
+    if (data.retCode !== 0) {
+      console.error(`[Sync] Failed to get closed positions: ${data.retMsg}`);
+      return [];
+    }
+
+    return data.result?.list || [];
+  } catch (error: any) {
+    console.error(`[Sync] Error fetching closed positions:`, error.message);
+    return [];
+  }
+}
+
+// ============================================
+// 🔄 AUTO-SYNC: Add missing closed positions to history
+// ============================================
+
+async function autoSyncClosedPositions(
+  apiKey: string,
+  apiSecret: string
+): Promise<{ synced: number; skipped: number }> {
+  try {
+    console.log(`\n🔄 [AUTO-SYNC] Checking for new closed positions...`);
+    
+    // Get recent closed positions from Bybit
+    const bybitClosed = await getRecentClosedPositionsFromBybit(apiKey, apiSecret);
+    
+    if (bybitClosed.length === 0) {
+      console.log(`   ✅ No recent closed positions on Bybit`);
+      return { synced: 0, skipped: 0 };
+    }
+    
+    console.log(`   📊 Found ${bybitClosed.length} closed positions on Bybit (last 24h)`);
+    
+    // Get existing history from database
+    const existingHistory = await db.select().from(positionHistory);
+    
+    let synced = 0;
+    let skipped = 0;
+    
+    for (const bybitPos of bybitClosed) {
+      const entryPrice = parseFloat(bybitPos.avgEntryPrice);
+      const exitPrice = parseFloat(bybitPos.avgExitPrice);
+      const qty = parseFloat(bybitPos.qty);
+      const pnl = parseFloat(bybitPos.closedPnl);
+      const leverage = parseInt(bybitPos.leverage);
+      const closedAt = new Date(parseInt(bybitPos.updatedTime));
+      const openedAt = new Date(parseInt(bybitPos.createdTime));
+      
+      // Check if position already exists in history
+      const exists = existingHistory.some((existing) => {
+        const isSameSymbol = existing.symbol === bybitPos.symbol;
+        const isSameSide = existing.side === bybitPos.side;
+        const isSimilarEntry = Math.abs(existing.entryPrice - entryPrice) < entryPrice * 0.001; // 0.1% tolerance
+        const isSameCloseTime = 
+          existing.closedAt && 
+          Math.abs(new Date(existing.closedAt).getTime() - closedAt.getTime()) < 300000; // 5 min tolerance
+        
+        return isSameSymbol && isSameSide && isSimilarEntry && isSameCloseTime;
+      });
+      
+      if (exists) {
+        skipped++;
+        continue;
+      }
+      
+      // Calculate ROE (pnlPercent)
+      const positionValue = qty * entryPrice;
+      const initialMargin = positionValue / leverage;
+      const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
+      
+      // Duration in minutes
+      const durationMs = closedAt.getTime() - openedAt.getTime();
+      const durationMinutes = Math.round(durationMs / 60000);
+      
+      // Determine close reason based on PnL
+      let closeReason = "closed_on_exchange";
+      if (pnl > 0) {
+        closeReason = "tp_main_hit";
+      } else if (pnl < 0) {
+        closeReason = "sl_hit";
+      }
+      
+      // Insert into history
+      await db.insert(positionHistory).values({
+        positionId: null,
+        alertId: null,
+        symbol: bybitPos.symbol,
+        side: bybitPos.side,
+        tier: "Standard",
+        entryPrice,
+        closePrice: exitPrice,
+        quantity: qty,
+        leverage,
+        pnl,
+        pnlPercent,
+        closeReason,
+        tp1Hit: false,
+        tp2Hit: false,
+        tp3Hit: false,
+        confirmationCount: 0,
+        openedAt: openedAt.toISOString(),
+        closedAt: closedAt.toISOString(),
+        durationMinutes,
+      });
+      
+      synced++;
+      console.log(`   ✅ Synced: ${bybitPos.symbol} ${bybitPos.side} - PnL: ${pnl.toFixed(2)} USDT`);
+    }
+    
+    if (synced > 0) {
+      console.log(`\n🎉 [AUTO-SYNC] Complete: ${synced} new positions added to history`);
+    } else {
+      console.log(`   ✅ History is up to date`);
+    }
+    
+    return { synced, skipped };
+    
+  } catch (error: any) {
+    console.error(`[AUTO-SYNC] Error:`, error.message);
+    return { synced: 0, skipped: 0 };
+  }
+}
+
+// ============================================
 // 🔨 CLOSE POSITION PARTIALLY (MARKET ORDER)
 // ============================================
 
@@ -721,6 +879,13 @@ export async function monitorAndManagePositions(silent = true) {
       apiKey,
       apiSecret
     };
+
+    // ============================================
+    // 🔄 AUTO-SYNC: Check for new closed positions on Bybit
+    // ============================================
+    console.log(`\n🔄 [AUTO-SYNC] Checking for new closed positions on Bybit...`);
+    const syncResult = await autoSyncClosedPositions(apiKey, apiSecret);
+    console.log(`   📊 Sync result: ${syncResult.synced} new, ${syncResult.skipped} already in database`);
 
     // Get bot positions from DB
     const dbPositions = await db.select()
