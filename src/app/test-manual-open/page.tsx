@@ -74,9 +74,10 @@ export default function TestManualOpenPage() {
     setResult(null);
 
     try {
-      const baseUrl = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit"; // Use proxy URL
+      // ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+      const baseUrl = "/api/bybit-edge-proxy"; // Use relative path - works in iframe
 
-      console.log("🔧 Using Proxy Server");
+      console.log("🔧 Using Vercel Edge Proxy (Singapore/Hong Kong/Seoul)");
       console.log("🔧 Base URL:", baseUrl);
 
       // Step 1: Set Leverage (optional, non-critical)
@@ -177,7 +178,7 @@ export default function TestManualOpenPage() {
       if (orderData.retCode === 0) {
         setResult({
           success: true,
-          message: `✅ POZYCJA OTWARTA POMYŚLNIE!\n\nOrder ID: ${orderData.result?.orderId}\nSymbol: ${symbol}\nSide: ${side}\nQuantity: ${quantity}\n\n🎉 Proxy działa poprawnie!`,
+          message: `✅ POZYCJA OTWARTA POMYŚLNIE!\n\nOrder ID: ${orderData.result?.orderId}\nSymbol: ${symbol}\nSide: ${side}\nQuantity: ${quantity}\n\n🎉 Vercel Edge Proxy działa poprawnie!`,
           step: "success",
           data: orderData
         });

@@ -1,6 +1,10 @@
 import crypto from 'crypto';
 
-const BYBIT_MAINNET_URL = 'https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit';
+// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+// This bypasses CloudFront geo-blocking!
+const BYBIT_MAINNET_URL = process.env.NEXT_PUBLIC_BASE_URL 
+  ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/bybit-edge-proxy`
+  : '/api/bybit-edge-proxy';
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (FIXED)

@@ -4,8 +4,16 @@ import { positionHistory, botSettings } from '@/db/schema';
 import { desc } from 'drizzle-orm';
 import crypto from 'crypto';
 
-// ✅ USE PROXY URL FROM ENV
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+// This bypasses CloudFront geo-blocking!
+const getBybitProxyUrl = () => {
+  // In production (Vercel), use absolute URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
+  }
+  // In local dev, use relative path
+  return '/api/bybit-edge-proxy';
+};
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER
@@ -33,7 +41,7 @@ async function fetchFromBybitAPI(
   daysBack: number = 90
 ) {
   console.log(`[History API] 🌐 Fetching REAL data from Bybit API (last ${daysBack} days)...`);
-  console.log(`[History API] Using proxy: ${BYBIT_PROXY_URL}`);
+  console.log(`[History API] Using proxy: ${getBybitProxyUrl()}`);
   
   const now = Date.now();
   const startTime = now - daysBack * 24 * 60 * 60 * 1000;
@@ -67,7 +75,7 @@ async function fetchFromBybitAPI(
       
       const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
       
-      const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
+      const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
       
       console.log(`[History API] Request URL: ${url}`);
       

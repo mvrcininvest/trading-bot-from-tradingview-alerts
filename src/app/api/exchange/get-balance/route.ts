@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
-const BYBIT_MAINNET_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+// This bypasses CloudFront geo-blocking!
+const getBybitProxyUrl = () => {
+  // In production (Vercel), use absolute URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
+  }
+  // In local dev, use relative path
+  return '/api/bybit-edge-proxy';
+};
 
 function createBybitSignature(
   timestamp: string,
@@ -18,7 +27,7 @@ async function getBybitBalance(
   apiKey: string,
   apiSecret: string
 ) {
-  const baseUrl = BYBIT_MAINNET_URL;
+  const baseUrl = getBybitProxyUrl();
   const timestamp = Date.now().toString();
   const recvWindow = "5000";
   const queryParams = new URLSearchParams({

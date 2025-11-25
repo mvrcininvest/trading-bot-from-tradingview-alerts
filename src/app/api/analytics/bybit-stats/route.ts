@@ -4,8 +4,16 @@ import { botSettings, positionHistory, botPositions } from "@/db/schema";
 import crypto from "crypto";
 import { eq, sql } from "drizzle-orm";
 
-// ✅ USE PROXY URL FROM ENV
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+// This bypasses CloudFront geo-blocking!
+const getBybitProxyUrl = () => {
+  // In production (Vercel), use absolute URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
+  }
+  // In local dev, use relative path
+  return '/api/bybit-edge-proxy';
+};
 
 // ============================================
 // 🔐 BYBIT V5 SIGNATURE HELPER (FIXED)
@@ -222,7 +230,7 @@ async function getAllClosedPnL(
     
     const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
     
-    const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
+    const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
     
     console.log(`[Bybit Stats] Page ${pageCount} request`);
     
@@ -294,7 +302,7 @@ async function getWalletBalance(apiKey: string, apiSecret: string) {
   
   const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
   
-  const url = `${BYBIT_PROXY_URL}/v5/account/wallet-balance?${queryString}`;
+  const url = `${getBybitProxyUrl()}/v5/account/wallet-balance?${queryString}`;
   
   const response = await fetch(url, {
     method: "GET",
@@ -345,7 +353,7 @@ async function getOpenPositions(apiKey: string, apiSecret: string) {
   
   const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
   
-  const url = `${BYBIT_PROXY_URL}/v5/position/list?${queryString}`;
+  const url = `${getBybitProxyUrl()}/v5/position/list?${queryString}`;
   
   const response = await fetch(url, {
     method: "GET",

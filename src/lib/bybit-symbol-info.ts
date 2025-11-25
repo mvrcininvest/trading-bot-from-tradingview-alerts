@@ -3,8 +3,11 @@
  * Fetches trading rules and lot size info for symbols
  */
 
-// ✅ USE PROXY URL FROM ENV
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+// This bypasses CloudFront geo-blocking!
+const BYBIT_PROXY_URL = process.env.NEXT_PUBLIC_BASE_URL 
+  ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/bybit-edge-proxy`
+  : '/api/bybit-edge-proxy';
 
 interface BybitLotSizeFilter {
   minOrderQty: string;

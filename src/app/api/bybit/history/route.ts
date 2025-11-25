@@ -3,7 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
+// This bypasses CloudFront geo-blocking!
+const getBybitProxyUrl = () => {
+  // In production (Vercel), use absolute URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
+  }
+  // In local dev, use relative path
+  return '/api/bybit-edge-proxy';
+};
 
 interface BybitHistoryPosition {
   symbol: string;
@@ -89,7 +98,7 @@ export async function GET(request: NextRequest) {
       .map((key) => `${key}=${params[key]}`)
       .join("&");
 
-    const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
+    const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
 
     console.log(`[Bybit History API] Fetching from proxy: ${url.split('?')[0]}`);
 
