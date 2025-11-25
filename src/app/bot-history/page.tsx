@@ -49,6 +49,8 @@ export default function BotHistoryPage() {
     const performInitialSync = async () => {
       console.log("🔄 Automatyczna pełna synchronizacja z Bybit przy wejściu...");
       await syncWithBybit();
+      // ✅ FIX: Po sync, pobierz dane i wyłącz loading
+      await fetchHistory(false);
     };
     
     performInitialSync();
