@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from "lightweight-charts";
 import { Activity } from "lucide-react";
+
+// Dynamically import lightweight-charts types
+type IChartApi = any;
+type ISeriesApi = any;
+type CandlestickData = any;
+type Time = any;
 
 interface TradingChartProps {
   symbol: string;
@@ -23,128 +28,152 @@ export function TradingChart({
 }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const candlestickSeriesRef = useRef<ISeriesApi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartLibLoaded, setChartLibLoaded] = useState(false);
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    // Dynamically import lightweight-charts only on client side
+    let isMounted = true;
 
-    // Create chart
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: 400,
-      layout: {
-        background: { color: "#0f172a" },
-        textColor: "#d1d5db",
-      },
-      grid: {
-        vertLines: { color: "#1e293b" },
-        horzLines: { color: "#1e293b" },
-      },
-      crosshair: {
-        mode: 1,
-      },
-      rightPriceScale: {
-        borderColor: "#334155",
-      },
-      timeScale: {
-        borderColor: "#334155",
-        timeVisible: true,
-        secondsVisible: false,
-      },
-    });
+    const initChart = async () => {
+      if (!chartContainerRef.current) return;
 
-    chartRef.current = chart;
-
-    // Create candlestick series
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: "#10b981",
-      downColor: "#ef4444",
-      borderUpColor: "#10b981",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#10b981",
-      wickDownColor: "#ef4444",
-    });
-
-    candlestickSeriesRef.current = candlestickSeries;
-
-    // Fetch data
-    const fetchChartData = async () => {
       try {
-        setLoading(true);
-        setError(null);
+        // Import lightweight-charts dynamically
+        const { createChart } = await import("lightweight-charts");
+        
+        if (!isMounted) return;
+        setChartLibLoaded(true);
 
-        const startTime = new Date(openedAt).getTime();
-        const endTime = new Date(closedAt).getTime();
-
-        const response = await fetch(
-          `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=5`
-        );
-
-        const data = await response.json();
-
-        if (!data.success) {
-          throw new Error(data.message || "Failed to fetch chart data");
-        }
-
-        if (data.klines.length === 0) {
-          throw new Error("No chart data available for this time range");
-        }
-
-        // Set candlestick data
-        candlestickSeries.setData(data.klines);
-
-        // Add entry marker
-        const entryTime = Math.floor(new Date(openedAt).getTime() / 1000) as Time;
-        candlestickSeries.setMarkers([
-          {
-            time: entryTime,
-            position: side === "Buy" ? "belowBar" : "aboveBar",
-            color: "#10b981",
-            shape: "arrowUp",
-            text: `Entry: ${entryPrice.toFixed(4)}`,
-          },
-          {
-            time: Math.floor(new Date(closedAt).getTime() / 1000) as Time,
-            position: side === "Buy" ? "aboveBar" : "belowBar",
-            color: "#ef4444",
-            shape: "arrowDown",
-            text: `Exit: ${exitPrice.toFixed(4)}`,
-          },
-        ]);
-
-        // Fit content
-        chart.timeScale().fitContent();
-
-        setLoading(false);
-      } catch (err: any) {
-        console.error("Chart data error:", err);
-        setError(err.message || "Failed to load chart");
-        setLoading(false);
-      }
-    };
-
-    fetchChartData();
-
-    // Handle resize
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
+        // Create chart
+        const chart = createChart(chartContainerRef.current, {
           width: chartContainerRef.current.clientWidth,
+          height: 400,
+          layout: {
+            background: { color: "#0f172a" },
+            textColor: "#d1d5db",
+          },
+          grid: {
+            vertLines: { color: "#1e293b" },
+            horzLines: { color: "#1e293b" },
+          },
+          crosshair: {
+            mode: 1,
+          },
+          rightPriceScale: {
+            borderColor: "#334155",
+          },
+          timeScale: {
+            borderColor: "#334155",
+            timeVisible: true,
+            secondsVisible: false,
+          },
         });
+
+        chartRef.current = chart;
+
+        // Create candlestick series
+        const candlestickSeries = chart.addCandlestickSeries({
+          upColor: "#10b981",
+          downColor: "#ef4444",
+          borderUpColor: "#10b981",
+          borderDownColor: "#ef4444",
+          wickUpColor: "#10b981",
+          wickDownColor: "#ef4444",
+        });
+
+        candlestickSeriesRef.current = candlestickSeries;
+
+        // Fetch data
+        const fetchChartData = async () => {
+          try {
+            setLoading(true);
+            setError(null);
+
+            const startTime = new Date(openedAt).getTime();
+            const endTime = new Date(closedAt).getTime();
+
+            const response = await fetch(
+              `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=5`
+            );
+
+            const data = await response.json();
+
+            if (!data.success) {
+              throw new Error(data.message || "Failed to fetch chart data");
+            }
+
+            if (data.klines.length === 0) {
+              throw new Error("No chart data available for this time range");
+            }
+
+            // Set candlestick data
+            candlestickSeries.setData(data.klines);
+
+            // Add entry marker
+            const entryTime = Math.floor(new Date(openedAt).getTime() / 1000);
+            candlestickSeries.setMarkers([
+              {
+                time: entryTime,
+                position: side === "Buy" ? "belowBar" : "aboveBar",
+                color: "#10b981",
+                shape: "arrowUp",
+                text: `Entry: ${entryPrice.toFixed(4)}`,
+              },
+              {
+                time: Math.floor(new Date(closedAt).getTime() / 1000),
+                position: side === "Buy" ? "aboveBar" : "belowBar",
+                color: "#ef4444",
+                shape: "arrowDown",
+                text: `Exit: ${exitPrice.toFixed(4)}`,
+              },
+            ]);
+
+            // Fit content
+            chart.timeScale().fitContent();
+
+            setLoading(false);
+          } catch (err: any) {
+            console.error("Chart data error:", err);
+            setError(err.message || "Failed to load chart");
+            setLoading(false);
+          }
+        };
+
+        fetchChartData();
+
+        // Handle resize
+        const handleResize = () => {
+          if (chartContainerRef.current && chartRef.current) {
+            chartRef.current.applyOptions({
+              width: chartContainerRef.current.clientWidth,
+            });
+          }
+        };
+
+        window.addEventListener("resize", handleResize);
+
+        // Cleanup
+        return () => {
+          window.removeEventListener("resize", handleResize);
+          if (chartRef.current) {
+            chartRef.current.remove();
+            chartRef.current = null;
+          }
+        };
+      } catch (err: any) {
+        console.error("Failed to load chart library:", err);
+        setError("Failed to load chart library");
+        setLoading(false);
       }
     };
 
-    window.addEventListener("resize", handleResize);
+    initChart();
 
-    // Cleanup
     return () => {
-      window.removeEventListener("resize", handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
+      isMounted = false;
     };
   }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side]);
 
