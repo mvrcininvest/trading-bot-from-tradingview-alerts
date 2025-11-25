@@ -27,7 +27,17 @@ async function handleBybitProxy(request: Request, pathSegments: string[]) {
     
     // Parse request URL to get query parameters
     const requestUrl = new URL(request.url);
-    const queryString = requestUrl.search; // Includes the '?' if present
+    
+    // ✅ FIX: Remove 'path' query params that Next.js automatically adds
+    // Next.js duplicates route params as query params which breaks Bybit API
+    const cleanParams = new URLSearchParams();
+    requestUrl.searchParams.forEach((value, key) => {
+      if (key !== 'path') {
+        cleanParams.append(key, value);
+      }
+    });
+    
+    const queryString = cleanParams.toString() ? `?${cleanParams.toString()}` : '';
     
     // Build target URL
     const targetUrl = `${BYBIT_BASE_URL}/${path}${queryString}`;
