@@ -41,6 +41,53 @@ async function createBybitSignature(
 }
 
 // ============================================
+// 🔍 FILTER OUT FUNDING TRANSACTIONS
+// ============================================
+
+/**
+ * Determines if a Bybit closed position is a real trade or a funding transaction
+ * 
+ * Funding transactions have these characteristics:
+ * 1. Very short duration (< 10 seconds)
+ * 2. Entry price ≈ Exit price (no real price movement)
+ * 3. Often minimal or zero quantity
+ */
+function isRealPosition(bybitPos: any): boolean {
+  try {
+    const entryPrice = parseFloat(bybitPos.avgEntryPrice);
+    const exitPrice = parseFloat(bybitPos.avgExitPrice);
+    const qty = parseFloat(bybitPos.qty);
+    
+    // Calculate duration
+    const openedAt = new Date(parseInt(bybitPos.createdTime));
+    const closedAt = new Date(parseInt(bybitPos.updatedTime));
+    const durationMs = closedAt.getTime() - openedAt.getTime();
+    const durationSeconds = durationMs / 1000;
+    
+    // Calculate price difference
+    const priceDiff = Math.abs(entryPrice - exitPrice);
+    const priceDiffPercent = entryPrice > 0 ? (priceDiff / entryPrice) * 100 : 0;
+    
+    // Funding transactions typically have:
+    // - Duration < 10 seconds
+    // - Price difference < 0.01% (essentially no movement)
+    // - These are NOT real positions, just funding fee settlements
+    
+    const isFundingTransaction = durationSeconds < 10 && priceDiffPercent < 0.01;
+    
+    if (isFundingTransaction) {
+      console.log(`[History API] 🚫 FILTERED: ${bybitPos.symbol} - Funding transaction (${durationSeconds.toFixed(1)}s, ${priceDiffPercent.toFixed(4)}% price diff)`);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`[History API] ⚠️ Error checking position:`, error);
+    return true; // Default to including if we can't determine
+  }
+}
+
+// ============================================
 // 📊 FETCH FROM BYBIT API (REAL DATA)
 // ============================================
 
@@ -332,6 +379,16 @@ async function fetchFromBybitAPI(
     console.log(`[History API] ✅ Fetched ${allPositions.length} total positions from Bybit (including partial closes)`);
     
     // ============================================
+    // 🔍 FILTER OUT FUNDING TRANSACTIONS
+    // ============================================
+    console.log(`[History API] 🔍 Filtering out funding transactions...`);
+    
+    const realPositions = allPositions.filter(isRealPosition);
+    const filteredCount = allPositions.length - realPositions.length;
+    
+    console.log(`[History API] ✅ Filtered: ${realPositions.length} real positions, ${filteredCount} funding transactions removed`);
+    
+    // ============================================
     // 🔗 AGGREGATE PARTIAL CLOSES
     // ============================================
     console.log(`[History API] 🔗 Aggregating partial closes...`);
@@ -339,7 +396,7 @@ async function fetchFromBybitAPI(
     // Group by symbol + createdTime (same position base)
     const positionGroups = new Map<string, any[]>();
     
-    allPositions.forEach((pos) => {
+    realPositions.forEach((pos) => {
       const groupKey = `${pos.symbol}_${pos.side}_${pos.createdTime}`;
       
       if (!positionGroups.has(groupKey)) {
@@ -349,7 +406,7 @@ async function fetchFromBybitAPI(
       positionGroups.get(groupKey)!.push(pos);
     });
     
-    console.log(`[History API] Found ${positionGroups.size} unique positions (aggregated from ${allPositions.length} records)`);
+    console.log(`[History API] Found ${positionGroups.size} unique positions (aggregated from ${realPositions.length} records)`);
     
     // Transform and aggregate
     const formattedHistory: any[] = [];

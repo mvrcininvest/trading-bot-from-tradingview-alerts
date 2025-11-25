@@ -46,6 +46,53 @@ async function createBybitSignature(
 }
 
 // ============================================
+// 🔍 FILTER OUT FUNDING TRANSACTIONS
+// ============================================
+
+/**
+ * Determines if a Bybit closed position is a real trade or a funding transaction
+ * 
+ * Funding transactions have these characteristics:
+ * 1. Very short duration (< 10 seconds)
+ * 2. Entry price ≈ Exit price (no real price movement)
+ * 3. Often minimal or zero quantity
+ */
+function isRealPosition(bybitPos: any): boolean {
+  try {
+    const entryPrice = parseFloat(bybitPos.avgEntryPrice);
+    const exitPrice = parseFloat(bybitPos.avgExitPrice);
+    const qty = parseFloat(bybitPos.qty);
+    
+    // Calculate duration
+    const openedAt = new Date(parseInt(bybitPos.createdTime));
+    const closedAt = new Date(parseInt(bybitPos.updatedTime));
+    const durationMs = closedAt.getTime() - openedAt.getTime();
+    const durationSeconds = durationMs / 1000;
+    
+    // Calculate price difference
+    const priceDiff = Math.abs(entryPrice - exitPrice);
+    const priceDiffPercent = entryPrice > 0 ? (priceDiff / entryPrice) * 100 : 0;
+    
+    // Funding transactions typically have:
+    // - Duration < 10 seconds
+    // - Price difference < 0.01% (essentially no movement)
+    // - These are NOT real positions, just funding fee settlements
+    
+    const isFundingTransaction = durationSeconds < 10 && priceDiffPercent < 0.01;
+    
+    if (isFundingTransaction) {
+      console.log(`   🚫 FILTERED: ${bybitPos.symbol} - Funding transaction (${durationSeconds.toFixed(1)}s, ${priceDiffPercent.toFixed(4)}% price diff)`);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`   ⚠️ Error checking position:`, error);
+    return true; // Default to including if we can't determine
+  }
+}
+
+// ============================================
 // 📥 FETCH FROM BYBIT (7-DAY SEGMENTS)
 // ============================================
 
@@ -190,21 +237,30 @@ export async function POST(request: NextRequest) {
     
     console.log(`\n✅ Fetched ${allPositions.length} total positions from Bybit`);
     
-    if (allPositions.length === 0) {
+    // ✅ NEW: Filter out funding transactions
+    console.log(`\n🔍 STEP 2.5: Filtering out funding transactions...`);
+    
+    const realPositions = allPositions.filter(isRealPosition);
+    const filteredCount = allPositions.length - realPositions.length;
+    
+    console.log(`   ✅ Filtered: ${realPositions.length} real positions, ${filteredCount} funding transactions removed`);
+    
+    if (realPositions.length === 0) {
       return NextResponse.json({
         success: true,
         message: "Brak pozycji w Bybit za ostatnie 30 dni",
         deleted: 0,
         imported: 0,
+        filtered: filteredCount,
       });
     }
     
     // STEP 3: Import all positions to database
-    console.log(`\n💾 STEP 3: Importing ${allPositions.length} positions to database...`);
+    console.log(`\n💾 STEP 3: Importing ${realPositions.length} positions to database...`);
     
     let imported = 0;
     
-    for (const bybitPos of allPositions) {
+    for (const bybitPos of realPositions) {
       const entryPrice = parseFloat(bybitPos.avgEntryPrice);
       const exitPrice = parseFloat(bybitPos.avgExitPrice);
       const qty = parseFloat(bybitPos.qty);

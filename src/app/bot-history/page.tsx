@@ -90,6 +90,7 @@ export default function BotHistoryPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [showDiagnosisDialog, setShowDiagnosisDialog] = useState(false);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
+  const [filteredFundingCount, setFilteredFundingCount] = useState<number>(0);
 
   useEffect(() => {
     fetchHistory();
@@ -148,10 +149,20 @@ export default function BotHistoryPage() {
       const data = await response.json();
 
       if (data.success) {
+        const message = data.filtered 
+          ? `✅ ${data.message}\n🚫 Odfiltrowano ${data.filtered} transakcji fundingu`
+          : `✅ ${data.message}`;
+        
         toast.success(
-          `✅ ${data.message}`,
+          message,
           { id: "sync", duration: 5000 }
         );
+        
+        // Store filtered count for display
+        if (data.filtered) {
+          setFilteredFundingCount(data.filtered);
+        }
+        
         // Refresh list
         await fetchHistory();
       } else {
@@ -298,8 +309,21 @@ export default function BotHistoryPage() {
                 <Download className="inline h-4 w-4 text-purple-400 mr-1" />
                 <strong>Synchronizuj:</strong> Usuwa wszystkie pozycje z lokalnej bazy i importuje 
                 świeżą historię z Bybit (ostatnie 30 dni) wraz z opłatami transakcyjnymi i fundingowymi.
+                <br />
+                <span className="text-purple-300 text-xs mt-1 block">
+                  🔍 Automatycznie filtruje transakcje fundingu (krótsze niż 10s bez ruchu ceny)
+                </span>
               </p>
             </div>
+
+            {filteredFundingCount > 0 && (
+              <div className="mt-2 p-3 rounded-lg bg-blue-900/30 border border-blue-700/50">
+                <p className="text-sm text-blue-200">
+                  <CheckCircle className="inline h-4 w-4 text-blue-400 mr-1" />
+                  <strong>Ostatnia synchronizacja:</strong> Odfiltrowano {filteredFundingCount} transakcji fundingu
+                </p>
+              </div>
+            )}
 
             <div className="mt-2 p-3 rounded-lg bg-orange-900/30 border border-orange-700/50">
               <p className="text-sm text-orange-200">
