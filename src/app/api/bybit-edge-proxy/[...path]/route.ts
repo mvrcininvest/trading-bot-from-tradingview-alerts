@@ -7,15 +7,17 @@ const BYBIT_BASE_URL = 'https://api.bybit.com';
 
 export async function GET(
   request: Request,
-  { params }: { params: { path: string[] } }
+  props: { params: Promise<{ path: string[] }> }
 ) {
+  const params = await props.params;
   return handleBybitProxy(request, params.path);
 }
 
 export async function POST(
   request: Request,
-  { params }: { params: { path: string[] } }
+  props: { params: Promise<{ path: string[] }> }
 ) {
+  const params = await props.params;
   return handleBybitProxy(request, params.path);
 }
 
