@@ -3,6 +3,9 @@
  * Fetches trading rules and lot size info for symbols
  */
 
+// ✅ USE PROXY URL
+const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+
 interface BybitLotSizeFilter {
   minOrderQty: string;
   maxOrderQty: string;
@@ -99,7 +102,7 @@ export async function getSymbolInfo(
       .map((key) => `${key}=${params[key]}`)
       .join("&");
 
-    const url = `https://api.bybit.com/v5/market/instruments-info?${queryString}`;
+    const url = `${BYBIT_PROXY_URL}/v5/market/instruments-info?${queryString}`;
 
     const response = await fetch(url, {
       method: "GET",

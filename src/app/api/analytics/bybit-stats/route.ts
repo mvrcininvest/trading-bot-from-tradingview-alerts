@@ -4,6 +4,9 @@ import { botSettings, positionHistory, botPositions } from "@/db/schema";
 import crypto from "crypto";
 import { eq, sql } from "drizzle-orm";
 
+// ✅ USE PROXY URL
+const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+
 // ============================================
 // 🔐 BYBIT V5 SIGNATURE HELPER (FIXED)
 // ============================================
@@ -215,7 +218,7 @@ async function getAllClosedPnL(
     
     const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
     
-    const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
+    const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
     
     console.log(`[Bybit Stats] Page ${pageCount} request`);
     
@@ -287,7 +290,7 @@ async function getWalletBalance(apiKey: string, apiSecret: string) {
   
   const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
   
-  const url = `https://api.bybit.com/v5/account/wallet-balance?${queryString}`;
+  const url = `${BYBIT_PROXY_URL}/v5/account/wallet-balance?${queryString}`;
   
   const response = await fetch(url, {
     method: "GET",
@@ -338,7 +341,7 @@ async function getOpenPositions(apiKey: string, apiSecret: string) {
   
   const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
   
-  const url = `https://api.bybit.com/v5/position/list?${queryString}`;
+  const url = `${BYBIT_PROXY_URL}/v5/position/list?${queryString}`;
   
   const response = await fetch(url, {
     method: "GET",

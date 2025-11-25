@@ -16,6 +16,9 @@ import {
   clearRepairAttempts
 } from './oko-saurona';
 
+// ✅ USE PROXY URL
+const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER
 // ============================================
@@ -56,7 +59,7 @@ async function getCurrentPrice(
     "Content-Type": "application/json",
   };
   
-  const response = await fetch(`https://api.bybit.com/v5/market/tickers?${params}`, {
+  const response = await fetch(`${BYBIT_PROXY_URL}/v5/market/tickers?${params}`, {
     method: "GET",
     headers,
   });
@@ -92,7 +95,7 @@ async function getAlgoOrders(
     "Content-Type": "application/json",
   };
   
-  const response = await fetch(`https://api.bybit.com/v5/order/realtime?${params}`, {
+  const response = await fetch(`${BYBIT_PROXY_URL}/v5/order/realtime?${params}`, {
     method: "GET",
     headers,
   });
@@ -150,7 +153,7 @@ async function closePositionPartial(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(`https://api.bybit.com/v5/order/create`, {
+  const response = await fetch(`${BYBIT_PROXY_URL}/v5/order/create`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -368,7 +371,7 @@ async function cancelAlgoOrder(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(`https://api.bybit.com/v5/order/cancel`, {
+  const response = await fetch(`${BYBIT_PROXY_URL}/v5/order/cancel`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -452,7 +455,7 @@ async function setAlgoOrder(
   console.error(`🔧 [SET_ALGO] Setting ${orderType.toUpperCase()} for ${symbol}`);
   console.error(`   Payload: ${JSON.stringify(payload, null, 2)}`);
 
-  const response = await fetch(`https://api.bybit.com/v5/position/trading-stop`, {
+  const response = await fetch(`${BYBIT_PROXY_URL}/v5/position/trading-stop`, {
     method: "POST",
     headers,
     body: bodyString,
@@ -680,7 +683,7 @@ async function getBybitPositions(
     "Content-Type": "application/json",
   };
   
-  const response = await fetch(`https://api.bybit.com/v5/position/list?${params}`, {
+  const response = await fetch(`${BYBIT_PROXY_URL}/v5/position/list?${params}`, {
     method: "GET",
     headers,
   });

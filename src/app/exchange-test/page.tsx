@@ -195,6 +195,16 @@ export default function ExchangeTestPage() {
           </div>
         </div>
 
+        <Alert className="border-blue-500 bg-blue-500/10">
+          <AlertTriangle className="h-5 w-5 text-blue-500" />
+          <AlertTitle className="text-blue-500">🌐 Używam proxy serwera dla połączeń Bybit</AlertTitle>
+          <AlertDescription className="text-sm text-gray-300">
+            Wszystkie zapytania do Bybit API przechodzą przez proxy serwer w Singapurze, aby ominąć blokady geo.
+            <br />
+            <strong className="text-blue-300">Proxy URL:</strong> <code className="text-xs bg-gray-800 px-1 py-0.5 rounded">https://bybit-proxy-dawn-snowflake-6188.fly.dev</code>
+          </AlertDescription>
+        </Alert>
+
         <Alert className="border-red-500 bg-red-500/10">
           <AlertTriangle className="h-5 w-5 text-red-500" />
           <AlertTitle className="text-red-500">⚠️ UWAGA: BYBIT MAINNET - PRAWDZIWE PIENIĄDZE!</AlertTitle>

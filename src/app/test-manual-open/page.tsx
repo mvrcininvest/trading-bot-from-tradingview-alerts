@@ -74,9 +74,9 @@ export default function TestManualOpenPage() {
     setResult(null);
 
     try {
-      const baseUrl = "https://api.bybit.com"; // Only mainnet supported
+      const baseUrl = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit"; // Use proxy URL
 
-      console.log("🔧 Environment: mainnet");
+      console.log("🔧 Using Proxy Server");
       console.log("🔧 Base URL:", baseUrl);
 
       // Step 1: Set Leverage (optional, non-critical)
@@ -151,7 +151,7 @@ export default function TestManualOpenPage() {
       if (orderText.includes('<!DOCTYPE') || orderText.includes('<html')) {
         setResult({
           success: false,
-          message: "❌ BYBIT ZABLOKOWAŁ REQUEST!\n\nBybit zwrócił HTML zamiast JSON - to oznacza CloudFlare block.\n\n🔍 DIAGNOZA:\nProblem NIE jest w kodzie ani signing - Bybit celowo blokuje requesty do API Demo.\n\n✅ ROZWIĄZANIE:\n1. To jest NORMALNE dla Bybit Demo - może działać w prawdziwym webhookzie\n2. Jeśli chcesz testować - użyj Testnet zamiast Demo\n3. Lub spróbuj za kilka minut (tymczasowa blokada IP)\n\nTwoje klucze mogą być OK, ale Bybit Demo blokuje zbyt wiele requestów z tego samego IP.",
+          message: "❌ Request został zablokowany!\n\nOtrzymano HTML zamiast JSON - prawdopodobnie CloudFlare block lub blokada geo.\n\n✅ ROZWIĄZANIE: Używaj proxy serwera (który już używasz) lub spróbuj za kilka minut.",
           step: "cloudflare_block",
           data: { responsePreview: orderText.substring(0, 200) }
         });
@@ -165,7 +165,7 @@ export default function TestManualOpenPage() {
       } catch (e) {
         setResult({
           success: false,
-          message: `❌ Nieprawidłowa odpowiedź JSON od Bybit:\n\n${orderText.substring(0, 300)}`,
+          message: `❌ Nieprawidłowa odpowiedź JSON:\n\n${orderText.substring(0, 300)}`,
           step: "parse_error"
         });
         return;
@@ -177,14 +177,14 @@ export default function TestManualOpenPage() {
       if (orderData.retCode === 0) {
         setResult({
           success: true,
-          message: `✅ POZYCJA OTWARTA POMYŚLNIE!\n\nOrder ID: ${orderData.result?.orderId}\nSymbol: ${symbol}\nSide: ${side}\nQuantity: ${quantity}\n\n🎉 Klucze API działają POPRAWNIE!\n\nJeśli to działa, ale webhook nie - problem jest w server-side signing lub różnicy między client-side/server-side.`,
+          message: `✅ POZYCJA OTWARTA POMYŚLNIE!\n\nOrder ID: ${orderData.result?.orderId}\nSymbol: ${symbol}\nSide: ${side}\nQuantity: ${quantity}\n\n🎉 Proxy działa poprawnie!`,
           step: "success",
           data: orderData
         });
       } else {
         setResult({
           success: false,
-          message: `❌ Bybit odrzucił order (retCode ${orderData.retCode}):\n\n${orderData.retMsg}\n\n🔍 To oznacza że:\n- Signing jest POPRAWNY (Bybit zrozumiał request)\n- Ale coś jest nie tak z parametrami lub uprawnieniami klucza\n\nSprawdź:\n1. Czy klucz ma uprawnienia "Contract Trading"\n2. Czy symbol ${symbol} jest dostępny\n3. Czy quantity ${quantity} jest poprawna (minimum dla ${symbol})`,
+          message: `❌ Bybit odrzucił order (retCode ${orderData.retCode}):\n\n${orderData.retMsg}\n\n🔍 Sprawdź uprawnienia klucza API i parametry.`,
           step: "order_rejected",
           data: orderData
         });
@@ -194,7 +194,7 @@ export default function TestManualOpenPage() {
       console.error("❌ Error:", error);
       setResult({
         success: false,
-        message: `❌ Błąd połączenia:\n\n${error instanceof Error ? error.message : "Nieznany błąd"}\n\nTo może być:\n- Problem z siecią\n- CORS (jeśli test z przeglądarki)\n- Timeout`,
+        message: `❌ Błąd połączenia:\n\n${error instanceof Error ? error.message : "Nieznany błąd"}`,
         step: "network_error"
       });
     } finally {

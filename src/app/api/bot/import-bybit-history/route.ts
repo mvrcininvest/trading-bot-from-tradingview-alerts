@@ -6,6 +6,9 @@ import { eq, and } from "drizzle-orm";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
+// ✅ USE PROXY URL
+const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+
 interface BybitHistoryPosition {
   symbol: string;
   side: "Buy" | "Sell";
@@ -80,7 +83,7 @@ async function fetchBybitHistoryPage(
     .map((key) => `${key}=${params[key]}`)
     .join("&");
 
-  const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
+  const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
 
   const response = await fetch(url, {
     method: "GET",

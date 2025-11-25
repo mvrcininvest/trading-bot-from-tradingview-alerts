@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
-const BYBIT_MAINNET_URL = "https://api.bybit.com";
+const BYBIT_MAINNET_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
 
 function createBybitSignature(
   timestamp: string,
