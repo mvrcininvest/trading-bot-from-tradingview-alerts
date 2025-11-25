@@ -1,8 +1,8 @@
 # fly.toml app configuration file
 # https://fly.io/docs/reference/configuration/
 
-app = "bybit-proxy"
-primary_region = "sin" # Singapore
+app = "bybit-proxy-dawn-snowflake-6188"
+primary_region = "ams"  # ← ZMIENIONE z "sin" na "ams"
 
 [build]
 
