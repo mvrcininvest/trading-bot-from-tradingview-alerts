@@ -20,23 +20,24 @@ export function TradingChart({
   closedAt,
   side,
 }: TradingChartProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    // Create new abort controller for this render
     abortControllerRef.current = new AbortController();
     
-    // Set aggressive timeout - 3 seconds total
+    // Set aggressive timeout - 5 seconds total
     timeoutRef.current = setTimeout(() => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       setLoading(false);
-      setError("Timeout - wykres nie załadował się w 3s");
-    }, 3000);
+      setError("Timeout - wykres nie załadował się w 5s");
+    }, 5000);
 
     const loadChart = async () => {
       try {

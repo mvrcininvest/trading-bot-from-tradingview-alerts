@@ -214,10 +214,6 @@ export default function BotHistoryPage() {
     profitable: history.filter(h => h.pnl > 0).length,
     losses: history.filter(h => h.pnl < 0).length,
     totalPnl: history.reduce((sum, h) => sum + h.pnl, 0),
-    totalGrossPnl: history.reduce((sum, h) => sum + (h.grossPnl || h.pnl), 0),
-    totalTradingFees: history.reduce((sum, h) => sum + (h.tradingFees || 0), 0),
-    totalFundingFees: history.reduce((sum, h) => sum + (h.fundingFees || 0), 0),
-    totalFees: history.reduce((sum, h) => sum + (h.totalFees || 0), 0),
     winRate: history.length > 0 ? (history.filter(h => h.pnl > 0).length / history.length) * 100 : 0,
   };
 
@@ -300,7 +296,7 @@ export default function BotHistoryPage() {
         </div>
 
         {/* ✅ ENHANCED STATISTICS: Show fees breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
             <CardHeader className="pb-2">
               <CardDescription className="text-gray-300">Łącznie</CardDescription>
@@ -334,36 +330,6 @@ export default function BotHistoryPage() {
               <CardTitle className="text-3xl text-white">{stats.winRate.toFixed(1)}%</CardTitle>
             </CardHeader>
           </Card>
-
-          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm hover:bg-gray-900/80 transition-all">
-            <CardHeader className="pb-2">
-              <CardDescription className="text-gray-300">Net PnL</CardDescription>
-              <CardTitle
-                className={`text-3xl ${stats.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}
-              >
-                {stats.totalPnl >= 0 ? "+" : ""}
-                {stats.totalPnl.toFixed(2)}
-              </CardTitle>
-              <CardDescription className="text-xs text-gray-400">
-                po opłatach
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="border-yellow-800 bg-yellow-900/20 backdrop-blur-sm hover:bg-yellow-900/30 transition-all">
-            <CardHeader className="pb-2">
-              <CardDescription className="text-yellow-300 flex items-center gap-1">
-                <DollarSign className="h-3 w-3" />
-                Opłaty
-              </CardDescription>
-              <CardTitle className="text-3xl text-yellow-400">
-                -{stats.totalFees.toFixed(2)}
-              </CardTitle>
-              <CardDescription className="text-xs text-yellow-300/70">
-                trading + funding
-              </CardDescription>
-            </CardHeader>
-          </Card>
         </div>
 
         {/* Loading */}
@@ -393,7 +359,6 @@ export default function BotHistoryPage() {
             <CardContent>
               <div className="space-y-3">
                 {history.map((pos, idx) => {
-                  const hasFeeData = (pos.tradingFees !== undefined && pos.fundingFees !== undefined);
                   const isExpanded = expandedPositions.has(idx);
                   const transactions = getTransactions(pos);
                   
@@ -467,38 +432,6 @@ export default function BotHistoryPage() {
                               {new Date(pos.closedAt).toLocaleString('pl-PL')} | 
                               Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
                             </div>
-
-                            {/* Fees - always visible */}
-                            {hasFeeData && (
-                              <div className="mt-2 p-2 rounded bg-gray-800/50 border border-gray-700/50">
-                                <div className="grid grid-cols-3 gap-3 text-xs">
-                                  <div>
-                                    <div className="text-gray-400">Gross PnL:</div>
-                                    <div className={`font-semibold ${(pos.grossPnl || pos.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                      {(pos.grossPnl || pos.pnl) >= 0 ? '+' : ''}{(pos.grossPnl || pos.pnl).toFixed(4)}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className="text-gray-400">Trading:</div>
-                                    <div className="font-semibold text-yellow-400">
-                                      -{(pos.tradingFees || 0).toFixed(4)}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className="text-gray-400">Funding:</div>
-                                    <div className="font-semibold text-orange-400">
-                                      -{(pos.fundingFees || 0).toFixed(4)}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="mt-2 pt-2 border-t border-gray-700/50 flex justify-between items-center">
-                                  <div className="text-xs text-gray-400">Total Fees:</div>
-                                  <div className="text-xs font-bold text-red-400">
-                                    -{(pos.totalFees || 0).toFixed(4)} USDT
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
                           
                           <div className="text-right">
@@ -508,11 +441,6 @@ export default function BotHistoryPage() {
                             <div className="text-sm text-gray-400">
                               {pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}% ROE
                             </div>
-                            {hasFeeData && (
-                              <div className="mt-1 text-xs text-yellow-300/70">
-                                (po opłatach)
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>

@@ -103,9 +103,6 @@ export default function StatystykiPage() {
         
         if (data.warning) {
           setWarning(data.warning);
-          toast.warning("Używam lokalnej bazy danych", {
-            description: "Bybit API niedostępne - dane z bot history"
-          });
         }
       } else {
         toast.error("Błąd pobierania statystyk");

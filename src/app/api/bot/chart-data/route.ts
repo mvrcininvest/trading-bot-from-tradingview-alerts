@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform Bybit kline data to lightweight-charts format
-    const klines = data.result.list.map((k: any) => ({
+    const chartData = data.result.list.map((k: any) => ({
       time: parseInt(k[0]) / 1000, // Convert to seconds
       open: parseFloat(k[1]),
       high: parseFloat(k[2]),
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      klines,
+      data: chartData,
     });
   } catch (error: any) {
     console.error("Chart data API error:", error);
