@@ -3,12 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Activity } from "lucide-react";
 
-// Dynamically import lightweight-charts types
-type IChartApi = any;
-type ISeriesApi = any;
-type CandlestickData = any;
-type Time = any;
-
 interface TradingChartProps {
   symbol: string;
   entryPrice: number;
@@ -27,25 +21,31 @@ export function TradingChart({
   side,
 }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi | null>(null);
+  const chartRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chartLibLoaded, setChartLibLoaded] = useState(false);
 
   useEffect(() => {
-    // Dynamically import lightweight-charts only on client side
     let isMounted = true;
 
     const initChart = async () => {
       if (!chartContainerRef.current) return;
 
       try {
-        // Import lightweight-charts dynamically
-        const { createChart } = await import("lightweight-charts");
+        // Load lightweight-charts from CDN to bypass webpack
+        if (!(window as any).LightweightCharts) {
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load chart library'));
+            document.head.appendChild(script);
+          });
+        }
         
         if (!isMounted) return;
-        setChartLibLoaded(true);
+
+        const { createChart } = (window as any).LightweightCharts;
 
         // Create chart
         const chart = createChart(chartContainerRef.current, {
@@ -83,8 +83,6 @@ export function TradingChart({
           wickUpColor: "#10b981",
           wickDownColor: "#ef4444",
         });
-
-        candlestickSeriesRef.current = candlestickSeries;
 
         // Fetch data
         const fetchChartData = async () => {
