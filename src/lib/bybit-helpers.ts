@@ -1,7 +1,6 @@
-// ✅ USE FLY.IO PROXY to bypass CloudFlare block
-// Direct connection from Vercel is blocked by CloudFlare
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || 'https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit';
-const USE_PROXY = true; // Always use proxy from Vercel
+// ✅ USE VERCEL EDGE PROXY (Singapore region) - Primary proxy
+// Vercel Edge runs in the same region as deployment (Singapore)
+const BYBIT_PROXY_URL = '/api/bybit-edge-proxy';
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)

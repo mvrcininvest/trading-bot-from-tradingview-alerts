@@ -155,17 +155,9 @@ export default function GlownaPage() {
     try {
       setBalanceError(null);
       
-      // ⚠️ KNOWN ISSUE: CloudFlare permanently blocks Bybit API (even through proxy)
-      // This is documented in BYBIT_GEO_BLOCKING_FIX.md
-      // Balance will always show as unavailable from production
+      // ✅ NEW: Try to fetch balance using Vercel Edge Proxy (Singapore)
+      // The backend now uses /api/bybit-edge-proxy which runs in Singapore region
       
-      setBalanceError("CloudFlare blokuje Bybit API");
-      setLoadingBalance(false);
-      return;
-
-      // The code below is kept for reference but won't work due to CloudFlare block
-      /*
-      // Pobierz credentials z settings (z cache busting)
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
         cache: "no-store",
@@ -209,10 +201,9 @@ export default function GlownaPage() {
         // Jeśli błąd CloudFlare lub inny - pokaż komunikat
         setBalanceError(data.message || "Nie można pobrać salda");
       }
-      */
     } catch (err) {
       console.error("Load balance error:", err);
-      setBalanceError("CloudFlare blokuje Bybit API");
+      setBalanceError("Błąd połączenia z API");
     } finally {
       setLoadingBalance(false);
     }
@@ -353,14 +344,29 @@ export default function GlownaPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col gap-1">
-                <div className="text-sm text-red-400 font-semibold">
-                  ⛔ Niedostępne
+              {loadingBalance ? (
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 animate-spin text-blue-400" />
+                  <span className="text-sm text-gray-400">Ładowanie...</span>
                 </div>
-                <div className="text-xs text-gray-500">
-                  CloudFlare blokuje API
+              ) : balanceError ? (
+                <div className="flex flex-col gap-1">
+                  <div className="text-sm text-red-400 font-semibold">
+                    ⚠️ Niedostępne
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {balanceError}
+                  </div>
                 </div>
-              </div>
+              ) : totalBalance > 0 ? (
+                <div className="text-2xl font-bold text-white">
+                  {totalBalance.toFixed(2)} <span className="text-lg">USDT</span>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400">
+                  Brak salda
+                </div>
+              )}
             </CardContent>
           </Card>
 

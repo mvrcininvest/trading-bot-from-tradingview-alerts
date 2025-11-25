@@ -1,135 +1,97 @@
-import { NextRequest, NextResponse } from 'next/server';
+// ✅ VERCEL EDGE FUNCTION (Singapore region) - Proxy for Bybit API
+// This runs on Vercel's edge network in the deployed region (Singapore)
 
 export const runtime = 'edge';
-export const preferredRegion = ['sin1', 'hkg1', 'icn1']; // Singapore, Hong Kong, Seoul
 
-/**
- * 🌐 VERCEL EDGE PROXY FOR BYBIT API
- * 
- * Omija geo-blocking CloudFront używając Vercel Edge Functions w Azji.
- * Fallback dla Fly.io proxy gdy CloudFront blokuje.
- */
+const BYBIT_BASE_URL = 'https://api.bybit.com';
+
 export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  request: Request,
+  { params }: { params: { path: string[] } }
 ) {
+  return handleBybitProxy(request, params.path);
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: { path: string[] } }
+) {
+  return handleBybitProxy(request, params.path);
+}
+
+async function handleBybitProxy(request: Request, pathSegments: string[]) {
   try {
-    const { path } = await params;
-    const pathString = path.join('/');
-    const searchParams = request.nextUrl.searchParams;
+    const path = pathSegments.join('/');
+    const url = new URL(request.url);
     
-    // Build Bybit API URL
-    const queryString = searchParams.toString();
-    const bybitUrl = `https://api.bybit.com/${pathString}${queryString ? `?${queryString}` : ''}`;
+    // Zbuduj target URL
+    const targetUrl = `${BYBIT_BASE_URL}/${path}${url.search}`;
+    
+    console.log(`[Vercel Edge Proxy] ${request.method} ${targetUrl}`);
 
-    console.log(`[Vercel Edge Proxy] GET ${bybitUrl}`);
-
-    // Forward headers from client
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    // Copy authentication headers if present
-    const authHeaders = [
-      'X-BAPI-API-KEY',
-      'X-BAPI-TIMESTAMP',
-      'X-BAPI-SIGN',
-      'X-BAPI-RECV-WINDOW',
-    ];
-
-    authHeaders.forEach((headerName) => {
-      const value = request.headers.get(headerName);
-      if (value) {
-        headers[headerName] = value;
+    // Skopiuj headers z request (oprócz host)
+    const headers = new Headers();
+    request.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'host') {
+        headers.set(key, value);
       }
     });
 
-    // Make request to Bybit
-    const response = await fetch(bybitUrl, {
-      method: 'GET',
+    // Dodaj headers dla Bybit
+    headers.set('Content-Type', 'application/json');
+
+    const options: RequestInit = {
+      method: request.method,
       headers,
-    });
+    };
 
-    const data = await response.json();
+    // Dla POST/PUT dodaj body
+    if (request.method === 'POST' || request.method === 'PUT') {
+      const body = await request.text();
+      if (body) {
+        options.body = body;
+      }
+    }
 
-    console.log(`[Vercel Edge Proxy] Response: ${response.status} - ${data.retMsg || 'OK'}`);
+    // Forward request do Bybit
+    const response = await fetch(targetUrl, options);
+    const data = await response.text();
 
-    // Return response
-    return NextResponse.json(data, {
+    console.log(`[Vercel Edge Proxy] Response: ${response.status}`);
+
+    // Zwróć response z tymi samymi statusem i headerami
+    return new Response(data, {
       status: response.status,
       headers: {
-        'Cache-Control': 'no-store, max-age=0',
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Vercel Edge Proxy] Error:', error);
-    return NextResponse.json(
-      { 
-        retCode: -1, 
-        retMsg: error instanceof Error ? error.message : 'Proxy error' 
-      },
-      { status: 500 }
+    
+    return new Response(
+      JSON.stringify({
+        retCode: -1,
+        retMsg: `Proxy error: ${error.message}`,
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
     );
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  try {
-    const { path } = await params;
-    const pathString = path.join('/');
-    const body = await request.text();
-    
-    const bybitUrl = `https://api.bybit.com/${pathString}`;
-
-    console.log(`[Vercel Edge Proxy] POST ${bybitUrl}`);
-
-    // Forward headers from client
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    const authHeaders = [
-      'X-BAPI-API-KEY',
-      'X-BAPI-TIMESTAMP',
-      'X-BAPI-SIGN',
-      'X-BAPI-RECV-WINDOW',
-    ];
-
-    authHeaders.forEach((headerName) => {
-      const value = request.headers.get(headerName);
-      if (value) {
-        headers[headerName] = value;
-      }
-    });
-
-    // Make request to Bybit
-    const response = await fetch(bybitUrl, {
-      method: 'POST',
-      headers,
-      body,
-    });
-
-    const data = await response.json();
-
-    console.log(`[Vercel Edge Proxy] Response: ${response.status} - ${data.retMsg || 'OK'}`);
-
-    return NextResponse.json(data, {
-      status: response.status,
-      headers: {
-        'Cache-Control': 'no-store, max-age=0',
-      },
-    });
-  } catch (error) {
-    console.error('[Vercel Edge Proxy] Error:', error);
-    return NextResponse.json(
-      { 
-        retCode: -1, 
-        retMsg: error instanceof Error ? error.message : 'Proxy error' 
-      },
-      { status: 500 }
-    );
-  }
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+    },
+  });
 }
