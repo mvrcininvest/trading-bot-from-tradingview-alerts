@@ -1,15 +1,12 @@
 {
-  "version": 2,
-  "buildCommand": "bun run build",
-  "headers": [
+  "buildCommand": "echo 'BUILD_ID=diagnose-7day-segments-v5.0.0' && bun run build",
+  "installCommand": "bun install",
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "rewrites": [
     {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Build-ID",
-          "value": "fix-bybit-signature-v5.0.0-2025-11-25T12:00:00.000Z"
-        }
-      ]
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
     }
   ]
 }
