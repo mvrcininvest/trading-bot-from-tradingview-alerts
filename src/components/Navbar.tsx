@@ -10,7 +10,7 @@ export default function Navbar() {
   const router = useRouter();
 
   const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
+    { href: "/trading-overview", label: "Dashboard", icon: TrendingUp },
     { href: "/alerts", label: "Alerty", icon: Bell },
     { href: "/bot-history", label: "Historia", icon: History },
     { href: "/logi-bota", label: "Logi", icon: FileText },
@@ -26,7 +26,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/trading-overview")}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           >
             <div className="p-2 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 border border-blue-500/30">

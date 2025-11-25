@@ -358,16 +358,28 @@ export async function POST(request: NextRequest) {
     // STEP 3: Import all positions to database
     console.log(`\n💾 STEP 3: Importing ${aggregatedPositions.length} positions to database...`);
     
+    // ✅ CRITICAL: Filter date - only positions closed on or after November 17, 2025
+    const filterDate = new Date('2025-11-17T00:00:00.000Z');
+    const filterTimestamp = filterDate.getTime();
+    
     let imported = 0;
+    let skippedBeforeNov17 = 0;
     
     for (const bybitPos of aggregatedPositions) {
+      const closedAt = new Date(parseInt(bybitPos.updatedTime));
+      
+      // ✅ Skip positions closed before November 17, 2025
+      if (closedAt.getTime() < filterTimestamp) {
+        skippedBeforeNov17++;
+        continue;
+      }
+      
       const entryPrice = parseFloat(bybitPos.avgEntryPrice);
       const exitPrice = parseFloat(bybitPos.avgExitPrice);
       const qty = parseFloat(bybitPos.qty);
       const netPnl = parseFloat(bybitPos.closedPnl); // This is AFTER fees
       const leverage = parseInt(bybitPos.leverage);
       
-      const closedAt = new Date(parseInt(bybitPos.updatedTime));
       const openedAt = new Date(parseInt(bybitPos.createdTime));
       
       const positionValue = qty * entryPrice;
@@ -442,15 +454,19 @@ export async function POST(request: NextRequest) {
     }
     
     console.log(`✅ Imported ${imported} positions with fee calculations`);
+    if (skippedBeforeNov17 > 0) {
+      console.log(`⏭️ Skipped ${skippedBeforeNov17} positions closed before Nov 17, 2025`);
+    }
     console.log(`\n🔄 ========== FULL BYBIT SYNC COMPLETE ==========\n`);
     
     return NextResponse.json({
       success: true,
-      message: `✅ Synchronizacja: ${imported} pozycji z Bybit (z opłatami)`,
+      message: `✅ Synchronizacja: ${imported} pozycji od 17 listopada 2025 (z opłatami)`,
       deleted: 0,
       imported,
       filtered: filteredCount,
       aggregated: realPositions.length - aggregatedPositions.length,
+      skippedBeforeNov17,
       daysBack: 30,
     });
     

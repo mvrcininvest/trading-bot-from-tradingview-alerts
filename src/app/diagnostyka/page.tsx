@@ -225,19 +225,22 @@ export default function DiagnosticsPage() {
       // ✅ Get only today's verifications (Warsaw timezone - UTC+1)
       const now = new Date();
       
-      // Convert to Warsaw time (UTC+1 in winter, UTC+2 in summer)
-      // Get offset in minutes from UTC
-      const warsawOffset = 60; // UTC+1 (60 minutes)
+      // Warsaw is UTC+1
+      const warsawOffset = 60; // minutes
       
-      // Calculate today's start in Warsaw timezone
-      const nowUTC = now.getTime();
-      const nowWarsaw = new Date(nowUTC + warsawOffset * 60 * 1000);
+      // Get current time in Warsaw
+      const nowWarsaw = new Date(now.getTime() + warsawOffset * 60 * 1000);
       
-      // Set to start of day in Warsaw
-      const todayWarsaw = new Date(nowWarsaw.getFullYear(), nowWarsaw.getMonth(), nowWarsaw.getDate(), 0, 0, 0, 0);
+      // Start of today in Warsaw (00:00:00)
+      const todayStartWarsaw = new Date(Date.UTC(
+        nowWarsaw.getUTCFullYear(),
+        nowWarsaw.getUTCMonth(),
+        nowWarsaw.getUTCDate(),
+        0, 0, 0, 0
+      ));
       
-      // Convert back to UTC for API query
-      const todayStartUTC = new Date(todayWarsaw.getTime() - warsawOffset * 60 * 1000);
+      // Convert back to UTC for the filter
+      const todayStartUTC = new Date(todayStartWarsaw.getTime() - warsawOffset * 60 * 1000);
       const todayStart = todayStartUTC.toISOString();
       
       console.log(`[Weryfikacje] Pobieranie od: ${todayStart} (00:00 czasu warszawskiego)`);

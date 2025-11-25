@@ -179,15 +179,6 @@ export default function StatystykiPage() {
           </div>
         </div>
 
-        {dataSource === "local_db" && (
-          <Alert className="border-blue-700 bg-blue-900/20">
-            <Database className="h-4 w-4 text-blue-400" />
-            <AlertDescription className="text-sm text-blue-200">
-              📊 Statystyki z lokalnej bazy danych (bot_position_history).
-            </AlertDescription>
-          </Alert>
-        )}
-
         {dataSource === "bybit" && (
           <Alert className="border-green-700 bg-green-900/20">
             <Database className="h-4 w-4 text-green-400" />

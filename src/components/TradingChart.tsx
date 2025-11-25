@@ -24,12 +24,13 @@ export function TradingChart({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     abortControllerRef.current = new AbortController();
     
     // Set aggressive timeout - 3 seconds total
-    const mainTimeout = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -127,7 +128,9 @@ export function TradingChart({
             candlestickSeries.setMarkers(markers as any);
             chart.timeScale().fitContent();
 
-            clearTimeout(mainTimeout);
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+            }
             setLoading(false);
             setError(null);
           } catch (err) {
@@ -161,7 +164,9 @@ export function TradingChart({
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      clearTimeout(mainTimeout);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
     };
   }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side]);
 
