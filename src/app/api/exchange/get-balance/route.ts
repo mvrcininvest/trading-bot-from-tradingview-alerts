@@ -20,12 +20,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log('[Get Balance] Fetching wallet balance...');
+    console.log('[Get Balance] VERCEL_URL:', process.env.VERCEL_URL || 'NOT SET');
+    console.log('[Get Balance] NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL || 'NOT SET');
+
     // ✅ FIX: Use direct Bybit connection from bybit-helpers
     const result = await getBybitWalletBalance(apiKey, apiSecret);
 
+    console.log('[Get Balance] Success:', result);
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Balance fetch error:", error);
+    console.error("[Get Balance] Error:", error);
+    console.error("[Get Balance] Error stack:", error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
       {
         success: false,

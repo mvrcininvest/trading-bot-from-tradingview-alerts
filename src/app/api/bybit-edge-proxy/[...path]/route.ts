@@ -24,14 +24,17 @@ export async function POST(
 async function handleBybitProxy(request: Request, pathSegments: string[]) {
   try {
     const path = pathSegments.join('/');
-    const url = new URL(request.url);
     
-    // Zbuduj target URL
-    const targetUrl = `${BYBIT_BASE_URL}/${path}${url.search}`;
+    // Parse request URL to get query parameters
+    const requestUrl = new URL(request.url);
+    const queryString = requestUrl.search; // Includes the '?' if present
+    
+    // Build target URL
+    const targetUrl = `${BYBIT_BASE_URL}/${path}${queryString}`;
     
     console.log(`[Vercel Edge Proxy] ${request.method} ${targetUrl}`);
 
-    // Skopiuj headers z request (oprócz host)
+    // Copy headers from request (except host)
     const headers = new Headers();
     request.headers.forEach((value, key) => {
       if (key.toLowerCase() !== 'host') {
@@ -39,7 +42,7 @@ async function handleBybitProxy(request: Request, pathSegments: string[]) {
       }
     });
 
-    // Dodaj headers dla Bybit
+    // Add headers for Bybit
     headers.set('Content-Type', 'application/json');
 
     const options: RequestInit = {
@@ -47,7 +50,7 @@ async function handleBybitProxy(request: Request, pathSegments: string[]) {
       headers,
     };
 
-    // Dla POST/PUT dodaj body
+    // For POST/PUT add body
     if (request.method === 'POST' || request.method === 'PUT') {
       const body = await request.text();
       if (body) {
@@ -55,13 +58,13 @@ async function handleBybitProxy(request: Request, pathSegments: string[]) {
       }
     }
 
-    // Forward request do Bybit
+    // Forward request to Bybit
     const response = await fetch(targetUrl, options);
     const data = await response.text();
 
     console.log(`[Vercel Edge Proxy] Response: ${response.status}`);
 
-    // Zwróć response z tymi samymi statusem i headerami
+    // Return response with same status and headers
     return new Response(data, {
       status: response.status,
       headers: {
