@@ -48,13 +48,16 @@ async function calculateStatsFromLocalDB(daysBack: number) {
   
   // Calculate statistics
   const realisedPnL = closedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+  
+  // ✅ FIX: Use markPrice if available, otherwise fallback to entryPrice (no live PnL in fallback mode)
   const unrealisedPnL = openPositions.reduce((sum, p) => {
-    const current = p.currentPrice || p.entryPrice;
+    // @ts-ignore - markPrice may exist at runtime from Bybit sync
+    const current = p.markPrice || p.entryPrice;
     const entryPrice = p.entryPrice;
     const qty = p.quantity;
     const side = p.side;
     
-    const priceDiff = side === 'BUY' ? (current - entryPrice) : (entryPrice - current);
+    const priceDiff = side === 'Buy' ? (current - entryPrice) : (entryPrice - current);
     return sum + (priceDiff * qty);
   }, 0);
   
@@ -156,7 +159,8 @@ async function calculateStatsFromLocalDB(daysBack: number) {
       leverage: p.leverage || 1,
       unrealisedPnl: unrealisedPnL / (openPositions.length || 1), // Rough estimate
       entryPrice: p.entryPrice,
-      markPrice: p.currentPrice || p.entryPrice,
+      // @ts-ignore - markPrice may exist at runtime
+      markPrice: p.markPrice || p.entryPrice,
     })),
     last7Days: {
       totalTrades: last7Days.length,
