@@ -5,3 +5,19 @@ node_modules/
 *.log
 .env.local
 .DS_Store
+
+# ✅ Ignore proxy-server (deployed separately to Fly.io)
+proxy-server/
+
+# ✅ Ignore database migrations (not needed in production)
+drizzle/
+
+# ✅ Ignore documentation and config files
+*.md
+.gitignore
+.dockerignore
+
+# ✅ Ignore development files
+tsconfig.tsbuildinfo
+.turbo/
+coverage/
