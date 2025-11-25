@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// ✅ Dane z Bybit API - synchronizowane automatycznie
+// ✅ v2.0.1 - Direct Bybit API + Web Crypto
 interface HistoryPosition {
   id: string;
   symbol: string;

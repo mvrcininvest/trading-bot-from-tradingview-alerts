@@ -1,8 +1,15 @@
 {
   "buildCommand": "rm -rf .next && bun run build",
-  "framework": "nextjs",
-  "regions": ["sin1", "hkg1", "icn1"],
-  "env": {
-    "FORCE_REBUILD": "2025-11-25T12:00:00Z"
-  }
+  "crons": [],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Build-Time",
+          "value": "2025-11-25T12:00:00.000Z"
+        }
+      ]
+    }
+  ]
 }
