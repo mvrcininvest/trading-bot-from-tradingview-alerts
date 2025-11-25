@@ -10,8 +10,20 @@
       "source": "/(.*)",
       "headers": [
         {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
           "key": "X-Build-Version",
-          "value": "v3.0.0-simplified-history-2025-01-25"
+          "value": "v4.1.0-diagnosis-tool-2025-11-25T12:00:00.000Z"
         }
       ]
     }

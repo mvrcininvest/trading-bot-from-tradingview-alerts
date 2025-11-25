@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download, AlertTriangle, CheckCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // ✅ v3.0.0 - SIMPLIFIED: One button, local database only
 interface HistoryPosition {
@@ -26,13 +33,55 @@ interface HistoryPosition {
   durationMinutes: number;
 }
 
+interface DiagnosisResult {
+  success: boolean;
+  analysis: {
+    summary: {
+      database: {
+        count: number;
+        totalPnl: number;
+        profitable: number;
+        losses: number;
+        winRate: number;
+      };
+      bybit: {
+        count: number;
+        totalPnl: number;
+        profitable: number;
+        losses: number;
+        winRate: number;
+      };
+      discrepancy: {
+        countDiff: number;
+        pnlDiff: number;
+      };
+    };
+    duplicates: {
+      count: number;
+      totalDuplicatedPositions: number;
+    };
+    missingFromBybit: {
+      count: number;
+      totalPnl: number;
+    };
+    missingFromDb: {
+      count: number;
+      totalPnl: number;
+    };
+  };
+  recommendations: string[];
+}
+
 export default function BotHistoryPage() {
   const router = useRouter();
   const [history, setHistory] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [showDiagnosisDialog, setShowDiagnosisDialog] = useState(false);
+  const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
 
   useEffect(() => {
     fetchHistory();
@@ -108,6 +157,30 @@ export default function BotHistoryPage() {
     }
   };
 
+  // ✅ NEW: Diagnose mismatch
+  const runDiagnosis = async () => {
+    setDiagnosing(true);
+    try {
+      toast.loading("🔍 Diagnozowanie rozbieżności...", { id: "diagnose" });
+      
+      const response = await fetch('/api/bot/diagnose-history-mismatch');
+      const data = await response.json();
+
+      if (data.success) {
+        setDiagnosisResult(data);
+        setShowDiagnosisDialog(true);
+        toast.success("✅ Diagnoza zakończona", { id: "diagnose" });
+      } else {
+        toast.error(`❌ Błąd diagnozy: ${data.message}`, { id: "diagnose" });
+      }
+    } catch (err) {
+      console.error("Diagnosis error:", err);
+      toast.error("❌ Błąd diagnozy", { id: "diagnose" });
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
   // Obliczenia statystyk
   const stats = {
     totalTrades: history.length,
@@ -152,7 +225,7 @@ export default function BotHistoryPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Auto-refresh toggle */}
               <div className="space-y-2">
                 <label className="text-sm text-gray-300">Auto-odświeżanie:</label>
@@ -188,7 +261,21 @@ export default function BotHistoryPage() {
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white"
                 >
                   <Download className={`mr-2 h-4 w-4 ${syncing ? 'animate-bounce' : ''}`} />
-                  {syncing ? "Synchronizowanie..." : "Synchronizuj z Bybit"}
+                  {syncing ? "Synchronizowanie..." : "Synchronizuj"}
+                </Button>
+              </div>
+
+              {/* Diagnose button */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-300">Diagnostyka:</label>
+                <Button 
+                  onClick={runDiagnosis} 
+                  disabled={diagnosing}
+                  variant="outline"
+                  className="w-full border-orange-600 text-orange-400 hover:bg-orange-900/20"
+                >
+                  <AlertTriangle className={`mr-2 h-4 w-4 ${diagnosing ? 'animate-pulse' : ''}`} />
+                  {diagnosing ? "Diagnozowanie..." : "Diagnozuj"}
                 </Button>
               </div>
             </div>
@@ -197,9 +284,16 @@ export default function BotHistoryPage() {
             <div className="mt-4 p-3 rounded-lg bg-purple-900/30 border border-purple-700/50">
               <p className="text-sm text-purple-200">
                 <Download className="inline h-4 w-4 text-purple-400 mr-1" />
-                <strong>Synchronizuj z Bybit:</strong> Usuwa wszystkie pozycje z lokalnej bazy i importuje 
-                świeżą historię z giełdy Bybit (ostatnie 30 dni). Użyj tego gdy chcesz zaktualizować dane 
-                z prawdziwej giełdy.
+                <strong>Synchronizuj:</strong> Usuwa wszystkie pozycje z lokalnej bazy i importuje 
+                świeżą historię z Bybit (ostatnie 30 dni).
+              </p>
+            </div>
+
+            <div className="mt-2 p-3 rounded-lg bg-orange-900/30 border border-orange-700/50">
+              <p className="text-sm text-orange-200">
+                <AlertTriangle className="inline h-4 w-4 text-orange-400 mr-1" />
+                <strong>Diagnozuj:</strong> Porównuje dane w lokalnej bazie z Bybit API i pokazuje 
+                rozbieżności (duplikaty, brakujące pozycje, różnice w PnL).
               </p>
             </div>
 
@@ -281,7 +375,7 @@ export default function BotHistoryPage() {
                 Zamknięte Pozycje ({history.length})
               </CardTitle>
               <CardDescription>
-                Pozycje z lokalnej bazy danych - kliknij "Synchronizuj z Bybit" aby zaktualizować
+                Pozycje z lokalnej bazy danych - kliknij "Diagnozuj" jeśli dane się nie zgadzają z Bybit
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -349,6 +443,193 @@ export default function BotHistoryPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Diagnosis Dialog */}
+        <Dialog open={showDiagnosisDialog} onOpenChange={setShowDiagnosisDialog}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-400" />
+                Raport Diagnostyczny - Rozbieżności w Danych
+              </DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Porównanie danych w lokalnej bazie z danymi z Bybit API
+              </DialogDescription>
+            </DialogHeader>
+
+            {diagnosisResult && (
+              <div className="space-y-4">
+                {/* Summary Comparison */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="border-blue-700 bg-blue-900/20">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-blue-300">📊 Lokalna Baza</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Pozycje:</span>
+                        <span className="text-white font-bold">{diagnosisResult.analysis.summary.database.count}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Zyskowne:</span>
+                        <span className="text-green-400">{diagnosisResult.analysis.summary.database.profitable}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Stratne:</span>
+                        <span className="text-red-400">{diagnosisResult.analysis.summary.database.losses}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Win Rate:</span>
+                        <span className="text-white">{diagnosisResult.analysis.summary.database.winRate.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Total PnL:</span>
+                        <span className={diagnosisResult.analysis.summary.database.totalPnl >= 0 ? "text-green-400" : "text-red-400"}>
+                          {diagnosisResult.analysis.summary.database.totalPnl >= 0 ? "+" : ""}
+                          {diagnosisResult.analysis.summary.database.totalPnl.toFixed(2)} USDT
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-purple-700 bg-purple-900/20">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-purple-300">🌐 Bybit API</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Pozycje:</span>
+                        <span className="text-white font-bold">{diagnosisResult.analysis.summary.bybit.count}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Zyskowne:</span>
+                        <span className="text-green-400">{diagnosisResult.analysis.summary.bybit.profitable}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Stratne:</span>
+                        <span className="text-red-400">{diagnosisResult.analysis.summary.bybit.losses}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Win Rate:</span>
+                        <span className="text-white">{diagnosisResult.analysis.summary.bybit.winRate.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Total PnL:</span>
+                        <span className={diagnosisResult.analysis.summary.bybit.totalPnl >= 0 ? "text-green-400" : "text-red-400"}>
+                          {diagnosisResult.analysis.summary.bybit.totalPnl >= 0 ? "+" : ""}
+                          {diagnosisResult.analysis.summary.bybit.totalPnl.toFixed(2)} USDT
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Discrepancy */}
+                <Card className="border-orange-700 bg-orange-900/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm text-orange-300">⚠️ Rozbieżności</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Różnica w liczbie pozycji:</span>
+                      <span className={`font-bold ${diagnosisResult.analysis.summary.discrepancy.countDiff === 0 ? "text-green-400" : "text-orange-400"}`}>
+                        {diagnosisResult.analysis.summary.discrepancy.countDiff > 0 ? "+" : ""}
+                        {diagnosisResult.analysis.summary.discrepancy.countDiff}
+                        {diagnosisResult.analysis.summary.discrepancy.countDiff === 0 && <CheckCircle className="inline h-4 w-4 ml-1" />}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Różnica w PnL:</span>
+                      <span className={`font-bold ${Math.abs(diagnosisResult.analysis.summary.discrepancy.pnlDiff) < 0.01 ? "text-green-400" : "text-orange-400"}`}>
+                        {diagnosisResult.analysis.summary.discrepancy.pnlDiff > 0 ? "+" : ""}
+                        {diagnosisResult.analysis.summary.discrepancy.pnlDiff.toFixed(2)} USDT
+                        {Math.abs(diagnosisResult.analysis.summary.discrepancy.pnlDiff) < 0.01 && <CheckCircle className="inline h-4 w-4 ml-1" />}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Issues Found */}
+                <div className="grid grid-cols-3 gap-4">
+                  <Card className={`${diagnosisResult.analysis.duplicates.count > 0 ? "border-red-700 bg-red-900/20" : "border-green-700 bg-green-900/20"}`}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-gray-300">Duplikaty</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-white mb-1">
+                        {diagnosisResult.analysis.duplicates.totalDuplicatedPositions}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {diagnosisResult.analysis.duplicates.count} grup duplikatów
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className={`${diagnosisResult.analysis.missingFromBybit.count > 0 ? "border-yellow-700 bg-yellow-900/20" : "border-green-700 bg-green-900/20"}`}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-gray-300">Tylko w DB</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-white mb-1">
+                        {diagnosisResult.analysis.missingFromBybit.count}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {diagnosisResult.analysis.missingFromBybit.totalPnl.toFixed(2)} USDT PnL
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className={`${diagnosisResult.analysis.missingFromDb.count > 0 ? "border-yellow-700 bg-yellow-900/20" : "border-green-700 bg-green-900/20"}`}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-gray-300">Tylko na Bybit</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-white mb-1">
+                        {diagnosisResult.analysis.missingFromDb.count}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {diagnosisResult.analysis.missingFromDb.totalPnl.toFixed(2)} USDT PnL
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Recommendations */}
+                {diagnosisResult.recommendations.length > 0 && (
+                  <Card className="border-orange-700 bg-orange-900/20">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-orange-300">💡 Rekomendacje</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {diagnosisResult.recommendations.map((rec, idx) => (
+                        <div key={idx} className="flex items-start gap-2 text-sm text-orange-200">
+                          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          <span>{rec}</span>
+                        </div>
+                      ))}
+                      
+                      <div className="mt-4 pt-4 border-t border-orange-700/50">
+                        <Button 
+                          onClick={() => {
+                            setShowDiagnosisDialog(false);
+                            syncWithBybit();
+                          }}
+                          className="w-full bg-purple-600 hover:bg-purple-700"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Wykonaj Pełną Synchronizację
+                        </Button>
+                        <p className="text-xs text-gray-400 mt-2 text-center">
+                          To usunie wszystkie dane z lokalnej bazy i zaimportuje świeże dane z Bybit
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
