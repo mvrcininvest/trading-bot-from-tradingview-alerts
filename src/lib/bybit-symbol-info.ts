@@ -105,7 +105,9 @@ export async function getSymbolInfo(
       .map((key) => `${key}=${params[key]}`)
       .join("&");
 
-    const url = `${BYBIT_PROXY_URL}/v5/market/instruments-info?${queryString}`;
+    // ✅ CRITICAL FIX: Use direct Bybit API instead of proxy for symbol info
+    // This is a public endpoint that doesn't get geo-blocked
+    const url = `https://api.bybit.com/v5/market/instruments-info?${queryString}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -117,9 +119,16 @@ export async function getSymbolInfo(
       },
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ [SymbolInfo] Bybit API error (${response.status}):`, errorText);
+      throw new Error(`Failed to fetch symbol info: HTTP ${response.status}`);
+    }
+
     const data = await response.json();
 
     if (data.retCode !== 0 || !data.result?.list || data.result.list.length === 0) {
+      console.error(`❌ [SymbolInfo] Invalid response:`, data);
       throw new Error(`Failed to fetch symbol info: ${data.retMsg || "No data"}`);
     }
 

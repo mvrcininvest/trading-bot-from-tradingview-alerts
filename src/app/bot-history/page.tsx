@@ -3,14 +3,12 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download, AlertCircle, Wifi, WifiOff } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// ✅ v2.0.1 - Direct Bybit API + Web Crypto
+// ✅ v3.0.0 - SIMPLIFIED: One button, local database only
 interface HistoryPosition {
   id: string;
   symbol: string;
@@ -26,23 +24,19 @@ interface HistoryPosition {
   openedAt: string;
   closedAt: string;
   durationMinutes: number;
-  source: "bybit" | "database";
 }
 
 export default function BotHistoryPage() {
   const router = useRouter();
   const [history, setHistory] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [dataSource, setDataSource] = useState<"database" | "bybit">("database"); // ✅ Default to database (safer)
-  const [daysBack, setDaysBack] = useState<number>(30);
-  const [bybitError, setBybitError] = useState<string | null>(null); // ✅ Track Bybit errors
 
   useEffect(() => {
     fetchHistory();
-  }, [dataSource, daysBack]); // ✅ Re-fetch when source or days change
+  }, []);
 
   // ✅ Auto-refresh co 30 sekund (tylko gdy włączone)
   useEffect(() => {
@@ -50,57 +44,28 @@ export default function BotHistoryPage() {
 
     const interval = setInterval(() => {
       fetchHistory(true); // silent refresh
-    }, 30000); // 30 sekund
+    }, 30000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, dataSource, daysBack]);
+  }, [autoRefresh]);
 
   const fetchHistory = async (silent = false) => {
     if (!silent) setLoading(true);
-    setBybitError(null); // Clear previous errors
     
     try {
-      // ✅ Fetch with source parameter
-      const url = `/api/bot/history?limit=100&source=${dataSource}&daysBack=${daysBack}`;
-      const response = await fetch(url);
+      // ✅ ALWAYS fetch from local database
+      const response = await fetch('/api/bot/history?limit=100&source=database');
       const data = await response.json();
       
       if (data.success && data.history) {
         setHistory(data.history);
         setLastRefresh(new Date());
         if (!silent) {
-          const sourceLabel = dataSource === "bybit" ? "Bybit API (prawdziwe dane)" : "lokalnej bazy";
-          toast.success(`✅ Pobrano ${data.history.length} pozycji z ${sourceLabel}`);
+          toast.success(`✅ Pobrano ${data.history.length} pozycji z lokalnej bazy`);
         }
       } else {
-        // ✅ AUTOMATIC FALLBACK: If Bybit fails, try database
-        if (dataSource === "bybit" && data.code === "BYBIT_API_ERROR") {
-          const errorMsg = data.message || "Błąd połączenia z Bybit API";
-          
-          // ✅ Detect geo-blocking
-          if (errorMsg.includes("403") || errorMsg.includes("CloudFront") || errorMsg.includes("could not be satisfied")) {
-            setBybitError("🌍 Geo-blocking: Bybit blokuje requesty z regionu Vercel. To normalne - CloudFront (CDN Bybit) blokuje niektóre lokalizacje. Użyj funkcji 'Import z Bybit' aby zsynchronizować dane do lokalnej bazy.");
-          } else {
-            setBybitError(errorMsg);
-          }
-          
-          if (!silent) {
-            toast.warning("⚠️ Bybit API niedostępne - przełączam na lokalną bazę", { duration: 4000 });
-          }
-          
-          // Automatically fetch from database
-          const fallbackResponse = await fetch(`/api/bot/history?limit=100&source=database`);
-          const fallbackData = await fallbackResponse.json();
-          
-          if (fallbackData.success && fallbackData.history) {
-            setHistory(fallbackData.history);
-            setLastRefresh(new Date());
-            // Don't change dataSource state - keep user's selection
-          }
-        } else {
-          if (!silent) {
-            toast.error(data.message || "Błąd pobierania historii");
-          }
+        if (!silent) {
+          toast.error(data.message || "Błąd pobierania historii");
         }
       }
     } catch (err) {
@@ -113,49 +78,33 @@ export default function BotHistoryPage() {
     }
   };
 
-  // ✅ NOWA FUNKCJA: Import pełnych danych z Bybit
-  const importFromBybit = async () => {
-    setImporting(true);
+  // ✅ NEW: Full sync with Bybit (delete all + import fresh)
+  const syncWithBybit = async () => {
+    setSyncing(true);
     try {
-      toast.loading("Importowanie danych z Bybit...", { id: "import" });
+      toast.loading("🔄 Synchronizacja z Bybit...", { id: "sync" });
       
-      // Pobierz credentials z API
-      const credResponse = await fetch('/api/bot/credentials');
-      const credData = await credResponse.json();
-      
-      if (!credData.success || !credData.credentials?.apiKey) {
-        toast.error("Brak konfiguracji API Bybit", { id: "import" });
-        return;
-      }
-
-      // Importuj ostatnie 30 dni historii z Bybit
-      const importResponse = await fetch('/api/bot/import-bybit-history', {
+      const response = await fetch('/api/bot/sync-bybit-history', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: credData.credentials.apiKey,
-          apiSecret: credData.credentials.apiSecret,
-          daysBack: 30,
-        }),
       });
 
-      const importData = await importResponse.json();
+      const data = await response.json();
 
-      if (importData.success) {
+      if (data.success) {
         toast.success(
-          `✅ Zaimportowano ${importData.imported} nowych pozycji z Bybit (${importData.skipped} już w bazie)`,
-          { id: "import", duration: 5000 }
+          `✅ ${data.message}`,
+          { id: "sync", duration: 5000 }
         );
-        // Odśwież listę po imporcie
+        // Refresh list
         await fetchHistory();
       } else {
-        toast.error(`❌ Import nie powiódł się: ${importData.message}`, { id: "import" });
+        toast.error(`❌ Synchronizacja nie powiodła się: ${data.message}`, { id: "sync" });
       }
     } catch (err) {
-      console.error("Import error:", err);
-      toast.error("Błąd importu danych z Bybit", { id: "import" });
+      console.error("Sync error:", err);
+      toast.error("❌ Błąd synchronizacji z Bybit", { id: "sync" });
     } finally {
-      setImporting(false);
+      setSyncing(false);
     }
   };
 
@@ -181,17 +130,8 @@ export default function BotHistoryPage() {
                 Historia Pozycji Bota
               </h1>
               <p className="text-gray-200 flex items-center gap-2">
-                {dataSource === "bybit" ? (
-                  <>
-                    <Wifi className="h-4 w-4 text-green-400" />
-                    <span className="text-green-400 font-semibold">PRAWDZIWE DANE z Bybit API</span>
-                  </>
-                ) : (
-                  <>
-                    <Database className="h-4 w-4 text-blue-400" />
-                    Dane z lokalnej bazy
-                  </>
-                )}
+                <Database className="h-4 w-4 text-blue-400" />
+                Dane z lokalnej bazy danych
               </p>
             </div>
           </div>
@@ -203,89 +143,16 @@ export default function BotHistoryPage() {
           </div>
         </div>
 
-        {/* ⚠️ BYBIT GEO-BLOCKING WARNING */}
-        {bybitError && dataSource === "bybit" && (
-          <Alert className="border-orange-700 bg-orange-900/20">
-            <WifiOff className="h-4 w-4 text-orange-400" />
-            <AlertDescription className="text-sm text-orange-200">
-              <strong>⚠️ {bybitError}</strong>
-              <br />
-              <span className="text-xs text-orange-300 mt-2 block">
-                💡 <strong>Rozwiązanie:</strong> Kliknij "Import z Bybit" poniżej aby zsynchronizować pełną historię z Bybit do lokalnej bazy. 
-                Lokalna baza działa zawsze, bez ograniczeń geo-blocking.
-              </span>
-              <div className="flex gap-2 mt-3">
-                <Button 
-                  onClick={() => setDataSource("database")} 
-                  className="bg-blue-600 hover:bg-blue-700"
-                  size="sm"
-                >
-                  <Database className="mr-2 h-4 w-4" />
-                  Przełącz na lokalną bazę
-                </Button>
-                <Button 
-                  onClick={importFromBybit} 
-                  disabled={importing}
-                  className="bg-purple-600 hover:bg-purple-700"
-                  size="sm"
-                >
-                  <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
-                  {importing ? "Importowanie..." : "Import z Bybit"}
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Kontrolki źródła danych */}
+        {/* Kontrolki */}
         <Card className="border-blue-700 bg-blue-900/20">
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg text-blue-100">⚙️ Ustawienia Źródła Danych</CardTitle>
+            <CardTitle className="text-lg text-blue-100">⚙️ Ustawienia i Synchronizacja</CardTitle>
+            <CardDescription className="text-gray-300">
+              Lokalna baza zawiera pozycje zapisane przez bota lub zsynchronizowane z Bybit
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* Source selector */}
-              <div className="space-y-2">
-                <label className="text-sm text-gray-300">Źródło danych:</label>
-                <Select value={dataSource} onValueChange={(v) => setDataSource(v as "database" | "bybit")}>
-                  <SelectTrigger className="bg-gray-900/60 border-gray-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="database">
-                      <div className="flex items-center gap-2">
-                        <Database className="h-4 w-4 text-blue-400" />
-                        <span>Lokalna baza (zalecane)</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="bybit">
-                      <div className="flex items-center gap-2">
-                        <Wifi className="h-4 w-4 text-green-400" />
-                        <span>Bybit API (może być zablokowane)</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Days back selector (only for Bybit) */}
-              {dataSource === "bybit" && (
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-300">Okres:</label>
-                  <Select value={daysBack.toString()} onValueChange={(v) => setDaysBack(parseInt(v))}>
-                    <SelectTrigger className="bg-gray-900/60 border-gray-700 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7">Ostatnie 7 dni</SelectItem>
-                      <SelectItem value="30">Ostatnie 30 dni</SelectItem>
-                      <SelectItem value="90">Ostatnie 90 dni</SelectItem>
-                      <SelectItem value="180">Ostatnie 180 dni</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Auto-refresh toggle */}
               <div className="space-y-2">
                 <label className="text-sm text-gray-300">Auto-odświeżanie:</label>
@@ -301,7 +168,7 @@ export default function BotHistoryPage() {
 
               {/* Refresh button */}
               <div className="space-y-2">
-                <label className="text-sm text-gray-300">Akcje:</label>
+                <label className="text-sm text-gray-300">Odśwież dane:</label>
                 <Button 
                   onClick={() => fetchHistory()} 
                   disabled={loading}
@@ -311,45 +178,38 @@ export default function BotHistoryPage() {
                   Odśwież
                 </Button>
               </div>
+
+              {/* Sync with Bybit button */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-300">Synchronizacja:</label>
+                <Button 
+                  onClick={syncWithBybit} 
+                  disabled={syncing}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <Download className={`mr-2 h-4 w-4 ${syncing ? 'animate-bounce' : ''}`} />
+                  {syncing ? "Synchronizowanie..." : "Synchronizuj z Bybit"}
+                </Button>
+              </div>
             </div>
 
             {/* Info text */}
-            <div className="mt-4 text-sm text-gray-400">
-              {dataSource === "bybit" ? (
-                <>
-                  <Wifi className="inline h-4 w-4 text-green-400 mr-1" />
-                  <strong>Bybit API:</strong> Pobiera prawdziwe dane bezpośrednio z giełdy Bybit. 
-                  Może być zablokowane przez geo-blocking CloudFront.
-                </>
-              ) : (
-                <>
-                  <Database className="inline h-4 w-4 text-blue-400 mr-1" />
-                  <strong>Lokalna baza (ZALECANE):</strong> Pozycje zapisane przez bota lub zaimportowane z Bybit. 
-                  Działa zawsze, bez ograniczeń geo-blocking.
-                </>
-              )}
-              {lastRefresh && ` • Ostatnia aktualizacja: ${lastRefresh.toLocaleTimeString('pl-PL')}`}
+            <div className="mt-4 p-3 rounded-lg bg-purple-900/30 border border-purple-700/50">
+              <p className="text-sm text-purple-200">
+                <Download className="inline h-4 w-4 text-purple-400 mr-1" />
+                <strong>Synchronizuj z Bybit:</strong> Usuwa wszystkie pozycje z lokalnej bazy i importuje 
+                świeżą historię z giełdy Bybit (ostatnie 30 dni). Użyj tego gdy chcesz zaktualizować dane 
+                z prawdziwej giełdy.
+              </p>
             </div>
+
+            {lastRefresh && (
+              <div className="mt-2 text-xs text-gray-400 text-center">
+                Ostatnia aktualizacja: {lastRefresh.toLocaleTimeString('pl-PL')}
+              </div>
+            )}
           </CardContent>
         </Card>
-
-        {/* Info o synchronizacji (zawsze widoczne) */}
-        <Alert className="border-purple-700 bg-purple-900/20">
-          <Download className="h-4 w-4 text-purple-400" />
-          <AlertDescription className="text-sm text-purple-200">
-            💡 <strong>Import danych z Bybit:</strong> Aby zsynchronizować pełną historię transakcji z giełdy Bybit do lokalnej bazy, 
-            kliknij przycisk poniżej. Pozwoli to ominąć problemy z geo-blocking i mieć zawsze dostęp do danych.
-            <Button 
-              onClick={importFromBybit} 
-              disabled={importing}
-              className="ml-4 bg-purple-600 hover:bg-purple-700"
-              size="sm"
-            >
-              <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
-              {importing ? "Importowanie..." : "Import z Bybit"}
-            </Button>
-          </AlertDescription>
-        </Alert>
 
         {/* Podstawowe Statystyki */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -406,9 +266,7 @@ export default function BotHistoryPage() {
             <CardContent className="py-12">
               <div className="flex flex-col items-center justify-center gap-3">
                 <Activity className="h-8 w-8 animate-spin text-blue-400" />
-                <p className="text-sm text-gray-300">
-                  Ładowanie danych z {dataSource === "bybit" ? "Bybit API" : "lokalnej bazy"}...
-                </p>
+                <p className="text-sm text-gray-300">Ładowanie danych z lokalnej bazy...</p>
               </div>
             </CardContent>
           </Card>
@@ -421,17 +279,9 @@ export default function BotHistoryPage() {
               <CardTitle className="text-white flex items-center gap-2">
                 <History className="h-5 w-5" />
                 Zamknięte Pozycje ({history.length})
-                {dataSource === "bybit" && (
-                  <Badge className="ml-2 bg-green-600">
-                    <Wifi className="h-3 w-3 mr-1" />
-                    LIVE DATA
-                  </Badge>
-                )}
               </CardTitle>
               <CardDescription>
-                {dataSource === "bybit" 
-                  ? `Prawdziwe dane z Bybit API - ostatnie ${daysBack} dni`
-                  : "Dane z lokalnej bazy - może wymagać synchronizacji"}
+                Pozycje z lokalnej bazy danych - kliknij "Synchronizuj z Bybit" aby zaktualizować
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -485,24 +335,16 @@ export default function BotHistoryPage() {
             <CardContent className="py-12">
               <div className="flex flex-col items-center justify-center gap-3">
                 <History className="h-12 w-12 text-gray-600" />
-                <p className="text-lg text-gray-400">
-                  {dataSource === "bybit" 
-                    ? "Brak zamkniętych pozycji w wybranym okresie na Bybit"
-                    : "Brak historii pozycji w bazie danych"}
-                </p>
-                {dataSource === "database" && (
-                  <>
-                    <p className="text-sm text-gray-500">Kliknij "Import z Bybit" aby pobrać historię z Bybit API</p>
-                    <Button 
-                      onClick={importFromBybit} 
-                      disabled={importing}
-                      className="mt-4 bg-purple-600 hover:bg-purple-700"
-                    >
-                      <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
-                      {importing ? "Importowanie..." : "Import z Bybit"}
-                    </Button>
-                  </>
-                )}
+                <p className="text-lg text-gray-400">Brak historii pozycji w bazie danych</p>
+                <p className="text-sm text-gray-500">Kliknij "Synchronizuj z Bybit" aby pobrać historię z giełdy</p>
+                <Button 
+                  onClick={syncWithBybit} 
+                  disabled={syncing}
+                  className="mt-4 bg-purple-600 hover:bg-purple-700"
+                >
+                  <Download className={`mr-2 h-4 w-4 ${syncing ? 'animate-bounce' : ''}`} />
+                  {syncing ? "Synchronizowanie..." : "Synchronizuj z Bybit"}
+                </Button>
               </div>
             </CardContent>
           </Card>

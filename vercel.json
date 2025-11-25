@@ -1,13 +1,17 @@
 {
-  "buildCommand": "rm -rf .next && bun run build",
-  "crons": [],
+  "version": 2,
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_BUILD_ID": "v3.0.0-simplified-history-2025-01-25"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
         {
-          "key": "X-Build-Time",
-          "value": "2025-11-25T12:00:00.000Z"
+          "key": "X-Build-Version",
+          "value": "v3.0.0-simplified-history-2025-01-25"
         }
       ]
     }

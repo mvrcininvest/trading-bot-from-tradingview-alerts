@@ -52,78 +52,107 @@ async function fetchFromBybitAPI(
 ) {
   console.log(`[History API] 🌐 Fetching REAL data from Bybit API (last ${daysBack} days)...`);
   
+  // ✅ CRITICAL FIX: Bybit has 7-day limit for closed-pnl endpoint
+  // Divide time range into 7-day segments
   const now = Date.now();
-  const startTime = now - daysBack * 24 * 60 * 60 * 1000;
+  const totalMs = daysBack * 24 * 60 * 60 * 1000;
+  const segmentMs = 7 * 24 * 60 * 60 * 1000; // 7 days max
+  
+  const segments: Array<{ start: number; end: number }> = [];
+  let currentStart = now - totalMs;
+  
+  while (currentStart < now) {
+    const currentEnd = Math.min(currentStart + segmentMs, now);
+    segments.push({ start: currentStart, end: currentEnd });
+    currentStart = currentEnd;
+  }
+  
+  console.log(`[History API] Created ${segments.length} segments of max 7 days each`);
   
   let allPositions: any[] = [];
-  let cursor: string | null = null;
-  let pageCount = 0;
-  const maxPages = Math.ceil(limit / 100);
 
   try {
-    do {
-      pageCount++;
-      const timestamp = Date.now().toString();
-      const recvWindow = "5000";
+    // Fetch each 7-day segment
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const segmentStartDate = new Date(segment.start).toISOString().split('T')[0];
+      const segmentEndDate = new Date(segment.end).toISOString().split('T')[0];
       
-      const params: Record<string, string> = {
-        category: "linear",
-        startTime: startTime.toString(),
-        endTime: now.toString(),
-        limit: "100",
-      };
+      console.log(`[History API] Fetching segment ${i + 1}/${segments.length}: ${segmentStartDate} to ${segmentEndDate}`);
       
-      if (cursor) {
-        params.cursor = cursor;
-      }
+      let cursor: string | null = null;
+      let pageCount = 0;
+      const maxPagesPerSegment = 10;
+
+      do {
+        pageCount++;
+        const timestamp = Date.now().toString();
+        const recvWindow = "5000";
+        
+        const params: Record<string, string> = {
+          category: "linear",
+          startTime: segment.start.toString(),
+          endTime: segment.end.toString(),
+          limit: "100",
+        };
+        
+        if (cursor) {
+          params.cursor = cursor;
+        }
+        
+        const queryString = Object.keys(params)
+          .sort()
+          .map((key) => `${key}=${params[key]}`)
+          .join("&");
+        
+        const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+        
+        const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "X-BAPI-API-KEY": apiKey,
+            "X-BAPI-TIMESTAMP": timestamp,
+            "X-BAPI-SIGN": signature,
+            "X-BAPI-RECV-WINDOW": recvWindow,
+            "Content-Type": "application/json",
+          },
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[History API] ❌ Bybit ${response.status} Error:`, errorText);
+          throw new Error(`Bybit API error: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.retCode !== 0) {
+          console.error(`[History API] ❌ Bybit retCode error:`, data);
+          throw new Error(`Bybit API error: ${data.retMsg} (code: ${data.retCode})`);
+        }
+        
+        const positions = data.result?.list || [];
+        allPositions = [...allPositions, ...positions];
+        
+        cursor = data.result?.nextPageCursor || null;
+        
+        if (pageCount >= maxPagesPerSegment) {
+          console.log(`[History API] ⚠️ Reached page limit for segment ${i + 1}`);
+          break;
+        }
+      } while (cursor);
       
-      const queryString = Object.keys(params)
-        .sort()
-        .map((key) => `${key}=${params[key]}`)
-        .join("&");
+      console.log(`[History API] Segment ${i + 1}: fetched ${allPositions.length} positions so far`);
       
-      const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
-      
-      // ✅ DIRECT BYBIT API REQUEST (Edge Function in Singapore)
-      const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
-      
-      console.log(`[History API] Request URL: ${url}`);
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-BAPI-API-KEY": apiKey,
-          "X-BAPI-TIMESTAMP": timestamp,
-          "X-BAPI-SIGN": signature,
-          "X-BAPI-RECV-WINDOW": recvWindow,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[History API] ❌ Bybit ${response.status} Error:`, errorText);
-        throw new Error(`Bybit API error: ${response.status} - ${errorText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.retCode !== 0) {
-        console.error(`[History API] ❌ Bybit retCode error:`, data);
-        throw new Error(`Bybit API error: ${data.retMsg} (code: ${data.retCode})`);
-      }
-      
-      const positions = data.result?.list || [];
-      allPositions = [...allPositions, ...positions];
-      
-      cursor = data.result?.nextPageCursor || null;
-      
-      if (allPositions.length >= limit || pageCount >= maxPages) {
+      // Stop if we have enough positions
+      if (allPositions.length >= limit) {
         break;
       }
-    } while (cursor);
+    }
     
-    console.log(`[History API] ✅ Fetched ${allPositions.length} positions from Bybit`);
+    console.log(`[History API] ✅ Fetched ${allPositions.length} total positions from Bybit`);
     
     // Transform Bybit data to our format
     const formattedHistory = allPositions.slice(0, limit).map((pos) => {
