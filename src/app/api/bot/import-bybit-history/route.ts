@@ -6,7 +6,8 @@ import { eq, and } from "drizzle-orm";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-// ✅ MULTI-PROXY STRATEGY: Try multiple proxy URLs
+// ✅ PRIORITY: USE VERCEL EDGE PROXY (Singapore region - close to Bybit)
+// Fly.io (Amsterdam) jako backup
 function getProxyUrls(request: NextRequest): string[] {
   const host = request.headers.get("host");
   const protocol = request.headers.get("x-forwarded-proto") || "https";
@@ -18,8 +19,8 @@ function getProxyUrls(request: NextRequest): string[] {
   }
   
   return [
-    process.env.BYBIT_PROXY_URL, // Fly.io proxy (Amsterdam)
-    vercelEdgeProxyUrl, // Vercel Edge proxy (Singapore/Asia) - only if not localhost
+    vercelEdgeProxyUrl, // ✅ FIRST: Vercel Edge proxy (Singapore) - closest to Bybit
+    process.env.BYBIT_PROXY_URL, // ✅ BACKUP: Fly.io proxy (Amsterdam)
     "https://api.allorigins.win/raw?url=", // Public CORS proxy (last resort)
     "https://api.bybit.com", // Direct (if nothing else works)
   ].filter(Boolean) as string[];

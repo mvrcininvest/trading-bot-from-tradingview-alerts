@@ -16,11 +16,9 @@ import {
   clearRepairAttempts
 } from './oko-saurona';
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const BYBIT_PROXY_URL = process.env.NEXT_PUBLIC_BASE_URL 
-  ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/bybit-edge-proxy`
-  : '/api/bybit-edge-proxy';
+// ✅ PRIORITY: USE VERCEL EDGE PROXY (Singapore region - matches Vercel deployment)
+// Fly.io proxy (Amsterdam) jako backup
+const BYBIT_PROXY_URL = '/api/bybit-edge-proxy';
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER
