@@ -11,15 +11,16 @@ export const preferredRegion = ['sin1', 'hkg1', 'icn1']; // Singapore, Hong Kong
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
-    const path = params.path.join('/');
+    const { path } = await params;
+    const pathString = path.join('/');
     const searchParams = request.nextUrl.searchParams;
     
     // Build Bybit API URL
     const queryString = searchParams.toString();
-    const bybitUrl = `https://api.bybit.com/${path}${queryString ? `?${queryString}` : ''}`;
+    const bybitUrl = `https://api.bybit.com/${pathString}${queryString ? `?${queryString}` : ''}`;
 
     console.log(`[Vercel Edge Proxy] GET ${bybitUrl}`);
 
@@ -74,13 +75,14 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
-    const path = params.path.join('/');
+    const { path } = await params;
+    const pathString = path.join('/');
     const body = await request.text();
     
-    const bybitUrl = `https://api.bybit.com/${path}`;
+    const bybitUrl = `https://api.bybit.com/${pathString}`;
 
     console.log(`[Vercel Edge Proxy] POST ${bybitUrl}`);
 
