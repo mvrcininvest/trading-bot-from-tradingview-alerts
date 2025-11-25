@@ -36,6 +36,7 @@ export default function GlownaPage() {
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [balance, setBalance] = useState<BalanceData[]>([]);
   const [loadingBalance, setLoadingBalance] = useState(true);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
 
   useEffect(() => {
@@ -56,9 +57,10 @@ export default function GlownaPage() {
     try {
       // ✅ AUTOMATYCZNA SYNCHRONIZACJA - Sprawdź czy pozycje w bazie są aktualne
       try {
-        await fetch("/api/bot/sync-positions", { 
+        const syncTimestamp = Date.now();
+        await fetch(`/api/bot/sync-positions?_t=${syncTimestamp}`, { 
           method: "POST",
-          cache: "no-store", // ✅ Wymuś no-cache
+          cache: "no-store",
           headers: {
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache"
@@ -72,7 +74,7 @@ export default function GlownaPage() {
       // ✅ Dodaj timestamp do URL aby wymusić świeże dane
       const timestamp = Date.now();
       const response = await fetch(`/api/bot/positions?_t=${timestamp}`, {
-        cache: "no-store", // ✅ Wymuś no-cache
+        cache: "no-store",
         headers: {
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache"
@@ -97,7 +99,7 @@ export default function GlownaPage() {
 
   const loadBotSettings = async () => {
     try {
-      // ✅ Dodaj timestamp do URL
+      // ✅ Dodaj timestamp do URL + wymuś no-cache
       const timestamp = Date.now();
       const response = await fetch(`/api/bot/settings?_t=${timestamp}`, {
         cache: "no-store",
@@ -108,11 +110,14 @@ export default function GlownaPage() {
       });
       const data = await response.json();
       
-      console.log("[Glowna] Settings Response:", data);
+      console.log("[Glowna] Settings API Response:", data);
       
       if (data.success && data.settings) {
-        setBotEnabled(data.settings.botEnabled);
-        console.log("[Glowna] Bot enabled:", data.settings.botEnabled);
+        // ✅ FIX: Wymuś boolean konwersję
+        const isBotEnabled = Boolean(data.settings.botEnabled);
+        setBotEnabled(isBotEnabled);
+        console.log("[Glowna] Bot enabled (raw):", data.settings.botEnabled);
+        console.log("[Glowna] Bot enabled (converted):", isBotEnabled);
       }
     } catch (err) {
       console.error("Load settings error:", err);
@@ -123,6 +128,8 @@ export default function GlownaPage() {
 
   const loadBalance = async () => {
     try {
+      setBalanceError(null);
+      
       // Pobierz credentials z settings (z cache busting)
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
@@ -134,13 +141,15 @@ export default function GlownaPage() {
       const settingsData = await settingsResponse.json();
       
       if (!settingsData.success || !settingsData.settings?.apiKey) {
+        setBalanceError("Brak konfiguracji API");
         setLoadingBalance(false);
         return;
       }
 
       const { apiKey, apiSecret } = settingsData.settings;
 
-      const response = await fetch("/api/exchange/get-balance", {
+      const balanceTimestamp = Date.now();
+      const response = await fetch(`/api/exchange/get-balance?_t=${balanceTimestamp}`, {
         method: "POST",
         cache: "no-store",
         headers: { 
@@ -160,9 +169,14 @@ export default function GlownaPage() {
       
       if (data.success && data.balances) {
         setBalance(data.balances);
+        setBalanceError(null);
+      } else {
+        // ⚠️ CloudFlare block - wyświetl komunikat ale nie blokuj UI
+        setBalanceError(data.message || "Nie można pobrać salda");
       }
     } catch (err) {
       console.error("Load balance error:", err);
+      setBalanceError("Błąd połączenia");
     } finally {
       setLoadingBalance(false);
     }
@@ -184,7 +198,13 @@ export default function GlownaPage() {
 
     try {
       // Pobierz credentials
-      const settingsResponse = await fetch("/api/bot/settings");
+      const timestamp = Date.now();
+      const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+      });
       const settingsData = await settingsResponse.json();
       
       if (!settingsData.success || !settingsData.settings?.apiKey) {
@@ -293,6 +313,10 @@ export default function GlownaPage() {
             <CardContent>
               {loadingBalance ? (
                 <div className="text-gray-400">Ładowanie...</div>
+              ) : balanceError ? (
+                <div className="text-sm text-yellow-400">
+                  ⚠️ {balanceError}
+                </div>
               ) : (
                 <div className="text-2xl font-bold text-white">
                   {totalBalance.toFixed(2)} <span className="text-lg text-gray-400">USDT</span>
@@ -331,6 +355,20 @@ export default function GlownaPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* CloudFlare Warning */}
+        {balanceError && balanceError.includes("CloudFlare") && (
+          <Card className="border-yellow-700/40 bg-yellow-900/20">
+            <CardContent className="py-3">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                <div className="text-sm text-yellow-300">
+                  <strong>CloudFlare blokuje API Bybit balance</strong> - saldo może być niedostępne. Pozycje i bot działają normalnie.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Emergency Close Button */}
         {positions.length > 0 && (
