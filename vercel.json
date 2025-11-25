@@ -1,14 +1,18 @@
 {
+  "version": 2,
   "buildCommand": "bun run build",
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
-      ]
+  "devCommand": "bun run dev",
+  "installCommand": "bun install",
+  "framework": null,
+  "outputDirectory": ".next",
+  "regions": ["sin1", "hkg1", "icn1"],
+  "functions": {
+    "app/api/**/*.ts": {
+      "runtime": "edge"
     }
-  ],
+  },
   "env": {
-    "FORCE_REBUILD": "diagnose-7day-fix-v6.0.0-2025-11-25T14:00:00Z"
+    "FORCE_REBUILD_TIMESTAMP": "2025-11-25T13:30:00.000Z",
+    "BUILD_HASH": "v6.0.0-aggregate-partial-closes"
   }
 }

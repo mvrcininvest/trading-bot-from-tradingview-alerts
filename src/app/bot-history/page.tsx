@@ -31,6 +31,10 @@ interface HistoryPosition {
   openedAt: string;
   closedAt: string;
   durationMinutes: number;
+  tp1Hit?: boolean;
+  tp2Hit?: boolean;
+  tp3Hit?: boolean;
+  partialCloseCount?: number;
 }
 
 interface DiagnosisResult {
@@ -390,13 +394,44 @@ export default function BotHistoryPage() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="font-bold text-lg text-white">{pos.symbol}</span>
                           <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
                             {pos.side === "Buy" ? "Long" : "Short"}
                           </Badge>
                           <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
+                          
+                          {/* ✅ SHOW ACHIEVED TPs */}
+                          {(pos.tp1Hit || pos.tp2Hit || pos.tp3Hit) && (
+                            <div className="flex items-center gap-1 ml-2">
+                              {pos.tp1Hit && (
+                                <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  TP1
+                                </Badge>
+                              )}
+                              {pos.tp2Hit && (
+                                <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  TP2
+                                </Badge>
+                              )}
+                              {pos.tp3Hit && (
+                                <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  TP3
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Show partial close count if available */}
+                          {pos.partialCloseCount && pos.partialCloseCount > 1 && (
+                            <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50">
+                              {pos.partialCloseCount} częściowych zamknięć
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-sm text-gray-300">
                           Entry: {pos.entryPrice.toFixed(4)} → Close: {pos.closePrice.toFixed(4)} | 
@@ -407,7 +442,7 @@ export default function BotHistoryPage() {
                           Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right ml-4">
                         <div className={`text-xl font-bold ${pos.pnl > 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(4)} USDT
                         </div>

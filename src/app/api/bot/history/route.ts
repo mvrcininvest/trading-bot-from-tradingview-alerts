@@ -147,67 +147,128 @@ async function fetchFromBybitAPI(
       console.log(`[History API] Segment ${i + 1}: fetched ${allPositions.length} positions so far`);
       
       // Stop if we have enough positions
-      if (allPositions.length >= limit) {
+      if (allPositions.length >= limit * 3) { // Fetch more since we'll aggregate
         break;
       }
     }
     
-    console.log(`[History API] ✅ Fetched ${allPositions.length} total positions from Bybit`);
+    console.log(`[History API] ✅ Fetched ${allPositions.length} total positions from Bybit (including partial closes)`);
     
-    // Transform Bybit data to our format
-    const formattedHistory = allPositions.slice(0, limit).map((pos) => {
-      const entryPrice = parseFloat(pos.avgEntryPrice);
-      const exitPrice = parseFloat(pos.avgExitPrice);
-      const qty = parseFloat(pos.qty);
-      const pnl = parseFloat(pos.closedPnl);
-      const leverage = parseInt(pos.leverage);
+    // ============================================
+    // 🔗 AGGREGATE PARTIAL CLOSES
+    // ============================================
+    console.log(`[History API] 🔗 Aggregating partial closes...`);
+    
+    // Group by symbol + createdTime (same position base)
+    const positionGroups = new Map<string, any[]>();
+    
+    allPositions.forEach((pos) => {
+      const groupKey = `${pos.symbol}_${pos.side}_${pos.createdTime}`;
       
-      const closedAt = new Date(parseInt(pos.updatedTime));
-      const openedAt = new Date(parseInt(pos.createdTime));
+      if (!positionGroups.has(groupKey)) {
+        positionGroups.set(groupKey, []);
+      }
       
-      const positionValue = qty * entryPrice;
+      positionGroups.get(groupKey)!.push(pos);
+    });
+    
+    console.log(`[History API] Found ${positionGroups.size} unique positions (aggregated from ${allPositions.length} records)`);
+    
+    // Transform and aggregate
+    const formattedHistory: any[] = [];
+    
+    positionGroups.forEach((group, groupKey) => {
+      // Sort by updatedTime to get chronological order
+      group.sort((a, b) => parseInt(a.updatedTime) - parseInt(b.updatedTime));
+      
+      // Aggregate data
+      const firstClose = group[0];
+      const lastClose = group[group.length - 1];
+      
+      const totalQty = group.reduce((sum, p) => sum + parseFloat(p.qty), 0);
+      const totalPnl = group.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0);
+      
+      // Calculate weighted average exit price
+      const weightedExitSum = group.reduce((sum, p) => {
+        return sum + (parseFloat(p.avgExitPrice) * parseFloat(p.qty));
+      }, 0);
+      const avgExitPrice = totalQty > 0 ? weightedExitSum / totalQty : 0;
+      
+      const entryPrice = parseFloat(firstClose.avgEntryPrice);
+      const leverage = parseInt(firstClose.leverage);
+      
+      const closedAt = new Date(parseInt(lastClose.updatedTime));
+      const openedAt = new Date(parseInt(firstClose.createdTime));
+      
+      const positionValue = totalQty * entryPrice;
       const initialMargin = positionValue / leverage;
-      const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
+      const pnlPercent = initialMargin > 0 ? (totalPnl / initialMargin) * 100 : 0;
       
       const durationMs = closedAt.getTime() - openedAt.getTime();
       const durationMinutes = Math.round(durationMs / 60000);
       
+      // ✅ DETERMINE WHICH TPs WERE HIT based on partial close count
+      const partialCloseCount = group.length;
+      let tp1Hit = false;
+      let tp2Hit = false;
+      let tp3Hit = false;
       let closeReason = "closed_on_exchange";
-      if (pnl > 0) {
-        closeReason = "tp_hit";
-      } else if (pnl < 0) {
+      
+      if (totalPnl > 0) {
+        // Profitable - assume TPs hit in order
+        if (partialCloseCount >= 3) {
+          tp1Hit = tp2Hit = tp3Hit = true;
+          closeReason = "tp3_hit";
+        } else if (partialCloseCount === 2) {
+          tp1Hit = tp2Hit = true;
+          closeReason = "tp2_hit";
+        } else if (partialCloseCount === 1) {
+          tp1Hit = true;
+          closeReason = "tp1_hit";
+        }
+      } else if (totalPnl < 0) {
         closeReason = "sl_hit";
       }
       
-      return {
-        id: pos.orderId,
+      formattedHistory.push({
+        id: firstClose.orderId,
         positionId: null,
         alertId: null,
-        symbol: pos.symbol,
-        side: pos.side,
+        symbol: firstClose.symbol,
+        side: firstClose.side,
         tier: "Real",
         entryPrice,
-        closePrice: exitPrice,
-        quantity: qty,
+        closePrice: avgExitPrice,
+        quantity: totalQty,
         leverage,
-        pnl,
+        pnl: totalPnl,
         pnlPercent,
         closeReason,
-        tp1Hit: false,
-        tp2Hit: false,
-        tp3Hit: false,
+        tp1Hit,
+        tp2Hit,
+        tp3Hit,
+        partialCloseCount,
         confirmationCount: 0,
         openedAt: openedAt.toISOString(),
         closedAt: closedAt.toISOString(),
         durationMinutes,
         source: "bybit" as const,
-      };
+      });
     });
+    
+    // Sort by closedAt desc
+    formattedHistory.sort((a, b) => 
+      new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime()
+    );
+    
+    const limitedHistory = formattedHistory.slice(0, limit);
+    
+    console.log(`[History API] ✅ Aggregated to ${formattedHistory.length} positions (showing ${limitedHistory.length})`);
     
     return {
       success: true,
-      history: formattedHistory,
-      total: allPositions.length,
+      history: limitedHistory,
+      total: formattedHistory.length,
       source: "bybit" as const,
     };
     
