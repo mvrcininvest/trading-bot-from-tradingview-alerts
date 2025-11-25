@@ -61,12 +61,10 @@ interface BotPosition {
   confirmationCount: number;
   openedAt: string;
   status: string;
-  // ✅ NOWE: Live SL/TP z Bybit
   liveSlPrice?: number | null;
   liveTp1Price?: number | null;
   liveTp2Price?: number | null;
   liveTp3Price?: number | null;
-  // ✅ NOWE: Dane alertu
   alertData?: string | null;
 }
 
@@ -79,7 +77,6 @@ interface SymbolLock {
   unlockedAt: string | null;
 }
 
-// ✅ NOWY: Interfejs dla statystyk Bybit
 interface BybitStats {
   totalEquity: number;
   totalWalletBalance: number;
@@ -96,7 +93,6 @@ interface BybitStats {
   avgHoldingTime: number;
 }
 
-// ✅ NOWY: Interface dla odpowiedzi API
 interface BybitStatsResponse {
   success: boolean;
   stats: BybitStats;
@@ -123,16 +119,10 @@ export default function DashboardPage() {
   const [closingPosition, setClosingPosition] = useState<string | null>(null);
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
-  const [autoImporting, setAutoImporting] = useState(false);
-  const [loadingCredentials, setLoadingCredentials] = useState(true);
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
-  const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
-  const [loadingBybitStats, setLoadingBybitStats] = useState(false);
+  const [bybitBlocked, setBybitBlocked] = useState(false);
 
-  // ✅ NOWA FUNKCJA: Automatyczne dopasowanie alertów do otwartych pozycji
   const autoMatchAlertsToOpen = useCallback(async () => {
-    console.log("[Dashboard] Checking if open positions need alert matching...");
-    
     try {
       const response = await fetch("/api/bot/match-alerts-to-open", {
         method: "POST",
@@ -141,15 +131,8 @@ export default function DashboardPage() {
       const data = await response.json();
 
       if (data.success && data.matched > 0) {
-        console.log(`[Dashboard] ✅ Auto-matched ${data.matched} alerts to open positions`);
-        toast.success(`🔗 Dopasowano ${data.matched} alertów do otwartych pozycji`, {
-          description: `${data.unmatched} pozycji bez dopasowania`
-        });
-        
-        // Odśwież pozycje
+        toast.success(`🔗 Dopasowano ${data.matched} alertów do otwartych pozycji`);
         await fetchBotPositions();
-      } else if (data.success) {
-        console.log(`[Dashboard] All open positions already have alerts`);
       }
     } catch (err) {
       console.error("[Dashboard] Błąd dopasowania alertów:", err);
@@ -195,12 +178,10 @@ export default function DashboardPage() {
       );
       
       const baseUrl = "https://api.bybit.com";
-      
       const queryString = Object.keys(params)
         .sort()
         .map(key => `${key}=${params[key]}`)
         .join("&");
-      
       const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
       
       const response = await fetch(url, {
@@ -212,6 +193,16 @@ export default function DashboardPage() {
           "X-BAPI-RECV-WINDOW": "5000",
         },
       });
+
+      if (response.status === 403) {
+        const text = await response.text();
+        if (text.includes('CloudFront') || text.includes('country')) {
+          setBybitBlocked(true);
+          setError("Bybit API zablokowane (geo-restriction)");
+          setBalances([{ asset: "USDT", free: "0", locked: "0", total: "0" }]);
+          return;
+        }
+      }
 
       const data = await response.json();
 
@@ -229,14 +220,15 @@ export default function DashboardPage() {
           
           setBalances(filteredBalances);
           setError(null);
-        } else {
-          setError("Brak danych o saldzie w odpowiedzi API");
+          setBybitBlocked(false);
         }
       } else {
         setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
       }
     } catch (err) {
-      setError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+      setError(`Błąd połączenia z Bybit`);
+      setBybitBlocked(true);
+      setBalances([{ asset: "USDT", free: "0", locked: "0", total: "0" }]);
     } finally {
       setLoading(false);
     }
@@ -270,104 +262,11 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchPositions = useCallback(async (creds?: ExchangeCredentials, silent = false) => {
-    const credsToUse = creds || credentials;
-    if (!credsToUse) return;
-
-    if (!silent) setLoadingPositions(true);
-    setPositionsError(null);
-
-    try {
-      const timestamp = Date.now();
-      const params: Record<string, any> = {
-        category: "linear",
-        settleCoin: "USDT"
-      };
-      
-      const signature = await signBybitRequest(
-        credsToUse.apiKey,
-        credsToUse.apiSecret,
-        timestamp,
-        params
-      );
-      
-      const baseUrl = "https://api.bybit.com";
-      
-      const queryString = Object.keys(params)
-        .sort()
-        .map(key => `${key}=${params[key]}`)
-        .join("&");
-      
-      const url = `${baseUrl}/v5/position/list?${queryString}`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-BAPI-API-KEY": credsToUse.apiKey,
-          "X-BAPI-TIMESTAMP": timestamp.toString(),
-          "X-BAPI-SIGN": signature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-      });
-
-      const data = await response.json();
-
-      if (data.retCode === 0 && data.result?.list) {
-        const openPositions = data.result.list
-          .filter((p: any) => parseFloat(p.size) > 0)
-          .map((p: any) => ({
-            symbol: p.symbol,
-            side: p.side,
-            size: p.size,
-            entryPrice: p.avgPrice,
-            markPrice: p.markPrice,
-            leverage: p.leverage,
-            unrealisedPnl: p.unrealisedPnl,
-            takeProfit: p.takeProfit || "0",
-            stopLoss: p.stopLoss || "0",
-            positionValue: p.positionValue,
-            liqPrice: p.liqPrice || "0",
-          }));
-        
-        setPositions(openPositions);
-        setPositionsError(null);
-      } else {
-        setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
-      }
-    } catch (err) {
-      setPositionsError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
-    } finally {
-      if (!silent) setLoadingPositions(false);
-    }
-  }, [credentials]);
-
-  // ✅ POPRAWIONA FUNKCJA: Fetch Bybit stats - bez dependencies
-  const fetchBybitStats = useCallback(async () => {
-    if (!credentials) return;
-    
-    setLoadingBybitStats(true);
-    try {
-      const response = await fetch('/api/analytics/bybit-stats?days=30');
-      const data: BybitStatsResponse = await response.json();
-      
-      if (data.success) {
-        setBybitStats(data.stats);
-      } else {
-        console.error("Failed to fetch Bybit stats:", data.message);
-      }
-    } catch (err) {
-      console.error("Failed to fetch Bybit stats:", err);
-    } finally {
-      setLoadingBybitStats(false);
-    }
-  }, [credentials]);
-
   useEffect(() => {
     const checkCredentials = async () => {
       setIsCheckingCredentials(true);
       
       const stored = localStorage.getItem("exchange_credentials");
-      console.log("[Dashboard] Sprawdzanie credentials w localStorage:", stored ? "ZNALEZIONE" : "BRAK");
       
       if (stored) {
         const creds = JSON.parse(stored);
@@ -375,25 +274,21 @@ export default function DashboardPage() {
         creds.environment = "mainnet";
         setCredentials(creds);
         
-        fetchBalance(creds);
-        fetchPositions(creds);
         fetchBotPositions();
         fetchBotStatus();
         fetchSymbolLocks();
         autoMatchAlertsToOpen();
-        fetchBybitStats();
+        fetchBalance(creds);
         
         setIsCheckingCredentials(false);
         return;
       }
       
-      console.log("[Dashboard] 🔄 Próbuję pobrać credentials z bazy danych...");
       try {
         const response = await fetch("/api/bot/credentials");
         const data = await response.json();
         
         if (data.success && data.credentials && data.credentials.apiKey) {
-          console.log("[Dashboard] ✅ Credentials pobrane z bazy danych!");
           const creds = {
             exchange: "bybit" as const,
             environment: "mainnet" as const,
@@ -405,18 +300,14 @@ export default function DashboardPage() {
           localStorage.setItem("exchange_credentials", JSON.stringify(creds));
           
           setCredentials(creds);
-          fetchBalance(creds);
-          fetchPositions(creds);
           fetchBotPositions();
           fetchBotStatus();
           fetchSymbolLocks();
           autoMatchAlertsToOpen();
-          fetchBybitStats();
-        } else {
-          console.error("[Dashboard] ❌ Brak kluczy w bazie danych:", data);
+          fetchBalance(creds);
         }
       } catch (err) {
-        console.error("[Dashboard] ❌ Błąd pobierania credentials z bazy:", err);
+        console.error("[Dashboard] Credential fetch error:", err);
       } finally {
         setIsCheckingCredentials(false);
       }
@@ -430,23 +321,11 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       fetchBotPositions(true);
-      fetchPositions(credentials, true);
       fetchBotStatus(true);
-    }, 2000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [credentials, fetchBotPositions, fetchPositions]);
-
-  // ✅ NAPRAWIONY: Interval dla statystyk - tylko gdy są credentials, refresh co 60s
-  useEffect(() => {
-    if (!credentials) return;
-
-    const statsInterval = setInterval(() => {
-      fetchBybitStats();
-    }, 60000); // 60 sekund
-
-    return () => clearInterval(statsInterval);
-  }, [credentials, fetchBybitStats]);
+  }, [credentials, fetchBotPositions]);
 
   const handleSyncPositions = async () => {
     setLoadingSync(true);
@@ -458,7 +337,6 @@ export default function DashboardPage() {
 
       if (data.success) {
         await fetchBotPositions();
-        await fetchPositions(credentials || undefined);
         toast.success(`✅ Synchronizacja: Sprawdzono ${data.results.checked}, Zamknięto ${data.results.closed}`);
       } else {
         toast.error(`❌ Błąd: ${data.message}`);
@@ -492,12 +370,7 @@ export default function DashboardPage() {
       const data = await response.json()
 
       if (data.success) {
-        toast.success(`✅ Pozycja ${symbol} zamknięta!`, {
-          description: `PnL: ${data.data.pnl >= 0 ? '+' : ''}${data.data.pnl.toFixed(2)} USDT`
-        })
-        
-        // Refresh positions
-        await fetchPositions(credentials || undefined)
+        toast.success(`✅ Pozycja ${symbol} zamknięta!`)
         await fetchBotPositions()
       } else {
         toast.error(`❌ Błąd: ${data.message}`)
@@ -521,11 +394,9 @@ export default function DashboardPage() {
       setShowAlertDialog(true);
     } catch (error) {
       toast.error("Nie można odczytać danych alertu");
-      console.error("Failed to parse alert data:", error);
     }
   };
 
-  // ✅ NOWA FUNKCJA: Ręczne dopasowanie alertów do otwartych pozycji
   const handleMatchAlertsManually = async () => {
     setLoadingAlertMatch(true);
     
@@ -538,16 +409,10 @@ export default function DashboardPage() {
 
       if (data.success) {
         if (data.matched > 0) {
-          toast.success(`🔗 Dopasowano ${data.matched} alertów!`, {
-            description: `${data.unmatched} pozycji bez dopasowania (brak alertu w oknie ±30s)`
-          });
-          
-          // Odśwież pozycje
+          toast.success(`🔗 Dopasowano ${data.matched} alertów!`);
           await fetchBotPositions();
         } else {
-          toast.info("✅ Wszystkie otwarte pozycje mają już przypisane alerty", {
-            description: "Nie znaleziono pozycji do dopasowania"
-          });
+          toast.info("✅ Wszystkie otwarte pozycje mają już przypisane alerty");
         }
       } else {
         toast.error("❌ Błąd dopasowywania alertów");
@@ -559,15 +424,10 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ POPRAWIONE STATYSTYKI - używaj danych z Bybit jeśli dostępne
   const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0)
-  const unrealisedPnL = positions.reduce((sum, p) => sum + parseFloat(p.unrealisedPnl || "0"), 0)
-  
-  // ✅ NOWE: Używaj realised PnL z Bybit stats
-  const realisedPnL = bybitStats?.realisedPnL || 0
-  const totalPnL = realisedPnL + unrealisedPnL
+  const unrealisedPnL = botPositions.reduce((sum, p) => sum + (p.unrealisedPnl || 0), 0)
+  const totalPnL = unrealisedPnL
 
-  // ✅ LOADING SCREEN podczas sprawdzania credentials
   if (isCheckingCredentials) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 md:p-6 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
@@ -576,9 +436,6 @@ export default function DashboardPage() {
             <div className="text-center py-8">
               <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-500" />
               <p className="text-lg font-medium text-white mb-2">Sprawdzanie konfiguracji...</p>
-              <p className="text-sm text-gray-400">
-                Wczytuję klucze API z localStorage i bazy danych
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -587,7 +444,6 @@ export default function DashboardPage() {
   }
 
   if (!credentials) {
-    console.log("[Dashboard] Renderuję komunikat o braku konfiguracji API");
     return (
       <div className="min-h-screen flex items-center justify-center p-4 md:p-6 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
         <Card className="max-w-2xl w-full border-red-800 bg-gradient-to-br from-red-900/30 to-gray-900/80 backdrop-blur-sm shadow-2xl">
@@ -598,160 +454,34 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-red-900/40 border-2 border-red-700">
-                <p className="text-lg font-bold text-red-200 mb-2">
-                  🔍 Nie znaleziono kluczy API Bybit
-                </p>
-                <p className="text-sm text-gray-200">
-                  Musisz skonfigurować klucze API Bybit Mainnet aby korzystać z bota.
-                </p>
-              </div>
-              
-              <Alert className="border-yellow-800 bg-yellow-900/30">
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-                <AlertDescription className="text-yellow-200 text-sm">
-                  <strong>Instrukcja:</strong>
-                  <ol className="list-decimal list-inside mt-2 space-y-1">
-                    <li>Kliknij przycisk poniżej</li>
-                    <li>Wprowadź swoje klucze API z Bybit</li>
-                    <li>Przetestuj połączenie</li>
-                    <li>Zapisz i wróć tutaj</li>
-                  </ol>
-                </AlertDescription>
-              </Alert>
-            </div>
-
             <Button 
-              onClick={() => {
-                console.log("[Dashboard] Przekierowuję do /exchange-test");
-                router.push("/exchange-test");
-              }} 
+              onClick={() => router.push("/exchange-test")} 
               className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg py-6"
               size="lg"
             >
               <Settings className="mr-2 h-6 w-6" />
-              Konfiguracja API (Kliknij tutaj!)
+              Konfiguracja API
             </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
-
-  console.log("[Dashboard] Renderuję główną zawartość dashboard - credentials:", credentials.exchange);
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
-        {/* ✅ Widget Statystyk - bez ostrzeżeń i badge */}
-        {bybitStats && !loadingBybitStats && (
-          <Card className="border-purple-800 bg-gradient-to-br from-purple-900/30 to-gray-900/80 backdrop-blur-sm">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Database className="h-5 w-5 text-purple-400" />
-                    Statystyki Tradingowe (ostatnie 30 dni)
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Dane live z Bybit API - kliknij aby zobaczyć pełną analizę
-                  </CardDescription>
-                </div>
-                <Button
-                  onClick={() => router.push("/statystyki")}
-                  variant="outline"
-                  size="sm"
-                  className="border-purple-700 text-purple-300 hover:bg-purple-900/20"
-                >
-                  Pełne Statystyki
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                <div className="p-3 rounded-lg bg-gradient-to-br from-blue-600/10 to-blue-900/5 border border-blue-500/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <BarChart3 className="h-4 w-4 text-blue-400" />
-                    <h4 className="text-xs font-medium text-blue-300">Trades</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-white">{bybitStats.totalTrades}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    <span className="text-green-400">✓{bybitStats.winningTrades}</span>
-                    {" / "}
-                    <span className="text-red-400">✗{bybitStats.losingTrades}</span>
-                  </p>
-                </div>
-
-                <div className="p-3 rounded-lg bg-gradient-to-br from-green-600/10 to-green-900/5 border border-green-500/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Target className="h-4 w-4 text-green-400" />
-                    <h4 className="text-xs font-medium text-green-300">Win Rate</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-white">{bybitStats.winRate.toFixed(1)}%</p>
-                  <div className="mt-1 h-1 bg-gray-800 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-green-500 transition-all"
-                      style={{ width: `${bybitStats.winRate}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-gradient-to-br from-amber-600/10 to-amber-900/5 border border-amber-500/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Award className="h-4 w-4 text-amber-400" />
-                    <h4 className="text-xs font-medium text-amber-300">Profit Factor</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {bybitStats.profitFactor === 999 ? '∞' : bybitStats.profitFactor.toFixed(2)}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {bybitStats.profitFactor >= 2 ? '🔥 Excellent' : bybitStats.profitFactor >= 1.5 ? '✅ Good' : '⚠️ Average'}
-                  </p>
-                </div>
-
-                <div className="p-3 rounded-lg bg-gradient-to-br from-purple-600/10 to-purple-900/5 border border-purple-500/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <DollarSign className="h-4 w-4 text-purple-400" />
-                    <h4 className="text-xs font-medium text-purple-300">Realised PnL</h4>
-                  </div>
-                  <p className={`text-2xl font-bold ${bybitStats.realisedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {bybitStats.realisedPnL >= 0 ? '+' : ''}{bybitStats.realisedPnL.toFixed(2)}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">USDT</p>
-                </div>
-
-                <div className="p-3 rounded-lg bg-gradient-to-br from-cyan-600/10 to-cyan-900/5 border border-cyan-500/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Activity className="h-4 w-4 text-cyan-400" />
-                    <h4 className="text-xs font-medium text-cyan-300">Volume</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {(bybitStats.tradingVolume / 1000).toFixed(1)}K
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">USDT</p>
-                </div>
-
-                <div className="p-3 rounded-lg bg-gradient-to-br from-orange-600/10 to-orange-900/5 border border-orange-500/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="h-4 w-4 text-orange-400" />
-                    <h4 className="text-xs font-medium text-orange-300">Avg Time</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {bybitStats.avgHoldingTime < 60 
-                      ? `${Math.round(bybitStats.avgHoldingTime)}m`
-                      : `${Math.round(bybitStats.avgHoldingTime / 60)}h`
-                    }
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">per trade</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {bybitBlocked && (
+          <Alert className="border-yellow-700 bg-yellow-900/20">
+            <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            <AlertDescription className="text-sm text-yellow-200">
+              <strong>⚠️ Bybit API zablokowane (geo-restriction)</strong><br/>
+              Dashboard pokazuje dane z lokalnej bazy. Otwieraj/zamykaj pozycje działa normalnie przez API bota.
+            </AlertDescription>
+          </Alert>
         )}
 
-        {/* Symbol Locks Alert */}
         {symbolLocks.length > 0 && (
           <Alert className="border-red-800 bg-red-900/30 text-red-200">
             <AlertCircle className="h-4 w-4" />
@@ -760,70 +490,59 @@ export default function DashboardPage() {
                 <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="text-sm font-medium">⚠️ {symbolLocks.length} symbolów zablokowanych</span>
               </div>
-              <p className="text-xs mt-1">
-                {symbolLocks.map((lock, i) => (
-                  <span key={i} className="inline-block mr-1">
-                    {lock.symbol} - {lock.lockReason}
-                  </span>
-                ))}
-              </p>
             </AlertDescription>
           </Alert>
         )}
 
-        {/* ✅ ROZSZERZONE STATYSTYKI - 4 karty z całkowitym PnL */}
-        <div className="space-y-4 md:space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-green-300">Całkowite Saldo</h3>
-                <Wallet className="h-4 w-4 text-green-400" />
-              </div>
-              <p className="text-2xl font-bold text-green-100">
-                {totalBalance.toFixed(2)}
-              </p>
-              <p className="text-xs text-green-400">USDT</p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-green-300">Saldo (lokalne)</h3>
+              <Wallet className="h-4 w-4 text-green-400" />
             </div>
+            <p className="text-2xl font-bold text-green-100">
+              {totalBalance.toFixed(2)}
+            </p>
+            <p className="text-xs text-green-400">USDT</p>
+          </div>
 
-            <div className="p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-blue-800/50 border border-blue-800/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-blue-300">Niezrealizowany PnL</h3>
-                <TrendingUp className="h-4 w-4 text-blue-400" />
-              </div>
-              <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
-                {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
-              </p>
-              <p className="text-xs text-blue-400">USDT (otwarte)</p>
+          <div className="p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-blue-800/50 border border-blue-800/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-blue-300">PnL Niezrealizowany</h3>
+              <TrendingUp className="h-4 w-4 text-blue-400" />
             </div>
+            <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
+              {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
+            </p>
+            <p className="text-xs text-blue-400">USDT</p>
+          </div>
 
-            <div className="p-4 rounded-lg bg-gradient-to-br from-amber-900/30 to-amber-800/50 border border-amber-800/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-amber-300">Całkowity PnL</h3>
-                <TrendingUp className="h-4 w-4 text-amber-400" />
-              </div>
-              <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
-                {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
-              </p>
-              <p className="text-xs text-amber-400">USDT (Bybit live)</p>
+          <div className="p-4 rounded-lg bg-gradient-to-br from-amber-900/30 to-amber-800/50 border border-amber-800/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-amber-300">Otwarte Pozycje</h3>
+              <Activity className="h-4 w-4 text-amber-400" />
             </div>
+            <p className="text-2xl font-bold text-amber-100">
+              {botPositions.length}
+            </p>
+            <p className="text-xs text-amber-400">pozycji</p>
+          </div>
 
-            <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-purple-300">Status Bota</h3>
-                <Bot className="h-4 w-4 text-purple-400" />
-              </div>
-              <p className={`text-2xl font-bold ${botEnabled ? 'text-green-100' : 'text-red-100'}`}>
-                {botEnabled ? 'Aktywny' : 'Wyłączony'}
-              </p>
-              <p className="text-xs text-purple-400">
-                <div className={`h-2 w-2 rounded-full inline-block mr-1 ${botEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
-                {botEnabled ? 'Działa' : 'Zatrzymany'}
-              </p>
+          <div className="p-4 rounded-lg bg-gradient-to-br from-purple-900/30 to-purple-800/50 border border-purple-800/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-purple-300">Status Bota</h3>
+              <Bot className="h-4 w-4 text-purple-400" />
             </div>
+            <p className={`text-2xl font-bold ${botEnabled ? 'text-green-100' : 'text-red-100'}`}>
+              {botEnabled ? 'Aktywny' : 'Wyłączony'}
+            </p>
+            <p className="text-xs text-purple-400">
+              <div className={`h-2 w-2 rounded-full inline-block mr-1 ${botEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+              {botEnabled ? 'Działa' : 'Zatrzymany'}
+            </p>
           </div>
         </div>
 
-        {/* ✅ ULEPSZONA LISTA POZYCJI Z WIĘCEJ DANYMI */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -831,15 +550,14 @@ export default function DashboardPage() {
                 <CardTitle className="text-white flex items-center gap-2">
                   <Activity className="h-5 w-5" />
                   Otwarte Pozycje
-                  <Badge variant="secondary" className="bg-gray-700 text-gray-200">{positions.length}</Badge>
+                  <Badge variant="secondary" className="bg-gray-700 text-gray-200">{botPositions.length}</Badge>
                 </CardTitle>
                 <CardDescription className="text-gray-300">
-                  Twoje aktualne pozycje tradingowe z rozszerzonymi danymi
+                  Dane z lokalnej bazy (odświeżane co 5 sekund)
                 </CardDescription>
               </div>
               
-              {/* ✅ NOWY: Przycisk do ręcznego dopasowania alertów */}
-              {positions.length > 0 && (
+              {botPositions.length > 0 && (
                 <Button
                   onClick={handleMatchAlertsManually}
                   disabled={loadingAlertMatch}
@@ -870,74 +588,41 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {!loadingPositions && positions.length === 0 && (
+            {!loadingPositions && botPositions.length === 0 && (
               <div className="text-center py-8">
                 <Activity className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                <p className="text-sm text-gray-300">
-                  Brak otwartych pozycji
-                </p>
+                <p className="text-sm text-gray-300">Brak otwartych pozycji</p>
               </div>
             )}
 
-            {!loadingPositions && positions.length > 0 && (
+            {!loadingPositions && botPositions.length > 0 && (
               <div className="space-y-4">
-                {positions.map((position, idx) => {
-                  const pnl = parseFloat(position.unrealisedPnl || "0")
+                {botPositions.map((botPos, idx) => {
+                  const pnl = botPos.unrealisedPnl || 0
                   const isProfitable = pnl > 0
-                  const posValue = parseFloat(position.positionValue)
-                  const entryPrice = parseFloat(position.entryPrice)
-                  const markPrice = parseFloat(position.markPrice)
-                  const size = parseFloat(position.size)
-                  const leverage = parseFloat(position.leverage)
-                  const liqPrice = parseFloat(position.liqPrice || "0")
-                  
-                  const botPos = botPositions.find(bp => bp.symbol === position.symbol && bp.side === (position.side === "Buy" ? "Buy" : "Sell"))
-
-                  // ✅ NOWE OBLICZENIA
-                  const priceChange = markPrice - entryPrice
-                  const priceChangePercent = ((priceChange / entryPrice) * 100)
-                  const roe = (pnl / (posValue / leverage)) * 100 // Return on Equity
+                  const entryPrice = botPos.entryPrice
+                  const quantity = botPos.quantity
+                  const leverage = botPos.leverage
+                  const posValue = entryPrice * quantity
                   const margin = posValue / leverage
                   
-                  // Czas trwania pozycji
-                  const openedAt = botPos ? new Date(botPos.openedAt) : null
-                  const durationMs = openedAt ? Date.now() - openedAt.getTime() : 0
+                  // Szacowana obecna cena (nie mamy live data z Bybit)
+                  const estimatedCurrentPrice = entryPrice
+                  const roe = (pnl / margin) * 100
+                  
+                  const openedAt = new Date(botPos.openedAt)
+                  const durationMs = Date.now() - openedAt.getTime()
                   const durationHours = Math.floor(durationMs / (1000 * 60 * 60))
                   const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
                   const durationText = durationHours > 0 
                     ? `${durationHours}h ${durationMinutes}m` 
                     : `${durationMinutes}m`
 
-                  // ✅ POPRAWIONE: Odległość do SL/TP - sprawdzaj czy wartość istnieje i jest > 0
-                  // Priorytet: Bybit position.stopLoss/takeProfit → fallback na botPos.liveSlPrice/liveTp1Price
-                  const bybitSl = parseFloat(position.stopLoss || "0")
-                  const bybitTp = parseFloat(position.takeProfit || "0")
+                  const slPrice = botPos.liveSlPrice || botPos.stopLoss || 0
+                  const tp1Price = botPos.liveTp1Price || botPos.mainTpPrice || 0
+                  const tp2Price = botPos.liveTp2Price || 0
+                  const tp3Price = botPos.liveTp3Price || 0
                   
-                  const slPrice = bybitSl > 0 
-                    ? bybitSl 
-                    : (botPos?.liveSlPrice && botPos.liveSlPrice > 0 
-                        ? parseFloat(String(botPos.liveSlPrice)) 
-                        : 0)
-                  
-                  const tp1Price = bybitTp > 0 
-                    ? bybitTp 
-                    : (botPos?.liveTp1Price && botPos.liveTp1Price > 0 
-                        ? parseFloat(String(botPos.liveTp1Price)) 
-                        : 0)
-                  
-                  const distanceToSl = slPrice > 0
-                    ? position.side === "Buy" 
-                      ? ((markPrice - slPrice) / markPrice * 100)
-                      : ((slPrice - markPrice) / markPrice * 100)
-                    : null
-                  
-                  const distanceToTp1 = tp1Price > 0
-                    ? position.side === "Buy"
-                      ? ((tp1Price - markPrice) / markPrice * 100)
-                      : ((markPrice - tp1Price) / markPrice * 100)
-                    : null
-
-                  // Kolor dla ROE progress bar
                   const roeColor = roe >= 5 ? "bg-green-500" : roe >= 0 ? "bg-green-400" : roe >= -5 ? "bg-orange-400" : "bg-red-500"
 
                   return (
@@ -949,58 +634,45 @@ export default function DashboardPage() {
                           : "border-red-500/30 bg-gradient-to-br from-red-900/20 via-red-800/10 to-transparent"
                       }`}
                     >
-                      {/* HEADER ROW */}
                       <div className="flex items-start justify-between p-4 pb-3 border-b border-gray-700/50">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="font-bold text-2xl text-white">{position.symbol}</span>
+                            <span className="font-bold text-2xl text-white">{botPos.symbol}</span>
                             <Badge
-                              variant={position.side === "Buy" ? "default" : "secondary"}
+                              variant={botPos.side === "Buy" ? "default" : "secondary"}
                               className={`text-sm px-2 py-1 ${
-                                position.side === "Buy"
+                                botPos.side === "Buy"
                                   ? "bg-green-600 hover:bg-green-700"
                                   : "bg-red-600 hover:bg-red-700"
                               }`}
                             >
-                              {position.side === "Buy" ? "LONG" : "SHORT"} {leverage}x
+                              {botPos.side === "Buy" ? "LONG" : "SHORT"} {leverage}x
                             </Badge>
-                            {botPos && (
-                              <Badge variant="outline" className="text-xs text-purple-300 border-purple-500/50 bg-purple-500/10">
-                                {botPos.tier}
-                              </Badge>
-                            )}
+                            <Badge variant="outline" className="text-xs text-purple-300 border-purple-500/50 bg-purple-500/10">
+                              {botPos.tier}
+                            </Badge>
                           </div>
                           
-                          {/* Czas otwarcia i czas trwania */}
                           <div className="flex items-center gap-4 text-xs text-gray-400">
-                            {botPos && (
-                              <>
-                                <div className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  <span>Otwarto: {new Date(botPos.openedAt).toLocaleString("pl-PL", {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Zap className="h-3 w-3" />
-                                  <span>Czas trwania: {durationText}</span>
-                                </div>
-                              </>
-                            )}
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              <span>Otwarto: {openedAt.toLocaleString("pl-PL", {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Zap className="h-3 w-3" />
+                              <span>Czas: {durationText}</span>
+                            </div>
                           </div>
                         </div>
 
-                        {/* PNL i przycisk zamknięcia */}
                         <div className="flex items-center gap-3">
                           <div className="text-right">
-                            <div
-                              className={`text-2xl font-bold mb-1 ${
-                                isProfitable ? "text-green-400" : "text-red-400"
-                              }`}
-                            >
+                            <div className={`text-2xl font-bold mb-1 ${isProfitable ? "text-green-400" : "text-red-400"}`}>
                               {isProfitable ? "+" : ""}
                               {pnl.toFixed(2)} USDT
                             </div>
@@ -1010,14 +682,13 @@ export default function DashboardPage() {
                           </div>
                           
                           <Button
-                            onClick={() => handleClosePosition(position.symbol)}
-                            disabled={closingPosition === position.symbol}
+                            onClick={() => handleClosePosition(botPos.symbol)}
+                            disabled={closingPosition === botPos.symbol}
                             size="sm"
                             variant="destructive"
                             className="h-9 w-9 p-0"
-                            title="Zamknij pozycję"
                           >
-                            {closingPosition === position.symbol ? (
+                            {closingPosition === botPos.symbol ? (
                               <RefreshCw className="h-4 w-4 animate-spin" />
                             ) : (
                               <X className="h-4 w-4" />
@@ -1026,7 +697,6 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* ROE PROGRESS BAR */}
                       <div className="px-4 pt-3 pb-2">
                         <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
                           <span className="flex items-center gap-1">
@@ -1045,76 +715,35 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      {/* DANE POZYCJI - 3 SEKCJE */}
                       <div className="p-4 space-y-3">
-                        
-                        {/* Sekcja 1: Ceny i rozmiar */}
                         <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
                           <div className="flex items-center gap-2 mb-2">
                             <DollarSign className="h-4 w-4 text-blue-400" />
                             <h4 className="text-xs font-semibold text-gray-300">Ceny i Rozmiar</h4>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                             <div>
                               <div className="text-gray-400 text-xs">Wejście</div>
                               <div className="font-semibold text-white">{entryPrice.toFixed(4)}</div>
                             </div>
                             <div>
-                              <div className="text-gray-400 text-xs">Obecna Cena</div>
-                              <div className="font-semibold text-white">{markPrice.toFixed(4)}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-400 text-xs">Zmiana</div>
-                              <div className={`font-semibold ${priceChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(4)}
-                              </div>
-                            </div>
-                            <div>
                               <div className="text-gray-400 text-xs">Rozmiar</div>
-                              <div className="font-semibold text-white">{size.toFixed(4)}</div>
+                              <div className="font-semibold text-white">{quantity.toFixed(4)}</div>
                             </div>
-                          </div>
-                        </div>
-
-                        {/* Sekcja 2: Wartość i margin */}
-                        <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Wallet className="h-4 w-4 text-amber-400" />
-                            <h4 className="text-xs font-semibold text-gray-300">Wartość i Margin</h4>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                             <div>
-                              <div className="text-gray-400 text-xs">Wartość Pozycji</div>
+                              <div className="text-gray-400 text-xs">Wartość</div>
                               <div className="font-semibold text-white">{posValue.toFixed(2)} USDT</div>
                             </div>
-                            <div>
-                              <div className="text-gray-400 text-xs">Użyty Margin</div>
-                              <div className="font-semibold text-amber-300">{margin.toFixed(2)} USDT</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-400 text-xs">Dźwignia</div>
-                              <div className="font-semibold text-white">{leverage}x</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-400 text-xs">Likwidacja</div>
-                              <div className="font-semibold text-red-400">
-                                {liqPrice > 0 ? liqPrice.toFixed(4) : "N/A"}
-                              </div>
-                            </div>
                           </div>
                         </div>
 
-                        {/* Sekcja 3: SL/TP Levels - ✅ POPRAWIONE WYŚWIETLANIE */}
                         <div className="p-3 rounded-lg bg-gradient-to-br from-gray-800/60 to-gray-800/30 border border-gray-700/50">
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                               <Target className="h-4 w-4 text-purple-400" />
                               <h4 className="text-xs font-semibold text-gray-300">Poziomy SL/TP</h4>
                             </div>
-                            {botPos?.alertData ? (
+                            {botPos.alertData ? (
                               <Button
                                 onClick={() => handleShowAlertData(botPos.alertData)}
                                 size="sm"
@@ -1132,62 +761,44 @@ export default function DashboardPage() {
                           </div>
                           
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                            {/* ✅ POPRAWIONY Stop Loss - priorytet dla position.stopLoss */}
                             <div className="p-2 rounded bg-red-500/10 border border-red-500/30">
                               <div className="text-gray-400 text-xs mb-1">Stop Loss</div>
                               {slPrice > 0 ? (
-                                <>
-                                  <div className="font-semibold text-red-400">
-                                    {slPrice.toFixed(4)}
-                                  </div>
-                                  {distanceToSl !== null && (
-                                    <div className="text-xs text-red-300 mt-1">
-                                      {distanceToSl.toFixed(2)}% distance
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <div className="font-semibold text-gray-500">N/A</div>
-                              )}
-                            </div>
-                            
-                            {/* ✅ POPRAWIONY TP1 - priorytet dla position.takeProfit */}
-                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
-                              <div className="text-gray-400 text-xs mb-1">Take Profit 1</div>
-                              {tp1Price > 0 ? (
-                                <>
-                                  <div className="font-semibold text-green-400">
-                                    {tp1Price.toFixed(4)}
-                                  </div>
-                                  {distanceToTp1 !== null && (
-                                    <div className="text-xs text-green-300 mt-1">
-                                      {distanceToTp1.toFixed(2)}% to target
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <div className="font-semibold text-gray-500">N/A</div>
-                              )}
-                            </div>
-                            
-                            {/* TP2 - z botPos (nie ma w position) */}
-                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
-                              <div className="text-gray-400 text-xs mb-1">Take Profit 2</div>
-                              {botPos?.liveTp2Price && parseFloat(String(botPos.liveTp2Price)) > 0 ? (
-                                <div className="font-semibold text-green-400">
-                                  {parseFloat(String(botPos.liveTp2Price)).toFixed(4)}
+                                <div className="font-semibold text-red-400">
+                                  {slPrice.toFixed(4)}
                                 </div>
                               ) : (
                                 <div className="font-semibold text-gray-500">N/A</div>
                               )}
                             </div>
                             
-                            {/* TP3 - z botPos (nie ma w position) */}
                             <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
-                              <div className="text-gray-400 text-xs mb-1">Take Profit 3</div>
-                              {botPos?.liveTp3Price && parseFloat(String(botPos.liveTp3Price)) > 0 ? (
+                              <div className="text-gray-400 text-xs mb-1">TP1</div>
+                              {tp1Price > 0 ? (
                                 <div className="font-semibold text-green-400">
-                                  {parseFloat(String(botPos.liveTp3Price)).toFixed(4)}
+                                  {tp1Price.toFixed(4)}
+                                </div>
+                              ) : (
+                                <div className="font-semibold text-gray-500">N/A</div>
+                              )}
+                            </div>
+                            
+                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
+                              <div className="text-gray-400 text-xs mb-1">TP2</div>
+                              {tp2Price > 0 ? (
+                                <div className="font-semibold text-green-400">
+                                  {tp2Price.toFixed(4)}
+                                </div>
+                              ) : (
+                                <div className="font-semibold text-gray-500">N/A</div>
+                              )}
+                            </div>
+                            
+                            <div className="p-2 rounded bg-green-500/10 border border-green-500/30">
+                              <div className="text-gray-400 text-xs mb-1">TP3</div>
+                              {tp3Price > 0 ? (
+                                <div className="font-semibold text-green-400">
+                                  {tp3Price.toFixed(4)}
                                 </div>
                               ) : (
                                 <div className="font-semibold text-gray-500">N/A</div>
@@ -1196,31 +807,28 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Dodatkowe metryki jeśli są dane z bota */}
-                        {botPos && (
-                          <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Activity className="h-4 w-4 text-cyan-400" />
-                              <h4 className="text-xs font-semibold text-gray-300">Dodatkowe Informacje</h4>
+                        <div className="p-3 rounded-lg bg-gray-800/40 border border-gray-700/50">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Activity className="h-4 w-4 text-cyan-400" />
+                            <h4 className="text-xs font-semibold text-gray-300">Informacje</h4>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                            <div>
+                              <div className="text-gray-400 text-xs">Status</div>
+                              <Badge variant="outline" className="text-xs mt-1">
+                                {botPos.status === 'open' ? 'Otwarta' : botPos.status === 'partial_close' ? 'Częściowo zamknięta' : botPos.status}
+                              </Badge>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                              <div>
-                                <div className="text-gray-400 text-xs">Status</div>
-                                <Badge variant="outline" className="text-xs mt-1">
-                                  {botPos.status === 'open' ? 'Otwarta' : botPos.status === 'partial_close' ? 'Częściowo zamknięta' : botPos.status}
-                                </Badge>
-                              </div>
-                              <div>
-                                <div className="text-gray-400 text-xs">Potwierdzenia</div>
-                                <div className="font-semibold text-white">{botPos.confirmationCount}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-400 text-xs">ID Pozycji</div>
-                                <div className="font-semibold text-cyan-300">#{botPos.id}</div>
-                              </div>
+                            <div>
+                              <div className="text-gray-400 text-xs">Potwierdzenia</div>
+                              <div className="font-semibold text-white">{botPos.confirmationCount}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-400 text-xs">ID Pozycji</div>
+                              <div className="font-semibold text-cyan-300">#{botPos.id}</div>
                             </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   )
@@ -1230,7 +838,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* ✅ NOWY DIALOG: Dane alertu */}
         <Dialog open={showAlertDialog} onOpenChange={setShowAlertDialog}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700">
             <DialogHeader>
@@ -1238,14 +845,10 @@ export default function DashboardPage() {
                 <FileText className="h-5 w-5 text-blue-400" />
                 Dane Alertu - {selectedAlertData?.symbol}
               </DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Wartości rynkowe z alertu TradingView w momencie otwarcia pozycji
-              </DialogDescription>
             </DialogHeader>
 
             {selectedAlertData && (
               <div className="space-y-4">
-                {/* Podstawowe informacje */}
                 <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
                   <h3 className="text-sm font-semibold text-gray-300 mb-3">Podstawowe Informacje</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -1266,7 +869,7 @@ export default function DashboardPage() {
                       </Badge>
                     </div>
                     <div>
-                      <div className="text-gray-400">Siła Sygnału</div>
+                      <div className="text-gray-400">Siła</div>
                       <div className="font-semibold text-blue-400">
                         {(selectedAlertData.strength * 100).toFixed(1)}%
                       </div>
@@ -1282,139 +885,23 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Ceny wejścia i wyjścia */}
                 <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Ceny Wejścia i Wyjścia</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Ceny</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                     <div>
-                      <div className="text-gray-400">Entry Price</div>
+                      <div className="text-gray-400">Entry</div>
                       <div className="font-semibold text-green-400">{selectedAlertData.entryPrice}</div>
                     </div>
                     <div>
-                      <div className="text-gray-400">Stop Loss</div>
+                      <div className="text-gray-400">SL</div>
                       <div className="font-semibold text-red-400">{selectedAlertData.sl}</div>
                     </div>
                     <div>
                       <div className="text-gray-400">Main TP</div>
                       <div className="font-semibold text-green-400">{selectedAlertData.mainTp}</div>
                     </div>
-                    <div>
-                      <div className="text-gray-400">TP1</div>
-                      <div className="font-semibold text-green-300">{selectedAlertData.tp1}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">TP2</div>
-                      <div className="font-semibold text-green-300">{selectedAlertData.tp2}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">TP3</div>
-                      <div className="font-semibold text-green-300">{selectedAlertData.tp3}</div>
-                    </div>
                   </div>
                 </div>
-
-                {/* Wskaźniki techniczne */}
-                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Wskaźniki Techniczne</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-400">ATR</div>
-                      <div className="font-semibold text-white">{selectedAlertData.atr}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Volume Ratio</div>
-                      <div className="font-semibold text-white">
-                        {selectedAlertData.volumeRatio?.toFixed(2) || "N/A"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">MTF Agreement</div>
-                      <div className="font-semibold text-blue-400">
-                        {(selectedAlertData.mtfAgreement * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Regime</div>
-                      <div className="font-semibold text-white">{selectedAlertData.regime}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Regime Confidence</div>
-                      <div className="font-semibold text-blue-400">
-                        {(selectedAlertData.regimeConfidence * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                    {selectedAlertData.latency && (
-                      <div>
-                        <div className="text-gray-400">Latencja</div>
-                        <div className="font-semibold text-white">{selectedAlertData.latency}ms</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Order Blocks & FVG */}
-                <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Order Blocks & FVG</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-400">In OB</div>
-                      <Badge variant={selectedAlertData.inOb ? "default" : "secondary"}>
-                        {selectedAlertData.inOb ? "Tak" : "Nie"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">OB Score</div>
-                      <div className="font-semibold text-white">
-                        {selectedAlertData.obScore?.toFixed(2) || "N/A"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">In FVG</div>
-                      <Badge variant={selectedAlertData.inFvg ? "default" : "secondary"}>
-                        {selectedAlertData.inFvg ? "Tak" : "Nie"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">FVG Score</div>
-                      <div className="font-semibold text-white">
-                        {selectedAlertData.fvgScore?.toFixed(2) || "N/A"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Smart Money Indicators */}
-                {(selectedAlertData.institutionalFlow || selectedAlertData.accumulation || selectedAlertData.volumeClimax) && (
-                  <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                    <h3 className="text-sm font-semibold text-gray-300 mb-3">Smart Money</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                      {selectedAlertData.institutionalFlow !== undefined && (
-                        <div>
-                          <div className="text-gray-400">Institutional Flow</div>
-                          <div className="font-semibold text-purple-400">
-                            {selectedAlertData.institutionalFlow?.toFixed(2) || "N/A"}
-                          </div>
-                        </div>
-                      )}
-                      {selectedAlertData.accumulation !== undefined && (
-                        <div>
-                          <div className="text-gray-400">Accumulation</div>
-                          <div className="font-semibold text-purple-400">
-                            {selectedAlertData.accumulation?.toFixed(2) || "N/A"}
-                          </div>
-                        </div>
-                      )}
-                      {selectedAlertData.volumeClimax !== undefined && (
-                        <div>
-                          <div className="text-gray-400">Volume Climax</div>
-                          <Badge variant={selectedAlertData.volumeClimax ? "default" : "secondary"}>
-                            {selectedAlertData.volumeClimax ? "Tak" : "Nie"}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </DialogContent>
