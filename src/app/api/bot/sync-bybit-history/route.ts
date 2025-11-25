@@ -55,13 +55,15 @@ async function createBybitSignature(
  * Funding transactions have these characteristics:
  * 1. Very short duration (< 10 seconds)
  * 2. Entry price ≈ Exit price (no real price movement)
- * 3. Often minimal or zero quantity
+ * 3. closedPnl is often exactly 0 or very close to funding fee amounts
+ * 4. Often minimal quantity
  */
 function isRealPosition(bybitPos: any): boolean {
   try {
     const entryPrice = parseFloat(bybitPos.avgEntryPrice);
     const exitPrice = parseFloat(bybitPos.avgExitPrice);
     const qty = parseFloat(bybitPos.qty);
+    const pnl = parseFloat(bybitPos.closedPnl);
     
     // Calculate duration
     const openedAt = new Date(parseInt(bybitPos.createdTime));
@@ -73,15 +75,22 @@ function isRealPosition(bybitPos: any): boolean {
     const priceDiff = Math.abs(entryPrice - exitPrice);
     const priceDiffPercent = entryPrice > 0 ? (priceDiff / entryPrice) * 100 : 0;
     
-    // Funding transactions typically have:
-    // - Duration < 10 seconds
-    // - Price difference < 0.01% (essentially no movement)
-    // - These are NOT real positions, just funding fee settlements
+    // ✅ ENHANCED FILTERING: Multiple criteria to catch funding transactions
     
-    const isFundingTransaction = durationSeconds < 10 && priceDiffPercent < 0.01;
+    // Criterion 1: Very short duration with no price movement
+    const isFundingByDuration = durationSeconds < 10 && priceDiffPercent < 0.01;
+    
+    // Criterion 2: Exactly zero PnL with same entry/exit price (pure funding)
+    const isFundingByZeroPnL = Math.abs(pnl) < 0.0001 && priceDiffPercent < 0.0001;
+    
+    // Criterion 3: Duration < 30 seconds with almost no price movement and near-zero PnL
+    const isFundingByNearInstant = durationSeconds < 30 && priceDiffPercent < 0.001 && Math.abs(pnl) < 0.01;
+    
+    const isFundingTransaction = isFundingByDuration || isFundingByZeroPnL || isFundingByNearInstant;
     
     if (isFundingTransaction) {
-      console.log(`   🚫 FILTERED: ${bybitPos.symbol} - Funding transaction (${durationSeconds.toFixed(1)}s, ${priceDiffPercent.toFixed(4)}% price diff)`);
+      console.log(`   🚫 FILTERED: ${bybitPos.symbol} - Funding transaction`);
+      console.log(`      Duration: ${durationSeconds.toFixed(1)}s, Price diff: ${priceDiffPercent.toFixed(4)}%, PnL: ${pnl.toFixed(4)}`);
       return false;
     }
     
