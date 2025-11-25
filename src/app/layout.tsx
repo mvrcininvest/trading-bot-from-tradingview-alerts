@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   },
 };
 
+// Force Vercel rebuild - Updated: 2025-11-25T09:30:00.000Z
 export default function RootLayout({
   children,
 }: Readonly<{
