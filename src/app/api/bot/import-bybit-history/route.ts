@@ -6,8 +6,8 @@ import { eq, and } from "drizzle-orm";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-// ✅ USE PROXY URL
-const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE PROXY URL FROM ENV
+const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
 
 interface BybitHistoryPosition {
   symbol: string;

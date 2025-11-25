@@ -16,8 +16,8 @@ import {
   clearRepairAttempts
 } from './oko-saurona';
 
-// ✅ USE PROXY URL
-const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE PROXY URL FROM ENV
+const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER

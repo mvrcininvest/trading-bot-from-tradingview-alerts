@@ -4,8 +4,8 @@ import { botSettings, positionHistory, botPositions } from "@/db/schema";
 import crypto from "crypto";
 import { eq, sql } from "drizzle-orm";
 
-// ✅ USE PROXY URL
-const BYBIT_PROXY_URL = "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ USE PROXY URL FROM ENV
+const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
 
 // ============================================
 // 🔐 BYBIT V5 SIGNATURE HELPER (FIXED)
