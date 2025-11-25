@@ -1,5 +1,8 @@
 "use client";
 
+// FORCE VERCEL REBUILD - Timestamp: 2025-11-25T10:45:00.000Z
+// Build Hash: v3.0.0-final
+
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

@@ -75,7 +75,14 @@ export default function BotHistoryPage() {
       } else {
         // ✅ AUTOMATIC FALLBACK: If Bybit fails, try database
         if (dataSource === "bybit" && data.code === "BYBIT_API_ERROR") {
-          setBybitError(data.message || "Błąd połączenia z Bybit API");
+          const errorMsg = data.message || "Błąd połączenia z Bybit API";
+          
+          // ✅ Detect geo-blocking
+          if (errorMsg.includes("403") || errorMsg.includes("CloudFront") || errorMsg.includes("could not be satisfied")) {
+            setBybitError("🌍 Geo-blocking: Bybit blokuje requesty z regionu Vercel. To normalne - CloudFront (CDN Bybit) blokuje niektóre lokalizacje. Użyj funkcji 'Import z Bybit' aby zsynchronizować dane do lokalnej bazy.");
+          } else {
+            setBybitError(errorMsg);
+          }
           
           if (!silent) {
             toast.warning("⚠️ Bybit API niedostępne - przełączam na lokalną bazę", { duration: 4000 });
@@ -196,25 +203,36 @@ export default function BotHistoryPage() {
           </div>
         </div>
 
-        {/* ⚠️ BYBIT ERROR WARNING */}
+        {/* ⚠️ BYBIT GEO-BLOCKING WARNING */}
         {bybitError && dataSource === "bybit" && (
-          <Alert className="border-red-700 bg-red-900/20">
-            <WifiOff className="h-4 w-4 text-red-400" />
-            <AlertDescription className="text-sm text-red-200">
-              <strong>⚠️ Błąd połączenia z Bybit API:</strong> {bybitError}
+          <Alert className="border-orange-700 bg-orange-900/20">
+            <WifiOff className="h-4 w-4 text-orange-400" />
+            <AlertDescription className="text-sm text-orange-200">
+              <strong>⚠️ {bybitError}</strong>
               <br />
-              <span className="text-xs text-red-300 mt-1 block">
-                Możliwe przyczyny: Geo-blocking, nieprawidłowe klucze API, lub problem z proxy.
-                Wyświetlam dane z lokalnej bazy.
+              <span className="text-xs text-orange-300 mt-2 block">
+                💡 <strong>Rozwiązanie:</strong> Kliknij "Import z Bybit" poniżej aby zsynchronizować pełną historię z Bybit do lokalnej bazy. 
+                Lokalna baza działa zawsze, bez ograniczeń geo-blocking.
               </span>
-              <Button 
-                onClick={() => setDataSource("database")} 
-                className="mt-2 bg-blue-600 hover:bg-blue-700"
-                size="sm"
-              >
-                <Database className="mr-2 h-4 w-4" />
-                Przełącz na lokalną bazę
-              </Button>
+              <div className="flex gap-2 mt-3">
+                <Button 
+                  onClick={() => setDataSource("database")} 
+                  className="bg-blue-600 hover:bg-blue-700"
+                  size="sm"
+                >
+                  <Database className="mr-2 h-4 w-4" />
+                  Przełącz na lokalną bazę
+                </Button>
+                <Button 
+                  onClick={importFromBybit} 
+                  disabled={importing}
+                  className="bg-purple-600 hover:bg-purple-700"
+                  size="sm"
+                >
+                  <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
+                  {importing ? "Importowanie..." : "Import z Bybit"}
+                </Button>
+              </div>
             </AlertDescription>
           </Alert>
         )}
@@ -234,16 +252,16 @@ export default function BotHistoryPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="bybit">
-                      <div className="flex items-center gap-2">
-                        <Wifi className="h-4 w-4 text-green-400" />
-                        <span>Bybit API (prawdziwe)</span>
-                      </div>
-                    </SelectItem>
                     <SelectItem value="database">
                       <div className="flex items-center gap-2">
                         <Database className="h-4 w-4 text-blue-400" />
-                        <span>Lokalna baza danych</span>
+                        <span>Lokalna baza (zalecane)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="bybit">
+                      <div className="flex items-center gap-2">
+                        <Wifi className="h-4 w-4 text-green-400" />
+                        <span>Bybit API (może być zablokowane)</span>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -301,13 +319,13 @@ export default function BotHistoryPage() {
                 <>
                   <Wifi className="inline h-4 w-4 text-green-400 mr-1" />
                   <strong>Bybit API:</strong> Pobiera prawdziwe dane bezpośrednio z giełdy Bybit. 
-                  Zawsze aktualne, zawiera wszystkie pozycje z konta.
+                  Może być zablokowane przez geo-blocking CloudFront.
                 </>
               ) : (
                 <>
                   <Database className="inline h-4 w-4 text-blue-400 mr-1" />
-                  <strong>Lokalna baza:</strong> Pozycje zapisane przez bota podczas działania. 
-                  Kliknij "Import z Bybit" poniżej aby zsynchronizować.
+                  <strong>Lokalna baza (ZALECANE):</strong> Pozycje zapisane przez bota lub zaimportowane z Bybit. 
+                  Działa zawsze, bez ograniczeń geo-blocking.
                 </>
               )}
               {lastRefresh && ` • Ostatnia aktualizacja: ${lastRefresh.toLocaleTimeString('pl-PL')}`}
@@ -315,25 +333,23 @@ export default function BotHistoryPage() {
           </CardContent>
         </Card>
 
-        {/* Info o synchronizacji (tylko dla database mode) */}
-        {dataSource === "database" && (
-          <Alert className="border-purple-700 bg-purple-900/20">
-            <Download className="h-4 w-4 text-purple-400" />
-            <AlertDescription className="text-sm text-purple-200">
-              💡 <strong>Import danych:</strong> Baza lokalna może być niekompletna. 
-              Kliknij <strong>"Import z Bybit"</strong> poniżej aby zsynchronizować pełną historię z giełdy.
-              <Button 
-                onClick={importFromBybit} 
-                disabled={importing}
-                className="ml-4 bg-purple-600 hover:bg-purple-700"
-                size="sm"
-              >
-                <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
-                {importing ? "Importowanie..." : "Import z Bybit"}
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* Info o synchronizacji (zawsze widoczne) */}
+        <Alert className="border-purple-700 bg-purple-900/20">
+          <Download className="h-4 w-4 text-purple-400" />
+          <AlertDescription className="text-sm text-purple-200">
+            💡 <strong>Import danych z Bybit:</strong> Aby zsynchronizować pełną historię transakcji z giełdy Bybit do lokalnej bazy, 
+            kliknij przycisk poniżej. Pozwoli to ominąć problemy z geo-blocking i mieć zawsze dostęp do danych.
+            <Button 
+              onClick={importFromBybit} 
+              disabled={importing}
+              className="ml-4 bg-purple-600 hover:bg-purple-700"
+              size="sm"
+            >
+              <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
+              {importing ? "Importowanie..." : "Import z Bybit"}
+            </Button>
+          </AlertDescription>
+        </Alert>
 
         {/* Podstawowe Statystyki */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
