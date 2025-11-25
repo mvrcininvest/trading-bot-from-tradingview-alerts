@@ -4,16 +4,10 @@ import { positionHistory, botSettings } from '@/db/schema';
 import { desc } from 'drizzle-orm';
 import crypto from 'crypto';
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const getBybitProxyUrl = () => {
-  // In production (Vercel), use absolute URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
-  }
-  // In local dev, use relative path
-  return '/api/bybit-edge-proxy';
-};
+// ✅ DIRECT BYBIT API REQUESTS (no proxy needed)
+// Vercel will route these from Singapore/Hong Kong Edge regions
+export const runtime = 'edge';
+export const preferredRegion = ['sin1', 'hkg1', 'icn1']; // Singapore, Hong Kong, Seoul
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER
@@ -41,7 +35,6 @@ async function fetchFromBybitAPI(
   daysBack: number = 90
 ) {
   console.log(`[History API] 🌐 Fetching REAL data from Bybit API (last ${daysBack} days)...`);
-  console.log(`[History API] Using proxy: ${getBybitProxyUrl()}`);
   
   const now = Date.now();
   const startTime = now - daysBack * 24 * 60 * 60 * 1000;
@@ -75,7 +68,8 @@ async function fetchFromBybitAPI(
       
       const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
       
-      const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
+      // ✅ DIRECT BYBIT API REQUEST (Edge Function in Singapore)
+      const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
       
       console.log(`[History API] Request URL: ${url}`);
       
@@ -91,7 +85,6 @@ async function fetchFromBybitAPI(
       });
       
       if (!response.ok) {
-        // ✅ LOG FULL ERROR RESPONSE
         const errorText = await response.text();
         console.error(`[History API] ❌ Bybit ${response.status} Error:`, errorText);
         throw new Error(`Bybit API error: ${response.status} - ${errorText}`);
@@ -186,7 +179,6 @@ async function fetchFromBybitAPI(
 function classifyCloseReason(position: any): string {
   const pnl = typeof position.pnl === 'number' ? position.pnl : parseFloat(position.pnl || "0");
   
-  // Check which TP was hit based on flags
   if (pnl > 0) {
     if (position.tp3Hit) return 'tp3_hit';
     if (position.tp2Hit) return 'tp2_hit';

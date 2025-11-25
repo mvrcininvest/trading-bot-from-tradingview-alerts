@@ -12,10 +12,11 @@
         },
         {
           "key": "X-Build-Time",
-          "value": "2025-11-25T10:15:00.000Z"
+          "value": "2025-11-25T11:15:00.000Z"
         }
       ]
     }
   ],
-  "regions": ["sin1"]
+  "regions": ["sin1"],
+  "framework": "nextjs"
 }
