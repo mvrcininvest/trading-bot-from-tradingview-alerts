@@ -3,10 +3,10 @@ import { db } from '@/db';
 import { positionHistory, botSettings } from '@/db/schema';
 import { desc } from 'drizzle-orm';
 
-// ✅ DIRECT BYBIT API REQUESTS (no proxy needed)
-// Vercel will route these from Singapore/Hong Kong Edge regions
+// ✅ CRITICAL FIX: Use Edge Runtime for Bybit API calls
 export const runtime = 'edge';
 export const preferredRegion = ['sin1', 'hkg1', 'icn1']; // Singapore, Hong Kong, Seoul
+export const dynamic = 'force-dynamic';
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (Web Crypto API)

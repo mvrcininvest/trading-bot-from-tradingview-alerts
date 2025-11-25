@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { positionHistory, botSettings } from "@/db/schema";
 
-export const maxDuration = 60;
+// ✅ CRITICAL FIX: Use Edge Runtime to bypass geo-blocking
+export const runtime = 'edge';
+export const preferredRegion = ['sin1', 'hkg1', 'icn1']; // Singapore, Hong Kong, Seoul
 export const dynamic = "force-dynamic";
 
 /**
