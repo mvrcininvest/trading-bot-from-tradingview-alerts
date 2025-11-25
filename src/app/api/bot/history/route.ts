@@ -674,11 +674,16 @@ export async function GET(request: NextRequest) {
       quantity: record.quantity,
       leverage: record.leverage,
       pnl: record.pnl,
+      grossPnl: record.grossPnl || record.pnl, // ✅ Fallback to pnl if grossPnl is null
+      tradingFees: record.tradingFees || 0, // ✅ Default to 0 if null
+      fundingFees: record.fundingFees || 0, // ✅ Default to 0 if null
+      totalFees: record.totalFees || 0, // ✅ Default to 0 if null
       pnlPercent: record.pnlPercent,
       closeReason: record.closeReason,
       tp1Hit: record.tp1Hit,
       tp2Hit: record.tp2Hit,
       tp3Hit: record.tp3Hit,
+      partialCloseCount: record.partialCloseCount || 1, // ✅ Default to 1 if null
       confirmationCount: record.confirmationCount,
       openedAt: record.openedAt,
       closedAt: record.closedAt,

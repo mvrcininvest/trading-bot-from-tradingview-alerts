@@ -1,7 +1,7 @@
 "use client";
 
-// FORCE VERCEL REBUILD - Timestamp: 2025-11-25T12:00:00.000Z
-// Build Hash: v5.0.0-diagnose-7day-segments
+// FORCE VERCEL REBUILD - Timestamp: 2025-11-25T13:00:00.000Z
+// Build Hash: v6.0.0-fix-window-confirm
 
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 
@@ -80,6 +81,8 @@ export default function DashboardPage() {
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [positionToClose, setPositionToClose] = useState<{ symbol: string; positionId: number } | null>(null);
 
   const fetchHistoryStats = useCallback(async (silent = false) => {
     if (!silent) setLoadingHistory(true);
@@ -168,16 +171,21 @@ export default function DashboardPage() {
       const stored = localStorage.getItem("exchange_credentials");
       
       if (stored) {
-        const creds = JSON.parse(stored);
-        creds.exchange = "bybit";
-        creds.environment = "mainnet";
-        setCredentials(creds);
-        
-        fetchBotPositions();
-        fetchBotStatus();
-        fetchSymbolLocks();
-        autoMatchAlertsToOpen();
-        fetchHistoryStats();
+        try {
+          const creds = JSON.parse(stored);
+          creds.exchange = "bybit";
+          creds.environment = "mainnet";
+          setCredentials(creds);
+          
+          fetchBotPositions();
+          fetchBotStatus();
+          fetchSymbolLocks();
+          autoMatchAlertsToOpen();
+          fetchHistoryStats();
+        } catch (err) {
+          console.error("Failed to parse credentials:", err);
+          localStorage.removeItem("exchange_credentials");
+        }
         
         setIsCheckingCredentials(false);
         return;
@@ -249,10 +257,16 @@ export default function DashboardPage() {
   };
 
   const handleClosePosition = async (symbol: string, positionId: number) => {
-    const confirmed = window.confirm(`Czy na pewno chcesz zamknąć pozycję ${symbol}?`);
-    if (!confirmed) return;
+    setPositionToClose({ symbol, positionId });
+    setShowCloseConfirm(true);
+  };
 
+  const confirmClosePosition = async () => {
+    if (!positionToClose) return;
+
+    const { symbol, positionId } = positionToClose;
     setClosingPosition(symbol);
+    setShowCloseConfirm(false);
     
     try {
       const response = await fetch("/api/exchange/close-position", {
@@ -278,6 +292,7 @@ export default function DashboardPage() {
       toast.error(`❌ Błąd: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
     } finally {
       setClosingPosition(null);
+      setPositionToClose(null);
     }
   };
 
@@ -789,6 +804,42 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* ✅ CLOSE POSITION CONFIRMATION DIALOG */}
+        <Dialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+          <DialogContent className="bg-gray-900 border-gray-700">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                Zamknąć pozycję?
+              </DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Czy na pewno chcesz zamknąć pozycję <span className="font-bold text-white">{positionToClose?.symbol}</span>?
+                <br />
+                Tej operacji nie można cofnąć.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCloseConfirm(false);
+                  setPositionToClose(null);
+                }}
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              >
+                Anuluj
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmClosePosition}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Zamknij Pozycję
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showAlertDialog} onOpenChange={setShowAlertDialog}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700">

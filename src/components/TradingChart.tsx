@@ -25,46 +25,59 @@ export function TradingChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartLibLoaded, setChartLibLoaded] = useState(false);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    let isMounted = true;
-    let timeoutId: NodeJS.Timeout;
+    mountedRef.current = true;
 
     const initChart = async () => {
       if (!chartContainerRef.current) return;
 
       try {
-        // ✅ Add timeout for CDN loading
-        timeoutId = setTimeout(() => {
-          if (!chartLibLoaded && isMounted) {
-            console.error("Chart library timeout");
-            setError("Timeout ładowania biblioteki wykresu");
+        // ✅ Set aggressive timeout - 8 seconds total
+        loadingTimeoutRef.current = setTimeout(() => {
+          if (mountedRef.current && loading) {
+            console.error("⏱️ Chart loading timeout");
+            setError("Timeout ładowania wykresu");
             setLoading(false);
           }
-        }, 10000); // 10 second timeout
+        }, 8000);
 
         // Load lightweight-charts from CDN
         if (!(window as any).LightweightCharts) {
           console.log("📊 Loading chart library from CDN...");
           
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js';
-            script.async = true;
-            script.onload = () => {
-              console.log("✅ Chart library loaded");
-              resolve();
-            };
-            script.onerror = () => {
-              console.error("❌ Failed to load chart library");
-              reject(new Error('Failed to load chart library from CDN'));
-            };
-            document.head.appendChild(script);
-          });
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = 'https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js';
+              script.async = true;
+              
+              const scriptTimeout = setTimeout(() => {
+                reject(new Error('CDN timeout'));
+              }, 5000);
+              
+              script.onload = () => {
+                clearTimeout(scriptTimeout);
+                console.log("✅ Chart library loaded");
+                resolve();
+              };
+              
+              script.onerror = () => {
+                clearTimeout(scriptTimeout);
+                console.error("❌ Failed to load chart library");
+                reject(new Error('Failed to load from CDN'));
+              };
+              
+              document.head.appendChild(script);
+            });
+          } catch (cdnError) {
+            throw new Error('CDN unavailable');
+          }
         }
         
-        if (!isMounted) return;
-        clearTimeout(timeoutId);
+        if (!mountedRef.current) return;
         setChartLibLoaded(true);
 
         const { createChart } = (window as any).LightweightCharts;
@@ -110,16 +123,23 @@ export function TradingChart({
         const fetchChartData = async () => {
           try {
             console.log(`📊 Fetching chart data for ${symbol}...`);
-            setLoading(true);
-            setError(null);
 
             const startTime = new Date(openedAt).getTime();
             const endTime = new Date(closedAt).getTime();
 
+            const controller = new AbortController();
+            const fetchTimeout = setTimeout(() => controller.abort(), 6000);
+
             const response = await fetch(
               `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=5`,
-              { signal: AbortSignal.timeout(15000) } // 15 second timeout
+              { signal: controller.signal }
             );
+
+            clearTimeout(fetchTimeout);
+
+            if (!response.ok) {
+              throw new Error(`API error: ${response.status}`);
+            }
 
             const data = await response.json();
             console.log(`📊 Chart data response:`, data);
@@ -128,9 +148,11 @@ export function TradingChart({
               throw new Error(data.message || "Failed to fetch chart data");
             }
 
-            if (data.klines.length === 0) {
-              throw new Error("No chart data available for this time range");
+            if (!data.klines || data.klines.length === 0) {
+              throw new Error("No chart data available");
             }
+
+            if (!mountedRef.current) return;
 
             // Set candlestick data
             candlestickSeries.setData(data.klines);
@@ -158,11 +180,20 @@ export function TradingChart({
             chart.timeScale().fitContent();
 
             console.log("✅ Chart loaded successfully");
+            if (loadingTimeoutRef.current) {
+              clearTimeout(loadingTimeoutRef.current);
+            }
             setLoading(false);
           } catch (err: any) {
             console.error("❌ Chart data error:", err);
-            setError(err.message || "Failed to load chart");
-            setLoading(false);
+            if (mountedRef.current) {
+              if (err.name === 'AbortError') {
+                setError("Timeout pobierania danych");
+              } else {
+                setError(err.message || "Błąd ładowania danych");
+              }
+              setLoading(false);
+            }
           }
         };
 
@@ -189,19 +220,22 @@ export function TradingChart({
         };
       } catch (err: any) {
         console.error("❌ Failed to initialize chart:", err);
-        setError(err.message || "Failed to load chart library");
-        setLoading(false);
-        clearTimeout(timeoutId);
+        if (mountedRef.current) {
+          setError(err.message || "Błąd inicjalizacji wykresu");
+          setLoading(false);
+        }
       }
     };
 
     initChart();
 
     return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
+      mountedRef.current = false;
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
     };
-  }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side, chartLibLoaded]);
+  }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side]);
 
   if (loading) {
     return (
