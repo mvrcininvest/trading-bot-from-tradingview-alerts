@@ -32,7 +32,7 @@ interface BalanceData {
 export default function GlownaPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
-  const [botEnabled, setBotEnabled] = useState(false);
+  const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [balance, setBalance] = useState<BalanceData[]>([]);
   const [loadingBalance, setLoadingBalance] = useState(true);
@@ -121,9 +121,17 @@ export default function GlownaPage() {
       console.log("[Glowna] Settings Raw Response:", JSON.stringify(data, null, 2));
       
       if (data.success && data.settings) {
-        // ✅ CRITICAL FIX: Force strict boolean conversion
+        // ✅ CRITICAL FIX: Strict boolean check - handle all truthy values
         const rawValue = data.settings.botEnabled;
-        const isBotEnabled = rawValue === true || rawValue === 1 || rawValue === "1" || rawValue === "true";
+        
+        // Check for all possible truthy representations
+        const isBotEnabled = Boolean(
+          rawValue === true || 
+          rawValue === 1 || 
+          rawValue === "1" || 
+          rawValue === "true" ||
+          rawValue === "TRUE"
+        );
         
         console.log("[Glowna] Bot Status Debug:");
         console.log("  Raw Value:", rawValue);
@@ -147,6 +155,16 @@ export default function GlownaPage() {
     try {
       setBalanceError(null);
       
+      // ⚠️ KNOWN ISSUE: CloudFlare permanently blocks Bybit API (even through proxy)
+      // This is documented in BYBIT_GEO_BLOCKING_FIX.md
+      // Balance will always show as unavailable from production
+      
+      setBalanceError("CloudFlare blokuje Bybit API");
+      setLoadingBalance(false);
+      return;
+
+      // The code below is kept for reference but won't work due to CloudFlare block
+      /*
       // Pobierz credentials z settings (z cache busting)
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
@@ -191,9 +209,10 @@ export default function GlownaPage() {
         // Jeśli błąd CloudFlare lub inny - pokaż komunikat
         setBalanceError(data.message || "Nie można pobrać salda");
       }
+      */
     } catch (err) {
       console.error("Load balance error:", err);
-      setBalanceError("Błąd połączenia z API");
+      setBalanceError("CloudFlare blokuje Bybit API");
     } finally {
       setLoadingBalance(false);
     }
@@ -312,9 +331,15 @@ export default function GlownaPage() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
-                <Badge variant={botEnabled ? "default" : "destructive"} className="text-lg px-3 py-1">
-                  {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
-                </Badge>
+                {botEnabled === null ? (
+                  <Badge variant="secondary" className="text-lg px-3 py-1">
+                    ŁADOWANIE...
+                  </Badge>
+                ) : (
+                  <Badge variant={botEnabled ? "default" : "destructive"} className="text-lg px-3 py-1">
+                    {botEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}
+                  </Badge>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -328,22 +353,14 @@ export default function GlownaPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {loadingBalance ? (
-                <div className="text-gray-400">Ładowanie...</div>
-              ) : balanceError ? (
-                <div className="flex flex-col gap-1">
-                  <div className="text-sm text-yellow-400">
-                    ⚠️ Niedostępne
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    CloudFlare block
-                  </div>
+              <div className="flex flex-col gap-1">
+                <div className="text-sm text-red-400 font-semibold">
+                  ⛔ Niedostępne
                 </div>
-              ) : (
-                <div className="text-2xl font-bold text-white">
-                  {totalBalance.toFixed(2)} <span className="text-lg text-gray-400">USDT</span>
+                <div className="text-xs text-gray-500">
+                  CloudFlare blokuje API
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
 
@@ -378,14 +395,15 @@ export default function GlownaPage() {
           </Card>
         </div>
 
-        {/* CloudFlare Warning - STAŁY PROBLEM */}
-        <Card className="border-yellow-700/40 bg-yellow-900/20">
+        {/* CloudFlare Warning - PERMANENT PROBLEM */}
+        <Card className="border-red-700/40 bg-red-900/20">
           <CardContent className="py-3">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-yellow-400" />
-              <div className="text-sm text-yellow-300">
-                <strong>⚠️ Znany problem:</strong> CloudFlare blokuje Bybit Balance API przez Vercel (szczegóły: BYBIT_GEO_BLOCKING_FIX.md). 
-                <strong className="ml-1">Bot i pozycje działają normalnie</strong> - tylko saldo jest niedostępne przez API.
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+              <div className="text-sm text-red-300">
+                <strong>⛔ PROBLEM PERMANENTNY:</strong> CloudFlare/Bybit blokuje dostęp do Balance API nawet przez proxy Fly.io (Amsterdam). 
+                <strong className="ml-1">Bot otwiera/zamyka pozycje normalnie</strong> - tylko wyświetlanie salda jest niemożliwe z Vercel. 
+                <span className="text-yellow-300 ml-1">Rozwiązanie: VPS w Singapurze/Hong Kong.</span>
               </div>
             </div>
           </CardContent>
