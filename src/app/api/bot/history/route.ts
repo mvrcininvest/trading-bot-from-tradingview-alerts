@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { positionHistory, botSettings } from '@/db/schema';
 import { desc } from 'drizzle-orm';
-import crypto from 'crypto';
 
 // ✅ DIRECT BYBIT API REQUESTS (no proxy needed)
 // Vercel will route these from Singapore/Hong Kong Edge regions
@@ -10,18 +9,35 @@ export const runtime = 'edge';
 export const preferredRegion = ['sin1', 'hkg1', 'icn1']; // Singapore, Hong Kong, Seoul
 
 // ============================================
-// 🔐 BYBIT SIGNATURE HELPER
+// 🔐 BYBIT SIGNATURE HELPER (Web Crypto API)
 // ============================================
 
-function createBybitSignature(
+async function createBybitSignature(
   timestamp: string,
   apiKey: string,
   apiSecret: string,
   recvWindow: string,
   queryString: string
-): string {
+): Promise<string> {
   const message = timestamp + apiKey + recvWindow + queryString;
-  return crypto.createHmac("sha256", apiSecret).update(message).digest("hex");
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(message);
+  
+  // Use Web Crypto API (Edge Runtime compatible)
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  return hashHex;
 }
 
 // ============================================
@@ -66,7 +82,7 @@ async function fetchFromBybitAPI(
         .map((key) => `${key}=${params[key]}`)
         .join("&");
       
-      const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+      const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
       
       // ✅ DIRECT BYBIT API REQUEST (Edge Function in Singapore)
       const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
