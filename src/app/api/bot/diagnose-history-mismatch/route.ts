@@ -57,7 +57,7 @@ async function signBybitRequest(
 async function fetchAllBybitHistory(apiKey: string, apiSecret: string): Promise<BybitHistoryPosition[]> {
   const allPositions: BybitHistoryPosition[] = [];
   const now = Date.now();
-  const daysBack = 30; // ✅ Changed from 90 to 30 days (matching sync endpoint)
+  const daysBack = 30; // ✅ 30 days to match sync endpoint
   const totalMs = daysBack * 24 * 60 * 60 * 1000;
   const segmentMs = 7 * 24 * 60 * 60 * 1000; // ✅ 7-day segments
 

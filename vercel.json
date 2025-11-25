@@ -1,12 +1,14 @@
 {
-  "buildCommand": "echo 'BUILD_ID=diagnose-7day-segments-v5.0.0' && bun run build",
-  "installCommand": "bun install",
-  "framework": "nextjs",
-  "outputDirectory": ".next",
-  "rewrites": [
+  "buildCommand": "bun run build",
+  "headers": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
+      ]
     }
-  ]
+  ],
+  "env": {
+    "FORCE_REBUILD": "diagnose-7day-fix-v6.0.0-2025-11-25T14:00:00Z"
+  }
 }
