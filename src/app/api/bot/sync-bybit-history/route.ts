@@ -53,18 +53,11 @@ async function createBybitSignature(
 
 /**
  * Determines if a Bybit closed position is a real trade or a funding transaction
- * 
- * Funding transactions have these characteristics:
- * 1. Very short duration (< 10 seconds)
- * 2. Entry price ≈ Exit price (no real price movement)
- * 3. closedPnl is often exactly 0 or very close to funding fee amounts
- * 4. Often minimal quantity
  */
 function isRealPosition(bybitPos: any): boolean {
   try {
     const entryPrice = parseFloat(bybitPos.avgEntryPrice);
     const exitPrice = parseFloat(bybitPos.avgExitPrice);
-    const qty = parseFloat(bybitPos.qty);
     const pnl = parseFloat(bybitPos.closedPnl);
     
     // Calculate duration
@@ -101,6 +94,98 @@ function isRealPosition(bybitPos: any): boolean {
     console.error(`   ⚠️ Error checking position:`, error);
     return true; // Default to including if we can't determine
   }
+}
+
+// ============================================
+// 🔗 AGGREGATE PARTIAL CLOSES
+// ============================================
+
+/**
+ * Aggregates multiple partial closes into single positions (matches Bybit Performance display)
+ * 
+ * Bybit API returns each partial close as separate position, but Performance page aggregates them.
+ * Example:
+ * - Open BTCUSDT 1.0 qty
+ * - Close 0.3 at TP1 → API returns position #1
+ * - Close 0.3 at TP2 → API returns position #2  
+ * - Close 0.4 at TP3 → API returns position #3
+ * 
+ * Performance shows: 1 position with aggregated PnL
+ * This function mimics that behavior
+ */
+function aggregatePartialCloses(positions: any[]): any[] {
+  console.log(`\n🔗 Aggregating partial closes...`);
+  
+  // Group by symbol + side + similar entry price + close time window
+  const groups = new Map<string, any[]>();
+  
+  for (const pos of positions) {
+    const entryPrice = parseFloat(pos.avgEntryPrice);
+    const createdTime = parseInt(pos.createdTime);
+    const updatedTime = parseInt(pos.updatedTime);
+    
+    // Round entry price to 2 decimal places for grouping (handles slight variations)
+    const entryPriceRounded = Math.round(entryPrice * 100) / 100;
+    
+    // Create key: symbol_side_entryPrice_dayOfOpen
+    const openDay = Math.floor(createdTime / (24 * 60 * 60 * 1000));
+    const key = `${pos.symbol}_${pos.side}_${entryPriceRounded}_${openDay}`;
+    
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(pos);
+  }
+  
+  console.log(`   📊 Found ${groups.size} position groups from ${positions.length} entries`);
+  
+  const aggregated: any[] = [];
+  let aggregatedCount = 0;
+  
+  for (const [key, groupPositions] of groups.entries()) {
+    if (groupPositions.length === 1) {
+      // Single position - no aggregation needed
+      aggregated.push(groupPositions[0]);
+    } else {
+      // Multiple positions - aggregate them
+      console.log(`   🔗 Aggregating ${groupPositions.length} partial closes for ${key.split('_')[0]}`);
+      
+      // Sort by close time (earliest first)
+      groupPositions.sort((a, b) => parseInt(a.updatedTime) - parseInt(b.updatedTime));
+      
+      // Use first position as base
+      const base = groupPositions[0];
+      
+      // Aggregate quantities and PnL
+      const totalQty = groupPositions.reduce((sum, p) => sum + parseFloat(p.qty), 0);
+      const totalPnl = groupPositions.reduce((sum, p) => sum + parseFloat(p.closedPnl), 0);
+      
+      // Calculate weighted average exit price
+      const totalQtyTimesExit = groupPositions.reduce((sum, p) => 
+        sum + (parseFloat(p.qty) * parseFloat(p.avgExitPrice)), 0
+      );
+      const avgExitPrice = totalQtyTimesExit / totalQty;
+      
+      // Create aggregated position
+      const aggregatedPosition = {
+        ...base,
+        qty: totalQty.toString(),
+        closedPnl: totalPnl.toString(),
+        avgExitPrice: avgExitPrice.toString(),
+        updatedTime: groupPositions[groupPositions.length - 1].updatedTime, // Use last close time
+        orderId: `${base.orderId}_aggregated_${groupPositions.length}`, // Mark as aggregated
+      };
+      
+      aggregated.push(aggregatedPosition);
+      aggregatedCount += (groupPositions.length - 1); // Count how many were merged
+      
+      console.log(`      ✅ ${groupPositions.length} closes → 1 position (${totalQty.toFixed(4)} qty, ${totalPnl.toFixed(2)} PnL)`);
+    }
+  }
+  
+  console.log(`   ✅ Aggregation complete: ${positions.length} → ${aggregated.length} positions (merged ${aggregatedCount} partial closes)`);
+  
+  return aggregated;
 }
 
 // ============================================
@@ -248,7 +333,7 @@ export async function POST(request: NextRequest) {
     
     console.log(`\n✅ Fetched ${allPositions.length} total positions from Bybit`);
     
-    // ✅ NEW: Filter out funding transactions
+    // ✅ STEP 2.5: Filter out funding transactions
     console.log(`\n🔍 STEP 2.5: Filtering out funding transactions...`);
     
     const realPositions = allPositions.filter(isRealPosition);
@@ -256,22 +341,26 @@ export async function POST(request: NextRequest) {
     
     console.log(`   ✅ Filtered: ${realPositions.length} real positions, ${filteredCount} funding transactions removed`);
     
-    if (realPositions.length === 0) {
+    // ✅ NEW STEP 2.6: Aggregate partial closes
+    const aggregatedPositions = aggregatePartialCloses(realPositions);
+    
+    if (aggregatedPositions.length === 0) {
       return NextResponse.json({
         success: true,
         message: "Brak pozycji w Bybit za ostatnie 30 dni",
         deleted: 0,
         imported: 0,
         filtered: filteredCount,
+        aggregated: 0,
       });
     }
     
     // STEP 3: Import all positions to database
-    console.log(`\n💾 STEP 3: Importing ${realPositions.length} positions to database...`);
+    console.log(`\n💾 STEP 3: Importing ${aggregatedPositions.length} positions to database...`);
     
     let imported = 0;
     
-    for (const bybitPos of realPositions) {
+    for (const bybitPos of aggregatedPositions) {
       const entryPrice = parseFloat(bybitPos.avgEntryPrice);
       const exitPrice = parseFloat(bybitPos.avgExitPrice);
       const qty = parseFloat(bybitPos.qty);
@@ -325,9 +414,11 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: `✅ Synchronizacja zakończona: ${imported} pozycji z Bybit`,
-      deleted: 0, // We don't track this anymore since we always delete all
+      message: `✅ Synchronizacja: ${imported} pozycji z Bybit`,
+      deleted: 0,
       imported,
+      filtered: filteredCount,
+      aggregated: realPositions.length - aggregatedPositions.length,
       daysBack: 30,
     });
     

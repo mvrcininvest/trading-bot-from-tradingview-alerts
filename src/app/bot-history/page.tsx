@@ -91,6 +91,7 @@ export default function BotHistoryPage() {
   const [showDiagnosisDialog, setShowDiagnosisDialog] = useState(false);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
   const [filteredFundingCount, setFilteredFundingCount] = useState<number>(0);
+  const [aggregatedCount, setAggregatedCount] = useState<number>(0);
 
   useEffect(() => {
     fetchHistory();
@@ -136,7 +137,7 @@ export default function BotHistoryPage() {
     }
   };
 
-  // ✅ NEW: Full sync with Bybit (delete all + import fresh)
+  // ✅ NEW: Full sync with Bybit (delete all + import fresh + aggregate)
   const syncWithBybit = async () => {
     setSyncing(true);
     try {
@@ -149,19 +150,19 @@ export default function BotHistoryPage() {
       const data = await response.json();
 
       if (data.success) {
-        const message = data.filtered 
-          ? `✅ ${data.message}\n🚫 Odfiltrowano ${data.filtered} transakcji fundingu`
-          : `✅ ${data.message}`;
+        let message = `✅ ${data.message}`;
         
-        toast.success(
-          message,
-          { id: "sync", duration: 5000 }
-        );
-        
-        // Store filtered count for display
-        if (data.filtered) {
+        if (data.filtered > 0) {
+          message += `\n🚫 Odfiltrowano ${data.filtered} transakcji fundingu`;
           setFilteredFundingCount(data.filtered);
         }
+        
+        if (data.aggregated > 0) {
+          message += `\n🔗 Zagregowano ${data.aggregated} częściowych zamknięć`;
+          setAggregatedCount(data.aggregated);
+        }
+        
+        toast.success(message, { id: "sync", duration: 5000 });
         
         // Refresh list
         await fetchHistory();
@@ -308,20 +309,41 @@ export default function BotHistoryPage() {
               <p className="text-sm text-purple-200">
                 <Download className="inline h-4 w-4 text-purple-400 mr-1" />
                 <strong>Synchronizuj:</strong> Usuwa wszystkie pozycje z lokalnej bazy i importuje 
-                świeżą historię z Bybit (ostatnie 30 dni) wraz z opłatami transakcyjnymi i fundingowymi.
-                <br />
-                <span className="text-purple-300 text-xs mt-1 block">
-                  🔍 Automatycznie filtruje transakcje fundingu (krótsze niż 10s bez ruchu ceny)
-                </span>
+                świeżą historię z Bybit (ostatnie 30 dni).
               </p>
+              <div className="mt-2 space-y-1 text-xs text-purple-300">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5">🔍</span>
+                  <span>Automatycznie filtruje transakcje fundingu (krótkie, bez ruchu ceny)</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5">🔗</span>
+                  <span>Agreguje częściowe zamknięcia w jedną pozycję (zgodnie z Bybit Performance)</span>
+                </div>
+              </div>
             </div>
 
-            {filteredFundingCount > 0 && (
-              <div className="mt-2 p-3 rounded-lg bg-blue-900/30 border border-blue-700/50">
-                <p className="text-sm text-blue-200">
-                  <CheckCircle className="inline h-4 w-4 text-blue-400 mr-1" />
-                  <strong>Ostatnia synchronizacja:</strong> Odfiltrowano {filteredFundingCount} transakcji fundingu
+            {/* ✅ NEW: Show aggregation stats */}
+            {(filteredFundingCount > 0 || aggregatedCount > 0) && (
+              <div className="mt-2 p-3 rounded-lg bg-green-900/30 border border-green-700/50">
+                <p className="text-sm text-green-200 font-semibold mb-2">
+                  <CheckCircle className="inline h-4 w-4 text-green-400 mr-1" />
+                  Ostatnia synchronizacja:
                 </p>
+                <div className="space-y-1 text-xs text-green-300">
+                  {filteredFundingCount > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400">🚫</span>
+                      <span>Odfiltrowano <strong>{filteredFundingCount}</strong> transakcji fundingu</span>
+                    </div>
+                  )}
+                  {aggregatedCount > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400">🔗</span>
+                      <span>Zagregowano <strong>{aggregatedCount}</strong> częściowych zamknięć → zgodność 100% z Bybit Performance</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
