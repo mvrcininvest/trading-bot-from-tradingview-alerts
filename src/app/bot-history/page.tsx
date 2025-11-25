@@ -36,8 +36,9 @@ export default function BotHistoryPage() {
   const [importing, setImporting] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [dataSource, setDataSource] = useState<"database" | "bybit">("bybit"); // ✅ Default to Bybit
+  const [dataSource, setDataSource] = useState<"database" | "bybit">("database"); // ✅ Default to database (safer)
   const [daysBack, setDaysBack] = useState<number>(30);
+  const [bybitError, setBybitError] = useState<string | null>(null); // ✅ Track Bybit errors
 
   useEffect(() => {
     fetchHistory();
@@ -56,6 +57,8 @@ export default function BotHistoryPage() {
 
   const fetchHistory = async (silent = false) => {
     if (!silent) setLoading(true);
+    setBybitError(null); // Clear previous errors
+    
     try {
       // ✅ Fetch with source parameter
       const url = `/api/bot/history?limit=100&source=${dataSource}&daysBack=${daysBack}`;
@@ -70,8 +73,27 @@ export default function BotHistoryPage() {
           toast.success(`✅ Pobrano ${data.history.length} pozycji z ${sourceLabel}`);
         }
       } else {
-        if (!silent) {
-          toast.error(data.message || "Błąd pobierania historii");
+        // ✅ AUTOMATIC FALLBACK: If Bybit fails, try database
+        if (dataSource === "bybit" && data.code === "BYBIT_API_ERROR") {
+          setBybitError(data.message || "Błąd połączenia z Bybit API");
+          
+          if (!silent) {
+            toast.warning("⚠️ Bybit API niedostępne - przełączam na lokalną bazę", { duration: 4000 });
+          }
+          
+          // Automatically fetch from database
+          const fallbackResponse = await fetch(`/api/bot/history?limit=100&source=database`);
+          const fallbackData = await fallbackResponse.json();
+          
+          if (fallbackData.success && fallbackData.history) {
+            setHistory(fallbackData.history);
+            setLastRefresh(new Date());
+            // Don't change dataSource state - keep user's selection
+          }
+        } else {
+          if (!silent) {
+            toast.error(data.message || "Błąd pobierania historii");
+          }
         }
       }
     } catch (err) {
@@ -173,6 +195,29 @@ export default function BotHistoryPage() {
             </Button>
           </div>
         </div>
+
+        {/* ⚠️ BYBIT ERROR WARNING */}
+        {bybitError && dataSource === "bybit" && (
+          <Alert className="border-red-700 bg-red-900/20">
+            <WifiOff className="h-4 w-4 text-red-400" />
+            <AlertDescription className="text-sm text-red-200">
+              <strong>⚠️ Błąd połączenia z Bybit API:</strong> {bybitError}
+              <br />
+              <span className="text-xs text-red-300 mt-1 block">
+                Możliwe przyczyny: Geo-blocking, nieprawidłowe klucze API, lub problem z proxy.
+                Wyświetlam dane z lokalnej bazy.
+              </span>
+              <Button 
+                onClick={() => setDataSource("database")} 
+                className="mt-2 bg-blue-600 hover:bg-blue-700"
+                size="sm"
+              >
+                <Database className="mr-2 h-4 w-4" />
+                Przełącz na lokalną bazę
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Kontrolki źródła danych */}
         <Card className="border-blue-700 bg-blue-900/20">

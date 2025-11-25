@@ -33,6 +33,7 @@ async function fetchFromBybitAPI(
   daysBack: number = 90
 ) {
   console.log(`[History API] 🌐 Fetching REAL data from Bybit API (last ${daysBack} days)...`);
+  console.log(`[History API] Using proxy: ${BYBIT_PROXY_URL}`);
   
   const now = Date.now();
   const startTime = now - daysBack * 24 * 60 * 60 * 1000;
@@ -68,6 +69,8 @@ async function fetchFromBybitAPI(
       
       const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
       
+      console.log(`[History API] Request URL: ${url}`);
+      
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -80,12 +83,16 @@ async function fetchFromBybitAPI(
       });
       
       if (!response.ok) {
-        throw new Error(`Bybit API error: ${response.status}`);
+        // ✅ LOG FULL ERROR RESPONSE
+        const errorText = await response.text();
+        console.error(`[History API] ❌ Bybit ${response.status} Error:`, errorText);
+        throw new Error(`Bybit API error: ${response.status} - ${errorText}`);
       }
       
       const data = await response.json();
       
       if (data.retCode !== 0) {
+        console.error(`[History API] ❌ Bybit retCode error:`, data);
         throw new Error(`Bybit API error: ${data.retMsg} (code: ${data.retCode})`);
       }
       
