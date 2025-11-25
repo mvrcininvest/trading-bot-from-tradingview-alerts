@@ -251,12 +251,6 @@ export default function BotHistoryPage() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={() => router.push("/dashboard")} variant="outline">
-              <Activity className="mr-2 h-4 w-4" />
-              Dashboard
-            </Button>
-          </div>
         </div>
 
         {/* Status synchronizacji */}

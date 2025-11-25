@@ -230,6 +230,27 @@ async function autoSyncClosedPositions(
         closeReason = "sl_hit";
       }
       
+      // ✅ CALCULATE FEES
+      // Trading fees: 0.055% on open + 0.055% on close = 0.11% total
+      const tradingFeeRate = 0.00055; // 0.055% per side
+      const openFee = positionValue * tradingFeeRate;
+      const closeFee = (qty * exitPrice) * tradingFeeRate;
+      const tradingFees = openFee + closeFee;
+      
+      // Gross PnL (before fees)
+      const isLong = bybitPos.side === 'Buy';
+      const grossPnl = isLong 
+        ? (exitPrice - entryPrice) * qty 
+        : (entryPrice - exitPrice) * qty;
+      
+      // Funding fees = difference between gross and net
+      const fundingFees = Math.max(0, grossPnl - pnl - tradingFees);
+      
+      // Total fees
+      const totalFees = tradingFees + fundingFees;
+      
+      console.log(`   📊 ${bybitPos.symbol}: Gross PnL: ${grossPnl.toFixed(4)}, Trading Fees: ${tradingFees.toFixed(4)}, Funding: ${fundingFees.toFixed(4)}, Net PnL: ${pnl.toFixed(4)}`);
+      
       // Insert into history
       await db.insert(positionHistory).values({
         positionId: null,
@@ -242,6 +263,10 @@ async function autoSyncClosedPositions(
         quantity: qty,
         leverage,
         pnl,
+        grossPnl,
+        tradingFees,
+        fundingFees,
+        totalFees,
         pnlPercent,
         closeReason,
         tp1Hit: false,
@@ -254,7 +279,7 @@ async function autoSyncClosedPositions(
       });
       
       synced++;
-      console.log(`   ✅ Synced: ${bybitPos.symbol} ${bybitPos.side} - PnL: ${pnl.toFixed(2)} USDT`);
+      console.log(`   ✅ Synced: ${bybitPos.symbol} ${bybitPos.side} - PnL: ${pnl.toFixed(2)} USDT (Fees: ${totalFees.toFixed(4)})`);
     }
     
     if (synced > 0) {

@@ -179,16 +179,6 @@ export default function StatystykiPage() {
           </div>
         </div>
 
-        {warning && (
-          <Alert className="border-yellow-700 bg-yellow-900/20">
-            <AlertTriangle className="h-4 w-4 text-yellow-400" />
-            <AlertDescription className="text-sm text-yellow-200">
-              <strong>⚠️ {warning}</strong><br/>
-              Zobacz <code>/BYBIT_GEO_BLOCKING_FIX.md</code> dla rozwiązań geo-blockingu.
-            </AlertDescription>
-          </Alert>
-        )}
-
         {dataSource === "local_db" && (
           <Alert className="border-blue-700 bg-blue-900/20">
             <Database className="h-4 w-4 text-blue-400" />

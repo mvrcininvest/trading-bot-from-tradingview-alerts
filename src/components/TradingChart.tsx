@@ -26,17 +26,17 @@ export function TradingChart({
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
-    // Set aggressive timeout
+    // Set VERY aggressive timeout - 10 seconds total
     timeoutRef.current = setTimeout(() => {
       setLoading(false);
-      setError("Wykres nie załadował się w czasie (timeout 5s)");
-    }, 5000);
+      setError("Wykres nie załadował się w czasie (timeout 10s)");
+    }, 10000);
 
     const loadChart = async () => {
       try {
-        // Fetch data with timeout
+        // Fetch data with longer timeout
         const controller = new AbortController();
-        const fetchTimeout = setTimeout(() => controller.abort(), 4000);
+        const fetchTimeout = setTimeout(() => controller.abort(), 8000); // 8 seconds for fetch
 
         const startTime = new Date(openedAt).getTime();
         const endTime = new Date(closedAt).getTime();
@@ -59,7 +59,7 @@ export function TradingChart({
           throw new Error("Brak danych wykresu");
         }
 
-        // Load library from CDN
+        // Load library from CDN with longer timeout
         const script = document.createElement("script");
         script.src = "https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js";
         script.async = true;
@@ -67,7 +67,7 @@ export function TradingChart({
         const scriptTimeout = setTimeout(() => {
           setError("CDN timeout - biblioteka nie załadowała się");
           setLoading(false);
-        }, 3000);
+        }, 6000); // 6 seconds for CDN
 
         script.onload = () => {
           clearTimeout(scriptTimeout);
@@ -150,7 +150,7 @@ export function TradingChart({
       } catch (err: any) {
         console.error("Chart load error:", err);
         if (err.name === 'AbortError') {
-          setError("Timeout pobierania danych (4s)");
+          setError("Timeout pobierania danych (8s)");
         } else {
           setError(err.message || "Błąd ładowania wykresu");
         }

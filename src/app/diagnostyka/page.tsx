@@ -222,7 +222,15 @@ export default function DiagnosticsPage() {
 
   const fetchVerifications = async () => {
     try {
-      const response = await fetch("/api/bot/diagnostics/verifications?limit=50");
+      // ✅ Get only today's verifications (Warsaw timezone)
+      const now = new Date();
+      const warsawOffset = 1; // UTC+1 (or UTC+2 in summer, but we'll use fixed offset)
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      today.setHours(0 - warsawOffset, 0, 0, 0); // 00:00:00 Warsaw time in UTC
+      
+      const todayStart = today.toISOString();
+      
+      const response = await fetch(`/api/bot/diagnostics/verifications?limit=200&startDate=${todayStart}`);
       const data = await response.json();
       if (data.success) {
         setVerifications(data.verifications);

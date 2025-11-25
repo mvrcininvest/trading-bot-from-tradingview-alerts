@@ -1,37 +1,49 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/db';
-import { botDetailedLogs, botPositions } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { positionVerifications, botPositions } from "@/db/schema";
+import { desc, eq, gte } from "drizzle-orm";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limitParam = searchParams.get("limit");
+    const startDateParam = searchParams.get("startDate");
+    
+    const limit = limitParam ? parseInt(limitParam) : 50;
 
-    // Fetch verification logs with position details
-    const verifications = await db.select({
-      log: botDetailedLogs,
-      position: {
-        symbol: botPositions.symbol,
-        side: botPositions.side,
-        tier: botPositions.tier,
-      }
-    })
-      .from(botDetailedLogs)
-      .leftJoin(botPositions, eq(botDetailedLogs.positionId, botPositions.id))
-      .where(eq(botDetailedLogs.actionType, 'open_position'))
-      .orderBy(desc(botDetailedLogs.createdAt))
-      .limit(limit);
+    let query = db
+      .select({
+        log: positionVerifications,
+        position: {
+          symbol: botPositions.symbol,
+          side: botPositions.side,
+          tier: botPositions.tier,
+        },
+      })
+      .from(positionVerifications)
+      .leftJoin(botPositions, eq(positionVerifications.positionId, botPositions.id))
+      .orderBy(desc(positionVerifications.timestamp));
+
+    // ✅ Filter by start date if provided (for daily filtering)
+    if (startDateParam) {
+      query = query.where(gte(positionVerifications.timestamp, startDateParam)) as any;
+    }
+
+    const verifications = await query.limit(limit);
 
     return NextResponse.json({
       success: true,
-      verifications
+      verifications,
+      count: verifications.length,
     });
   } catch (error: any) {
-    console.error('Failed to fetch verifications:', error);
-    return NextResponse.json({
-      success: false,
-      error: error.message
-    }, { status: 500 });
+    console.error("[API] Failed to get verifications:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message || "Failed to get verifications",
+      },
+      { status: 500 }
+    );
   }
 }
