@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Database, BarChart3, Award, Target, DollarSign, Clock, AlertTriangle } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// ✅ ZACHOWANE - używamy historii z Bybit przez API bota (nie bezpośrednio)
+// ✅ Dane z bazy - automatycznie zapisywane przez bota podczas działania
 interface HistoryPosition {
   id: string;
   symbol: string;
@@ -32,32 +32,53 @@ export default function BotHistoryPage() {
   const router = useRouter();
   const [history, setHistory] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
     fetchHistory();
   }, []);
 
-  const fetchHistory = async () => {
-    setLoading(true);
+  // ✅ Auto-refresh co 10 sekund
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      fetchHistory(true); // silent refresh (bez toastu)
+    }, 10000); // 10 sekund
+
+    return () => clearInterval(interval);
+  }, [autoRefresh]);
+
+  const fetchHistory = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      // ✅ Bot API pobiera dane z Bybit (server-side), więc nie ma geo-blockingu
+      // ✅ Pobierz dane z bazy (bot automatycznie zapisuje pozycje podczas działania)
       const response = await fetch('/api/bot/history?limit=100');
       const data = await response.json();
       
       if (data.success && data.history) {
         setHistory(data.history);
+        setLastRefresh(new Date());
+        if (!silent) {
+          toast.success(`Pobrano ${data.history.length} pozycji z bazy danych`);
+        }
       } else {
-        toast.error("Błąd pobierania historii");
+        if (!silent) {
+          toast.error(data.message || "Błąd pobierania historii");
+        }
       }
     } catch (err) {
       console.error("Nie udało się pobrać historii:", err);
-      toast.error("Błąd pobierania historii");
+      if (!silent) {
+        toast.error("Błąd pobierania historii");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  // Obliczenia statystyk z lokalnych danych historii
+  // Obliczenia statystyk
   const stats = {
     totalTrades: history.length,
     profitable: history.filter(h => h.pnl > 0).length,
@@ -76,24 +97,44 @@ export default function BotHistoryPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                Historia Pozycji
+                Historia Pozycji Bota
               </h1>
               <p className="text-gray-200">
-                Zamknięte pozycje z Bybit API (ostatnie 100)
+                Automatycznie synchronizowane z Bybit podczas działania bota
               </p>
             </div>
           </div>
-          <Button onClick={() => router.push("/dashboard")} className="bg-blue-600 hover:bg-blue-700 text-white">
-            <Activity className="mr-2 h-4 w-4" />
-            Dashboard
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              variant={autoRefresh ? "default" : "outline"}
+              className={autoRefresh ? "bg-green-600 hover:bg-green-700" : ""}
+            >
+              <Activity className={`mr-2 h-4 w-4 ${autoRefresh ? 'animate-pulse' : ''}`} />
+              Auto-odświeżanie {autoRefresh ? "ON" : "OFF"}
+            </Button>
+            <Button 
+              onClick={() => fetchHistory()} 
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Odśwież teraz
+            </Button>
+            <Button onClick={() => router.push("/dashboard")} variant="outline">
+              <Activity className="mr-2 h-4 w-4" />
+              Dashboard
+            </Button>
+          </div>
         </div>
 
         {/* Info o źródle danych */}
-        <Alert className="border-blue-700 bg-blue-900/20">
-          <Database className="h-4 w-4 text-blue-400" />
-          <AlertDescription className="text-sm text-blue-200">
-            📊 Historia pobierana przez bot API z Bybit (server-side). Dane są aktualne i nie podlegają geo-blockingowi.
+        <Alert className="border-green-700 bg-green-900/20">
+          <Database className="h-4 w-4 text-green-400" />
+          <AlertDescription className="text-sm text-green-200">
+            ✅ Pozycje zapisywane automatycznie podczas działania bota (dane zgodne z Bybit).
+            {lastRefresh && ` Ostatnia aktualizacja: ${lastRefresh.toLocaleTimeString('pl-PL')}`}
+            {autoRefresh && " • Auto-odświeżanie co 10 sekund"}
           </AlertDescription>
         </Alert>
 
@@ -140,7 +181,7 @@ export default function BotHistoryPage() {
                 className={`text-3xl ${stats.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}
               >
                 {stats.totalPnl >= 0 ? "+" : ""}
-                {stats.totalPnl.toFixed(2)}
+                {stats.totalPnl.toFixed(2)} USDT
               </CardTitle>
             </CardHeader>
           </Card>
@@ -152,7 +193,7 @@ export default function BotHistoryPage() {
             <CardContent className="py-12">
               <div className="flex flex-col items-center justify-center gap-3">
                 <Activity className="h-8 w-8 animate-spin text-blue-400" />
-                <p className="text-sm text-gray-300">Ładowanie historii z Bybit...</p>
+                <p className="text-sm text-gray-300">Ładowanie historii pozycji...</p>
               </div>
             </CardContent>
           </Card>
@@ -166,6 +207,9 @@ export default function BotHistoryPage() {
                 <History className="h-5 w-5" />
                 Zamknięte Pozycje
               </CardTitle>
+              <CardDescription>
+                Dane z bazy - automatycznie zapisywane podczas działania bota
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -183,26 +227,43 @@ export default function BotHistoryPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-bold text-lg text-white">{pos.symbol}</span>
                           <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
-                            {pos.side}
+                            {pos.side === "Buy" ? "Long" : "Short"}
                           </Badge>
                           <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
                         </div>
                         <div className="text-sm text-gray-300">
                           Entry: {pos.entryPrice.toFixed(4)} → Close: {pos.closePrice.toFixed(4)} | 
+                          Qty: {pos.quantity} | Leverage: {pos.leverage}x
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {new Date(pos.closedAt).toLocaleString('pl-PL')} | 
                           Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
                         </div>
                       </div>
                       <div className="text-right">
                         <div className={`text-xl font-bold ${pos.pnl > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(2)} USDT
+                          {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(4)} USDT
                         </div>
                         <div className="text-sm text-gray-400">
-                          {pos.pnlPercent.toFixed(2)}% ROE
+                          {pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}% ROE
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Empty State */}
+        {!loading && history.length === 0 && (
+          <Card className="border-gray-800 bg-gray-900/60 backdrop-blur-sm">
+            <CardContent className="py-12">
+              <div className="flex flex-col items-center justify-center gap-3">
+                <History className="h-12 w-12 text-gray-600" />
+                <p className="text-lg text-gray-400">Brak historii pozycji w bazie danych</p>
+                <p className="text-sm text-gray-500">Pozycje będą zapisywane automatycznie gdy bot zamknie pozycję</p>
               </div>
             </CardContent>
           </Card>
