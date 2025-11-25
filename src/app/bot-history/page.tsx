@@ -92,9 +92,31 @@ export default function BotHistoryPage() {
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
   const [filteredFundingCount, setFilteredFundingCount] = useState<number>(0);
   const [aggregatedCount, setAggregatedCount] = useState<number>(0);
+  const [initialSyncDone, setInitialSyncDone] = useState(false);
 
+  // ✅ AUTOMATIC SYNC ON MOUNT
   useEffect(() => {
-    fetchHistory();
+    const performInitialSync = async () => {
+      console.log("🔄 Automatyczna synchronizacja przy wejściu...");
+      
+      // First, check if we have any data
+      const checkResponse = await fetch('/api/bot/history?limit=1&source=database');
+      const checkData = await checkResponse.json();
+      
+      if (!checkData.success || !checkData.history || checkData.history.length === 0) {
+        // No data - perform sync
+        console.log("📥 Brak danych - synchronizacja z Bybit...");
+        await syncWithBybit();
+      } else {
+        // Data exists - just fetch it
+        console.log("✅ Dane istnieją - pobieranie z bazy...");
+        await fetchHistory();
+      }
+      
+      setInitialSyncDone(true);
+    };
+    
+    performInitialSync();
   }, []);
 
   // ✅ Auto-refresh co 30 sekund (tylko gdy włączone)
