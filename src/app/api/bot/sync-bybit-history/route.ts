@@ -364,7 +364,7 @@ export async function POST(request: NextRequest) {
       const entryPrice = parseFloat(bybitPos.avgEntryPrice);
       const exitPrice = parseFloat(bybitPos.avgExitPrice);
       const qty = parseFloat(bybitPos.qty);
-      const pnl = parseFloat(bybitPos.closedPnl);
+      const netPnl = parseFloat(bybitPos.closedPnl); // This is AFTER fees
       const leverage = parseInt(bybitPos.leverage);
       
       const closedAt = new Date(parseInt(bybitPos.updatedTime));
@@ -372,15 +372,37 @@ export async function POST(request: NextRequest) {
       
       const positionValue = qty * entryPrice;
       const initialMargin = positionValue / leverage;
-      const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
+      const pnlPercent = initialMargin > 0 ? (netPnl / initialMargin) * 100 : 0;
       
       const durationMs = closedAt.getTime() - openedAt.getTime();
       const durationMinutes = Math.round(durationMs / 60000);
       
+      // ✅ CALCULATE FEES
+      // Gross PnL = theoretical PnL without fees
+      const isLong = bybitPos.side === "Buy";
+      const grossPnl = isLong 
+        ? (exitPrice - entryPrice) * qty 
+        : (entryPrice - exitPrice) * qty;
+      
+      // Total fees = gross - net
+      const totalFees = Math.abs(grossPnl - netPnl);
+      
+      // Estimate trading fees (entry + exit)
+      // Bybit standard: 0.055% maker/taker
+      const entryValue = qty * entryPrice;
+      const exitValue = qty * exitPrice;
+      const tradingFees = (entryValue + exitValue) * 0.00055; // 0.055% each side
+      
+      // Funding fees = remaining fees
+      const fundingFees = Math.max(0, totalFees - tradingFees);
+      
+      console.log(`   💰 ${bybitPos.symbol}: Gross ${grossPnl.toFixed(2)} - Fees ${totalFees.toFixed(2)} = Net ${netPnl.toFixed(2)}`);
+      console.log(`      Trading: ${tradingFees.toFixed(4)}, Funding: ${fundingFees.toFixed(4)}`);
+      
       let closeReason = "closed_on_exchange";
-      if (pnl > 0) {
+      if (netPnl > 0) {
         closeReason = "tp_main_hit";
-      } else if (pnl < 0) {
+      } else if (netPnl < 0) {
         closeReason = "sl_hit";
       }
       
@@ -394,13 +416,20 @@ export async function POST(request: NextRequest) {
         closePrice: exitPrice,
         quantity: qty,
         leverage,
-        pnl,
+        pnl: netPnl, // NET PnL (after fees)
+        grossPnl: grossPnl, // GROSS PnL (before fees)
+        tradingFees: tradingFees,
+        fundingFees: fundingFees,
+        totalFees: totalFees,
         pnlPercent,
         closeReason,
         tp1Hit: false,
         tp2Hit: false,
         tp3Hit: false,
         confirmationCount: 0,
+        partialCloseCount: bybitPos.orderId.includes('_aggregated_') 
+          ? parseInt(bybitPos.orderId.split('_aggregated_')[1]) 
+          : 1,
         openedAt: openedAt.toISOString(),
         closedAt: closedAt.toISOString(),
         durationMinutes,
@@ -409,12 +438,12 @@ export async function POST(request: NextRequest) {
       imported++;
     }
     
-    console.log(`✅ Imported ${imported} positions`);
+    console.log(`✅ Imported ${imported} positions with fee calculations`);
     console.log(`\n🔄 ========== FULL BYBIT SYNC COMPLETE ==========\n`);
     
     return NextResponse.json({
       success: true,
-      message: `✅ Synchronizacja: ${imported} pozycji z Bybit`,
+      message: `✅ Synchronizacja: ${imported} pozycji z Bybit (z opłatami)`,
       deleted: 0,
       imported,
       filtered: filteredCount,

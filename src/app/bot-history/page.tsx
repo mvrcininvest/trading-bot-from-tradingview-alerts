@@ -384,7 +384,7 @@ export default function BotHistoryPage() {
           </Card>
         )}
 
-        {/* ✅ ENHANCED HISTORY LIST: Show fees per position with expand/collapse */}
+        {/* ✅ ENHANCED HISTORY LIST */}
         {!loading && history.length > 0 && (
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -424,8 +424,10 @@ export default function BotHistoryPage() {
                               <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
                                 {pos.side === "Buy" ? "Long" : "Short"}
                               </Badge>
-                              <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
-                              
+                              <Badge className="text-purple-300 border-purple-500/50 bg-purple-900/30">
+                                {pos.tier}
+                              </Badge>
+
                               {(pos.tp1Hit || pos.tp2Hit || pos.tp3Hit) && (
                                 <div className="flex items-center gap-1 ml-2">
                                   {pos.tp1Hit && (
