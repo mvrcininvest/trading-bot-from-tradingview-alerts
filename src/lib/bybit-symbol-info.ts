@@ -3,11 +3,23 @@
  * Fetches trading rules and lot size info for symbols
  */
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const BYBIT_PROXY_URL = process.env.NEXT_PUBLIC_BASE_URL 
-  ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/bybit-edge-proxy`
-  : '/api/bybit-edge-proxy';
+import { createBybitSignature } from './bybit-helpers';
+
+// ✅ USE SAME PROXY AS bybit-helpers.ts
+function getAbsoluteProxyUrl(endpoint: string): string {
+  // On Vercel production/preview
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy${endpoint}`;
+  }
+  
+  // Fallback to custom env var
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return `${process.env.NEXT_PUBLIC_APP_URL}/api/bybit-edge-proxy${endpoint}`;
+  }
+  
+  // Local development - use localhost
+  return `http://localhost:3000/api/bybit-edge-proxy${endpoint}`;
+}
 
 interface BybitLotSizeFilter {
   minOrderQty: string;
@@ -38,43 +50,6 @@ const CACHE_DURATION_MS = 60 * 60 * 1000;
 const symbolCache = new Map<string, SymbolInfoCache>();
 
 /**
- * Sign Bybit API request
- */
-async function signBybitRequest(
-  apiKey: string,
-  apiSecret: string,
-  timestamp: number,
-  params: Record<string, any>
-): Promise<string> {
-  const queryString = Object.keys(params)
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join("&");
-
-  const signString = timestamp + apiKey + 5000 + queryString;
-
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiSecret);
-  const messageData = encoder.encode(signString);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-  const hashArray = Array.from(new Uint8Array(signature));
-  const hashHex = hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  return hashHex;
-}
-
-/**
  * Get symbol trading info from Bybit
  */
 export async function getSymbolInfo(
@@ -92,36 +67,36 @@ export async function getSymbolInfo(
   console.log(`🔍 [SymbolInfo] Fetching trading rules for ${symbol}...`);
 
   try {
-    const timestamp = Date.now();
-    const params: Record<string, any> = {
+    const timestamp = Date.now().toString();
+    const recvWindow = '5000';
+    const queryParams: Record<string, any> = {
       category: "linear",
       symbol: symbol,
     };
 
-    const signature = await signBybitRequest(apiKey, apiSecret, timestamp, params);
+    const queryString = new URLSearchParams(queryParams as any).toString();
+    const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
 
-    const queryString = Object.keys(params)
-      .sort()
-      .map((key) => `${key}=${params[key]}`)
-      .join("&");
+    // ✅ CRITICAL FIX: Use proxy instead of direct API
+    const url = getAbsoluteProxyUrl(`/v5/market/instruments-info?${queryString}`);
 
-    // ✅ CRITICAL FIX: Use direct Bybit API instead of proxy for symbol info
-    // This is a public endpoint that doesn't get geo-blocked
-    const url = `https://api.bybit.com/v5/market/instruments-info?${queryString}`;
+    console.log(`[SymbolInfo] Fetching from: ${url.substring(0, 50)}...`);
 
     const response = await fetch(url, {
       method: "GET",
       headers: {
         "X-BAPI-API-KEY": apiKey,
-        "X-BAPI-TIMESTAMP": timestamp.toString(),
+        "X-BAPI-TIMESTAMP": timestamp,
         "X-BAPI-SIGN": signature,
-        "X-BAPI-RECV-WINDOW": "5000",
+        "X-BAPI-RECV-WINDOW": recvWindow,
+        "X-BAPI-SIGN-TYPE": "2",
+        "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ [SymbolInfo] Bybit API error (${response.status}):`, errorText);
+      console.error(`❌ [SymbolInfo] Bybit API error (${response.status}):`, errorText.substring(0, 200));
       throw new Error(`Failed to fetch symbol info: HTTP ${response.status}`);
     }
 
