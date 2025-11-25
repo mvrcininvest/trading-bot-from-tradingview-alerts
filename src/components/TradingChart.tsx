@@ -130,6 +130,7 @@ export function TradingChart({
 
             if (timeoutRef.current) {
               clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
             }
             setLoading(false);
             setError(null);
@@ -166,6 +167,7 @@ export function TradingChart({
       }
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
   }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side]);

@@ -94,7 +94,6 @@ export default function StatystykiPage() {
     setWarning(null);
     
     try {
-      // ✅ Użyj server-side API z fallbackiem
       const response = await fetch(`/api/analytics/bybit-stats?days=${daysBack}`);
       const data: StatsResponse = await response.json();
 
@@ -156,7 +155,7 @@ export default function StatystykiPage() {
                 Statystyki Tradingowe
               </h1>
               <p className="text-sm text-gray-200">
-                Źródło: {dataSource === "bybit" ? "Bybit API" : "Lokalna baza"} (ostatnie {daysBack} dni)
+                {dataSource === "bybit" ? "✅ Dane z Bybit API" : "📊 Dane z lokalnej bazy"} (ostatnie {daysBack} dni)
               </p>
             </div>
           </div>
@@ -178,15 +177,6 @@ export default function StatystykiPage() {
             </Button>
           </div>
         </div>
-
-        {dataSource === "bybit" && (
-          <Alert className="border-green-700 bg-green-900/20">
-            <Database className="h-4 w-4 text-green-400" />
-            <AlertDescription className="text-sm text-green-200">
-              ✅ Statystyki pobrane bezpośrednio z Bybit API - dane są aktualne!
-            </AlertDescription>
-          </Alert>
-        )}
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
