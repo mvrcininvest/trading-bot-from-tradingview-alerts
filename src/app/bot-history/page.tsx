@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, RefreshCw, Download, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// ✅ Dane z bazy - automatycznie zapisywane przez bota podczas działania
+// ✅ Dane z Bybit API - synchronizowane automatycznie
 interface HistoryPosition {
   id: string;
   symbol: string;
@@ -25,13 +25,14 @@ interface HistoryPosition {
   openedAt: string;
   closedAt: string;
   durationMinutes: number;
-  source: "bybit";
+  source: "bybit" | "database";
 }
 
 export default function BotHistoryPage() {
   const router = useRouter();
   const [history, setHistory] = useState<HistoryPosition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
@@ -39,13 +40,13 @@ export default function BotHistoryPage() {
     fetchHistory();
   }, []);
 
-  // ✅ Auto-refresh co 10 sekund
+  // ✅ Auto-refresh co 30 sekund
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
-      fetchHistory(true); // silent refresh (bez toastu)
-    }, 10000); // 10 sekund
+      fetchHistory(true); // silent refresh
+    }, 30000); // 30 sekund
 
     return () => clearInterval(interval);
   }, [autoRefresh]);
@@ -53,7 +54,7 @@ export default function BotHistoryPage() {
   const fetchHistory = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      // ✅ Pobierz dane z bazy (bot automatycznie zapisuje pozycje podczas działania)
+      // Pobierz dane z bazy (bot automatycznie zapisuje podczas działania)
       const response = await fetch('/api/bot/history?limit=100');
       const data = await response.json();
       
@@ -75,6 +76,52 @@ export default function BotHistoryPage() {
       }
     } finally {
       if (!silent) setLoading(false);
+    }
+  };
+
+  // ✅ NOWA FUNKCJA: Import pełnych danych z Bybit
+  const importFromBybit = async () => {
+    setImporting(true);
+    try {
+      toast.loading("Importowanie danych z Bybit...", { id: "import" });
+      
+      // Pobierz credentials z API
+      const credResponse = await fetch('/api/bot/credentials');
+      const credData = await credResponse.json();
+      
+      if (!credData.success || !credData.credentials?.apiKey) {
+        toast.error("Brak konfiguracji API Bybit", { id: "import" });
+        return;
+      }
+
+      // Importuj ostatnie 30 dni historii z Bybit
+      const importResponse = await fetch('/api/bot/import-bybit-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: credData.credentials.apiKey,
+          apiSecret: credData.credentials.apiSecret,
+          daysBack: 30,
+        }),
+      });
+
+      const importData = await importResponse.json();
+
+      if (importData.success) {
+        toast.success(
+          `✅ Zaimportowano ${importData.imported} nowych pozycji z Bybit (${importData.skipped} już w bazie)`,
+          { id: "import", duration: 5000 }
+        );
+        // Odśwież listę po imporcie
+        await fetchHistory();
+      } else {
+        toast.error(`❌ Import nie powiódł się: ${importData.message}`, { id: "import" });
+      }
+    } catch (err) {
+      console.error("Import error:", err);
+      toast.error("Błąd importu danych z Bybit", { id: "import" });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -100,7 +147,7 @@ export default function BotHistoryPage() {
                 Historia Pozycji Bota
               </h1>
               <p className="text-gray-200">
-                Automatycznie synchronizowane z Bybit podczas działania bota
+                Dane synchronizowane z Bybit API
               </p>
             </div>
           </div>
@@ -119,7 +166,15 @@ export default function BotHistoryPage() {
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Odśwież teraz
+              Odśwież
+            </Button>
+            <Button 
+              onClick={importFromBybit} 
+              disabled={importing}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
+              {importing ? "Importowanie..." : "Import z Bybit"}
             </Button>
             <Button onClick={() => router.push("/dashboard")} variant="outline">
               <Activity className="mr-2 h-4 w-4" />
@@ -128,13 +183,14 @@ export default function BotHistoryPage() {
           </div>
         </div>
 
-        {/* Info o źródle danych */}
-        <Alert className="border-green-700 bg-green-900/20">
-          <Database className="h-4 w-4 text-green-400" />
-          <AlertDescription className="text-sm text-green-200">
-            ✅ Pozycje zapisywane automatycznie podczas działania bota (dane zgodne z Bybit).
-            {lastRefresh && ` Ostatnia aktualizacja: ${lastRefresh.toLocaleTimeString('pl-PL')}`}
-            {autoRefresh && " • Auto-odświeżanie co 10 sekund"}
+        {/* Info o synchronizacji */}
+        <Alert className="border-blue-700 bg-blue-900/20">
+          <AlertCircle className="h-4 w-4 text-blue-400" />
+          <AlertDescription className="text-sm text-blue-200">
+            💡 <strong>Jak to działa:</strong> Bot automatycznie zapisuje pozycje podczas działania. 
+            Jeśli liczby nie zgadzają się z Bybit, kliknij <strong>"Import z Bybit"</strong> aby zsynchronizować pełną historię.
+            {lastRefresh && ` • Ostatnia aktualizacja: ${lastRefresh.toLocaleTimeString('pl-PL')}`}
+            {autoRefresh && " • Auto-odświeżanie co 30s"}
           </AlertDescription>
         </Alert>
 
@@ -205,10 +261,10 @@ export default function BotHistoryPage() {
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
                 <History className="h-5 w-5" />
-                Zamknięte Pozycje
+                Zamknięte Pozycje ({history.length})
               </CardTitle>
               <CardDescription>
-                Dane z bazy - automatycznie zapisywane podczas działania bota
+                Dane z bazy - kliknij "Import z Bybit" aby zsynchronizować z Bybit API
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -263,7 +319,15 @@ export default function BotHistoryPage() {
               <div className="flex flex-col items-center justify-center gap-3">
                 <History className="h-12 w-12 text-gray-600" />
                 <p className="text-lg text-gray-400">Brak historii pozycji w bazie danych</p>
-                <p className="text-sm text-gray-500">Pozycje będą zapisywane automatycznie gdy bot zamknie pozycję</p>
+                <p className="text-sm text-gray-500">Kliknij "Import z Bybit" aby pobrać historię z Bybit API</p>
+                <Button 
+                  onClick={importFromBybit} 
+                  disabled={importing}
+                  className="mt-4 bg-purple-600 hover:bg-purple-700"
+                >
+                  <Download className={`mr-2 h-4 w-4 ${importing ? 'animate-bounce' : ''}`} />
+                  {importing ? "Importowanie..." : "Import z Bybit"}
+                </Button>
               </div>
             </CardContent>
           </Card>

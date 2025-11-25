@@ -6,8 +6,12 @@ import { eq, and } from "drizzle-orm";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-// ✅ USE PROXY URL FROM ENV
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || "https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit";
+// ✅ MULTI-PROXY STRATEGY: Try multiple proxy URLs
+const PROXY_URLS = [
+  process.env.BYBIT_PROXY_URL, // Fly.io proxy (Amsterdam)
+  `/api/bybit-edge-proxy`, // Vercel Edge proxy (Singapore/Asia)
+  "https://api.bybit.com", // Direct (last resort)
+];
 
 interface BybitHistoryPosition {
   symbol: string;
@@ -56,6 +60,7 @@ async function signBybitRequest(
   return hashHex;
 }
 
+// ✅ NOWA FUNKCJA: Try multiple proxies until one works
 async function fetchBybitHistoryPage(
   apiKey: string,
   apiSecret: string,
@@ -69,7 +74,7 @@ async function fetchBybitHistoryPage(
     category: "linear",
     startTime: startTime.toString(),
     endTime: endTime.toString(),
-    limit: 100, // Max limit per page
+    limit: 100,
   };
 
   if (cursor) {
@@ -83,37 +88,68 @@ async function fetchBybitHistoryPage(
     .map((key) => `${key}=${params[key]}`)
     .join("&");
 
-  const url = `${BYBIT_PROXY_URL}/v5/position/closed-pnl?${queryString}`;
+  const headers = {
+    "X-BAPI-API-KEY": apiKey,
+    "X-BAPI-TIMESTAMP": timestamp.toString(),
+    "X-BAPI-SIGN": signature,
+    "X-BAPI-RECV-WINDOW": "5000",
+  };
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "X-BAPI-API-KEY": apiKey,
-      "X-BAPI-TIMESTAMP": timestamp.toString(),
-      "X-BAPI-SIGN": signature,
-      "X-BAPI-RECV-WINDOW": "5000",
-    },
-  });
+  // ✅ Try each proxy until one works
+  let lastError: Error | null = null;
+  
+  for (const proxyUrl of PROXY_URLS) {
+    if (!proxyUrl) continue;
 
-  const data = await response.json();
+    try {
+      const isRelativeUrl = proxyUrl.startsWith('/');
+      const fullUrl = isRelativeUrl
+        ? `${proxyUrl}/v5/position/closed-pnl?${queryString}`
+        : `${proxyUrl}/v5/position/closed-pnl?${queryString}`;
 
-  // ✅ ADD DETAILED LOGGING
-  console.log(`[Import] Bybit API Response Status: ${response.status}`);
-  console.log(`[Import] Bybit API Response:`, JSON.stringify(data, null, 2));
+      console.log(`[Import] Trying proxy: ${proxyUrl}`);
 
-  if (data.retCode !== 0) {
-    console.error(`[Import] ❌ Bybit API Error - retCode: ${data.retCode}, retMsg: ${data.retMsg}`);
-    console.error(`[Import] ❌ Full response:`, data);
-    throw new Error(`Bybit API error: ${data.retMsg || 'Unknown error'} (retCode: ${data.retCode})`);
+      const response = await fetch(fullUrl, {
+        method: "GET",
+        headers: isRelativeUrl ? headers : {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      // Check if CloudFront blocked
+      if (response.status === 403) {
+        console.log(`[Import] ❌ Proxy ${proxyUrl} blocked (403)`);
+        lastError = new Error(`Geo-blocked by CloudFront`);
+        continue;
+      }
+
+      if (data.retCode !== 0) {
+        console.log(`[Import] ❌ Proxy ${proxyUrl} API error: ${data.retMsg} (retCode: ${data.retCode})`);
+        lastError = new Error(`Bybit API error: ${data.retMsg}`);
+        continue;
+      }
+
+      console.log(`[Import] ✅ Success using proxy: ${proxyUrl}`);
+      
+      return {
+        positions: data.result?.list || [],
+        nextCursor: data.result?.nextPageCursor || null,
+      };
+    } catch (error) {
+      console.log(`[Import] ❌ Proxy ${proxyUrl} failed:`, error);
+      lastError = error instanceof Error ? error : new Error(String(error));
+      continue;
+    }
   }
 
-  return {
-    positions: data.result?.list || [],
-    nextCursor: data.result?.nextPageCursor || null,
-  };
+  // All proxies failed
+  throw lastError || new Error("All proxy attempts failed");
 }
 
-// ✅ NOWA FUNKCJA: Fetch all positions for a 7-day segment
+// ✅ Fetch all positions for a 7-day segment
 async function fetchBybitHistorySegment(
   apiKey: string,
   apiSecret: string,
@@ -137,7 +173,6 @@ async function fetchBybitHistorySegment(
     allPositions = [...allPositions, ...positions];
     cursor = nextCursor;
 
-    // Safety limit - max 20 pages per segment (2000 positions)
     if (pageCount >= 20) {
       console.log(`[Import] ⚠️ Reached safety limit of 20 pages for this segment`);
       break;
@@ -159,15 +194,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Import Bybit History] Starting import for last ${daysBack} days...`);
+    console.log(`[Import Bybit History] 🚀 Starting import for last ${daysBack} days using multi-proxy strategy...`);
 
-    // ✅ NOWE: Divide time range into 7-day segments (Bybit limit)
+    // ✅ Divide time range into 7-day segments
     const now = Date.now();
     const totalMs = daysBack * 24 * 60 * 60 * 1000;
-    const segmentMs = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+    const segmentMs = 7 * 24 * 60 * 60 * 1000;
     const segments: Array<{ start: number; end: number }> = [];
 
-    // Create 7-day segments from oldest to newest
     let currentStart = now - totalMs;
     while (currentStart < now) {
       const currentEnd = Math.min(currentStart + segmentMs, now);
@@ -179,7 +213,7 @@ export async function POST(request: NextRequest) {
 
     let allPositions: BybitHistoryPosition[] = [];
 
-    // ✅ NOWE: Fetch each 7-day segment
+    // ✅ Fetch each 7-day segment
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
       const segmentStartDate = new Date(segment.start).toISOString().split('T')[0];
@@ -199,16 +233,16 @@ export async function POST(request: NextRequest) {
         console.log(`[Import] Segment ${i + 1}: ${segmentPositions.length} positions, Total so far: ${allPositions.length}`);
       } catch (error) {
         console.error(`[Import] ❌ Error fetching segment ${i + 1}:`, error);
-        // Continue with next segment instead of failing completely
+        // Continue with next segment
       }
     }
 
-    console.log(`[Import Bybit History] ✅ Fetched ${allPositions.length} total positions from Bybit across ${segments.length} segments`);
+    console.log(`[Import Bybit History] ✅ Fetched ${allPositions.length} total positions from Bybit`);
 
     if (allPositions.length === 0) {
       return NextResponse.json({
-        success: true,
-        message: "No positions found on Bybit",
+        success: false,
+        message: "Nie udało się pobrać danych z Bybit - wszystkie proxy zablokowali CloudFront",
         imported: 0,
         skipped: 0,
         total: 0,
@@ -229,17 +263,17 @@ export async function POST(request: NextRequest) {
       const pnl = parseFloat(bybitPos.closedPnl);
       const leverage = parseInt(bybitPos.leverage);
 
-      // Check if position already exists in history
       const closedAt = new Date(parseInt(bybitPos.updatedTime));
       const openedAt = new Date(parseInt(bybitPos.createdTime));
 
+      // Check if position already exists
       const exists = existingHistory.some((existing) => {
         const isSameSymbol = existing.symbol === bybitPos.symbol;
         const isSameSide = existing.side === bybitPos.side;
-        const isSimilarEntry = Math.abs(existing.entryPrice - entryPrice) < entryPrice * 0.001; // 0.1% tolerance (increased)
+        const isSimilarEntry = Math.abs(existing.entryPrice - entryPrice) < entryPrice * 0.001;
         const isSameCloseTime = 
           existing.closedAt && 
-          Math.abs(new Date(existing.closedAt).getTime() - closedAt.getTime()) < 300000; // 5 min tolerance (increased)
+          Math.abs(new Date(existing.closedAt).getTime() - closedAt.getTime()) < 300000;
 
         return isSameSymbol && isSameSide && isSimilarEntry && isSameCloseTime;
       });
@@ -249,16 +283,14 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // ✅ POPRAWKA: Oblicz ROE (pnlPercent po dźwigni)
+      // Calculate ROE
       const positionValue = qty * entryPrice;
       const initialMargin = positionValue / leverage;
       const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
 
-      // Duration in minutes
       const durationMs = closedAt.getTime() - openedAt.getTime();
       const durationMinutes = Math.round(durationMs / 60000);
 
-      // Determine close reason based on PnL
       let closeReason = "closed_on_exchange";
       if (pnl > 0) {
         closeReason = "tp_main_hit";
@@ -266,13 +298,12 @@ export async function POST(request: NextRequest) {
         closeReason = "sl_hit";
       }
 
-      // Insert into history
       await db.insert(positionHistory).values({
         positionId: null,
         alertId: null,
         symbol: bybitPos.symbol,
         side: bybitPos.side,
-        tier: "Standard", // Default tier for imported positions
+        tier: "Standard",
         entryPrice,
         closePrice: exitPrice,
         quantity: qty,
@@ -292,11 +323,11 @@ export async function POST(request: NextRequest) {
       imported++;
     }
 
-    console.log(`[Import Bybit History] Complete: ${imported} imported, ${skipped} skipped out of ${allPositions.length} total`);
+    console.log(`[Import Bybit History] ✅ Complete: ${imported} imported, ${skipped} skipped out of ${allPositions.length} total`);
 
     return NextResponse.json({
       success: true,
-      message: `Import complete: ${imported} positions imported, ${skipped} already in history`,
+      message: `✅ Import zakończony: ${imported} nowych pozycji, ${skipped} już w bazie`,
       imported,
       skipped,
       total: allPositions.length,
