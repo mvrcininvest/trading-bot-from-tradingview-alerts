@@ -3,16 +3,10 @@ import { db } from '@/db';
 import { positionHistory, botSettings } from '@/db/schema';
 import { desc } from 'drizzle-orm';
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const getBybitProxyUrl = () => {
-  // In production (Vercel), use absolute URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
-  }
-  // In local dev, use relative path
-  return '/api/bybit-edge-proxy';
-};
+// ✅ DIRECT BYBIT API REQUESTS (no proxy needed)
+// Vercel Edge will route from Singapore/Hong Kong regions
+export const runtime = 'edge';
+export const preferredRegion = ['sin1', 'hkg1', 'icn1'];
 
 interface BybitHistoryPosition {
   symbol: string;
@@ -87,7 +81,8 @@ async function fetchAllBybitHistory(apiKey: string, apiSecret: string): Promise<
       .map((key) => `${key}=${params[key]}`)
       .join("&");
 
-    const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
+    // ✅ DIRECT BYBIT API REQUEST (no proxy)
+    const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -96,6 +91,7 @@ async function fetchAllBybitHistory(apiKey: string, apiSecret: string): Promise<
         "X-BAPI-TIMESTAMP": timestamp.toString(),
         "X-BAPI-SIGN": signature,
         "X-BAPI-RECV-WINDOW": "5000",
+        "Content-Type": "application/json",
       },
     });
 

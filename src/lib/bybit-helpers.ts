@@ -1,28 +1,42 @@
-import crypto from 'crypto';
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const BYBIT_MAINNET_URL = process.env.NEXT_PUBLIC_BASE_URL 
-  ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/bybit-edge-proxy`
-  : '/api/bybit-edge-proxy';
+// ✅ DIRECT BYBIT API (no proxy needed)
+// Vercel Edge functions in Singapore/Hong Kong can connect directly
+const BYBIT_API_URL = 'https://api.bybit.com';
 
 // ============================================
-// 🔐 BYBIT SIGNATURE HELPER (FIXED)
+// 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)
 // ============================================
 
-export function createBybitSignature(
+export async function createBybitSignature(
   timestamp: string,
   apiKey: string,
   apiSecret: string,
   recvWindow: string,
   params: string
-): string {
+): Promise<string> {
   const message = timestamp + apiKey + recvWindow + params;
-  return crypto.createHmac('sha256', apiSecret).update(message).digest('hex');
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(message);
+  
+  // Use Web Crypto API (Edge Runtime compatible)
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  return hashHex;
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (FIXED)
+// 🔄 BYBIT API REQUEST HELPER (FIXED - Direct API)
 // ============================================
 
 export async function makeBybitRequest(
@@ -36,7 +50,7 @@ export async function makeBybitRequest(
   const timestamp = Date.now().toString();
   const recvWindow = '5000';
   
-  const baseUrl = BYBIT_MAINNET_URL;
+  const baseUrl = BYBIT_API_URL;
   let url = `${baseUrl}${endpoint}`;
   let paramsString = '';
   
@@ -50,7 +64,7 @@ export async function makeBybitRequest(
     paramsString = JSON.stringify(body);
   }
   
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
+  const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
 
   const headers: Record<string, string> = {
     'X-BAPI-API-KEY': apiKey,

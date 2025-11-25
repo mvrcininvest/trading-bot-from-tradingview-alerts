@@ -1,33 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { botSettings, positionHistory, botPositions } from "@/db/schema";
-import crypto from "crypto";
 import { eq, sql } from "drizzle-orm";
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const getBybitProxyUrl = () => {
-  // In production (Vercel), use absolute URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
-  }
-  // In local dev, use relative path
-  return '/api/bybit-edge-proxy';
-};
+// ✅ DIRECT BYBIT API REQUESTS (no proxy needed)
+// Vercel Edge will route from Singapore/Hong Kong regions
+export const runtime = 'edge';
+export const preferredRegion = ['sin1', 'hkg1', 'icn1'];
 
 // ============================================
-// 🔐 BYBIT V5 SIGNATURE HELPER (FIXED)
+// 🔐 BYBIT V5 SIGNATURE HELPER (Web Crypto API)
 // ============================================
 
-function createBybitSignature(
+async function createBybitSignature(
   timestamp: string,
   apiKey: string,
   apiSecret: string,
   recvWindow: string,
   queryString: string
-): string {
+): Promise<string> {
   const message = timestamp + apiKey + recvWindow + queryString;
-  return crypto.createHmac("sha256", apiSecret).update(message).digest("hex");
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  return hashHex;
 }
 
 // ============================================
@@ -228,9 +237,10 @@ async function getAllClosedPnL(
       .map((key) => `${key}=${params[key]}`)
       .join("&");
     
-    const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+    const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
     
-    const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
+    // ✅ DIRECT BYBIT API REQUEST (no proxy)
+    const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
     
     console.log(`[Bybit Stats] Page ${pageCount} request`);
     
@@ -249,7 +259,6 @@ async function getAllClosedPnL(
     if (!contentType || !contentType.includes("application/json")) {
       const text = await response.text();
       
-      // Check for CloudFront/geo-blocking errors
       if (text.includes("CloudFront") || text.includes("<!DOCTYPE html>")) {
         throw new Error("GEO_BLOCKED");
       }
@@ -260,7 +269,6 @@ async function getAllClosedPnL(
     if (!response.ok) {
       const errorText = await response.text();
       
-      // Check for geo-blocking in error
       if (errorText.includes("CloudFront") || response.status === 403) {
         throw new Error("GEO_BLOCKED");
       }
@@ -300,9 +308,10 @@ async function getWalletBalance(apiKey: string, apiSecret: string) {
   const recvWindow = "5000";
   const queryString = "accountType=UNIFIED";
   
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+  const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
   
-  const url = `${getBybitProxyUrl()}/v5/account/wallet-balance?${queryString}`;
+  // ✅ DIRECT BYBIT API REQUEST (no proxy)
+  const url = `https://api.bybit.com/v5/account/wallet-balance?${queryString}`;
   
   const response = await fetch(url, {
     method: "GET",
@@ -351,9 +360,10 @@ async function getOpenPositions(apiKey: string, apiSecret: string) {
     .map((key) => `${key}=${params[key]}`)
     .join("&");
   
-  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
+  const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
   
-  const url = `${getBybitProxyUrl()}/v5/position/list?${queryString}`;
+  // ✅ DIRECT BYBIT API REQUEST (no proxy)
+  const url = `https://api.bybit.com/v5/position/list?${queryString}`;
   
   const response = await fetch(url, {
     method: "GET",
