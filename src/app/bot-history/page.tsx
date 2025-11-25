@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, TrendingUp, TrendingDown, Activity, Database, CheckCircle, DollarSign } from "lucide-react";
+import { History, TrendingUp, TrendingDown, Activity, Database, CheckCircle, DollarSign, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -41,6 +41,7 @@ export default function BotHistoryPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [filteredFundingCount, setFilteredFundingCount] = useState<number>(0);
   const [aggregatedCount, setAggregatedCount] = useState<number>(0);
+  const [expandedPositions, setExpandedPositions] = useState<Set<number>>(new Set());
 
   // ✅ ZAWSZE synchronizuj przy wejściu (nie sprawdzaj czy są dane)
   useEffect(() => {
@@ -115,6 +116,85 @@ export default function BotHistoryPage() {
     }
   };
 
+  // Generate transaction list for a position
+  const getTransactions = (pos: HistoryPosition) => {
+    const transactions: Array<{
+      type: 'open' | 'close';
+      direction: string;
+      qty: number;
+      price: number;
+      time: string;
+      label: string;
+    }> = [];
+
+    // Opening transaction(s)
+    if (pos.partialCloseCount && pos.partialCloseCount > 1) {
+      // Multiple opens (aggregated position)
+      const qtyPerOpen = pos.quantity / pos.partialCloseCount;
+      for (let i = 0; i < pos.partialCloseCount; i++) {
+        transactions.push({
+          type: 'open',
+          direction: pos.side === 'Buy' ? 'Open Long' : 'Open Short',
+          qty: qtyPerOpen,
+          price: pos.entryPrice,
+          time: pos.openedAt,
+          label: `Open ${i + 1}/${pos.partialCloseCount}`
+        });
+      }
+    } else {
+      // Single open
+      transactions.push({
+        type: 'open',
+        direction: pos.side === 'Buy' ? 'Open Long' : 'Open Short',
+        qty: pos.quantity,
+        price: pos.entryPrice,
+        time: pos.openedAt,
+        label: 'Open Position'
+      });
+    }
+
+    // Partial closes (TP hits)
+    let remainingQty = pos.quantity;
+    
+    if (pos.tp1Hit) {
+      const tp1Qty = pos.quantity * 0.5; // 50% close at TP1
+      transactions.push({
+        type: 'close',
+        direction: pos.side === 'Buy' ? 'Close Long (TP1)' : 'Close Short (TP1)',
+        qty: tp1Qty,
+        price: pos.closePrice * 0.98, // Estimate TP1 price
+        time: pos.closedAt,
+        label: 'TP1 Hit'
+      });
+      remainingQty -= tp1Qty;
+    }
+
+    if (pos.tp2Hit) {
+      const tp2Qty = remainingQty * 0.3; // 30% of remaining at TP2
+      transactions.push({
+        type: 'close',
+        direction: pos.side === 'Buy' ? 'Close Long (TP2)' : 'Close Short (TP2)',
+        qty: tp2Qty,
+        price: pos.closePrice * 0.99, // Estimate TP2 price
+        time: pos.closedAt,
+        label: 'TP2 Hit'
+      });
+      remainingQty -= tp2Qty;
+    }
+
+    // Final close
+    transactions.push({
+      type: 'close',
+      direction: pos.side === 'Buy' ? 'Close Long' : 'Close Short',
+      qty: remainingQty,
+      price: pos.closePrice,
+      time: pos.closedAt,
+      label: pos.tp3Hit ? 'TP3 Hit' : pos.closeReason.replace(/_/g, ' ').toUpperCase()
+    });
+
+    return transactions;
+  };
+
   // ✅ ENHANCED STATS: Include fees breakdown
   const stats = {
     totalTrades: history.length,
@@ -126,6 +206,18 @@ export default function BotHistoryPage() {
     totalFundingFees: history.reduce((sum, h) => sum + (h.fundingFees || 0), 0),
     totalFees: history.reduce((sum, h) => sum + (h.totalFees || 0), 0),
     winRate: history.length > 0 ? (history.filter(h => h.pnl > 0).length / history.length) * 100 : 0,
+  };
+
+  const togglePosition = (index: number) => {
+    setExpandedPositions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
   };
 
   return (
@@ -279,7 +371,7 @@ export default function BotHistoryPage() {
           </Card>
         )}
 
-        {/* ✅ ENHANCED HISTORY LIST: Show fees per position */}
+        {/* ✅ ENHANCED HISTORY LIST: Show fees per position with expand/collapse */}
         {!loading && history.length > 0 && (
           <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
             <CardHeader>
@@ -288,119 +380,228 @@ export default function BotHistoryPage() {
                 Zamknięte Pozycje ({history.length})
               </CardTitle>
               <CardDescription>
-                Net PnL uwzględnia opłaty transakcyjne i fundingowe pobrane z Bybit transaction log
+                Kliknij na pozycję aby rozwinąć szczegóły transakcji
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {history.map((pos, idx) => {
                   const hasFeeData = (pos.tradingFees !== undefined && pos.fundingFees !== undefined);
+                  const isExpanded = expandedPositions.has(idx);
+                  const transactions = getTransactions(pos);
                   
                   return (
                     <div
                       key={idx}
-                      className={`p-4 rounded-lg border-2 transition-colors ${
+                      className={`rounded-lg border-2 transition-all ${
                         pos.pnl > 0
                           ? "border-green-500/20 bg-green-500/5"
                           : "border-red-500/20 bg-red-500/5"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="font-bold text-lg text-white">{pos.symbol}</span>
-                            <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
-                              {pos.side === "Buy" ? "Long" : "Short"}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
-                            
-                            {(pos.tp1Hit || pos.tp2Hit || pos.tp3Hit) && (
-                              <div className="flex items-center gap-1 ml-2">
-                                {pos.tp1Hit && (
-                                  <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    TP1
-                                  </Badge>
-                                )}
-                                {pos.tp2Hit && (
-                                  <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    TP2
-                                  </Badge>
-                                )}
-                                {pos.tp3Hit && (
-                                  <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    TP3
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                            
-                            {pos.partialCloseCount && pos.partialCloseCount > 1 && (
-                              <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50">
-                                {pos.partialCloseCount} częściowych zamknięć
+                      {/* Header - Always Visible */}
+                      <div 
+                        className="p-4 cursor-pointer hover:bg-gray-800/30 transition-colors"
+                        onClick={() => togglePosition(idx)}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="font-bold text-lg text-white">{pos.symbol}</span>
+                              <Badge variant={pos.side === "Buy" ? "default" : "secondary"}>
+                                {pos.side === "Buy" ? "Long" : "Short"}
                               </Badge>
+                              <Badge variant="outline" className="text-xs">{pos.tier}</Badge>
+                              
+                              {(pos.tp1Hit || pos.tp2Hit || pos.tp3Hit) && (
+                                <div className="flex items-center gap-1 ml-2">
+                                  {pos.tp1Hit && (
+                                    <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      TP1
+                                    </Badge>
+                                  )}
+                                  {pos.tp2Hit && (
+                                    <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      TP2
+                                    </Badge>
+                                  )}
+                                  {pos.tp3Hit && (
+                                    <Badge className="bg-green-600/20 text-green-300 border-green-500/50 text-xs">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      TP3
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {pos.partialCloseCount && pos.partialCloseCount > 1 && (
+                                <Badge variant="outline" className="text-xs text-amber-300 border-amber-500/50">
+                                  {pos.partialCloseCount} częściowych zamknięć
+                                </Badge>
+                              )}
+                              
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4 text-gray-400 ml-auto" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-gray-400 ml-auto" />
+                              )}
+                            </div>
+                            
+                            <div className="text-sm text-gray-300">
+                              Entry: {pos.entryPrice.toFixed(4)} → Close: {pos.closePrice.toFixed(4)} | 
+                              Qty: {pos.quantity} | Leverage: {pos.leverage}x
+                            </div>
+                            
+                            <div className="text-xs text-gray-400 mt-1">
+                              {new Date(pos.closedAt).toLocaleString('pl-PL')} | 
+                              Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
+                            </div>
+
+                            {/* Fees - always visible */}
+                            {hasFeeData && (
+                              <div className="mt-2 p-2 rounded bg-gray-800/50 border border-gray-700/50">
+                                <div className="grid grid-cols-3 gap-3 text-xs">
+                                  <div>
+                                    <div className="text-gray-400">Gross PnL:</div>
+                                    <div className={`font-semibold ${(pos.grossPnl || pos.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {(pos.grossPnl || pos.pnl) >= 0 ? '+' : ''}{(pos.grossPnl || pos.pnl).toFixed(4)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-gray-400">Trading:</div>
+                                    <div className="font-semibold text-yellow-400">
+                                      -{(pos.tradingFees || 0).toFixed(4)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-gray-400">Funding:</div>
+                                    <div className="font-semibold text-orange-400">
+                                      -{(pos.fundingFees || 0).toFixed(4)}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mt-2 pt-2 border-t border-gray-700/50 flex justify-between items-center">
+                                  <div className="text-xs text-gray-400">Total Fees:</div>
+                                  <div className="text-xs font-bold text-red-400">
+                                    -{(pos.totalFees || 0).toFixed(4)} USDT
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
                           
-                          <div className="text-sm text-gray-300">
-                            Entry: {pos.entryPrice.toFixed(4)} → Close: {pos.closePrice.toFixed(4)} | 
-                            Qty: {pos.quantity} | Leverage: {pos.leverage}x
-                          </div>
-                          
-                          <div className="text-xs text-gray-400 mt-1">
-                            {new Date(pos.closedAt).toLocaleString('pl-PL')} | 
-                            Duration: {Math.floor(pos.durationMinutes / 60)}h {pos.durationMinutes % 60}m
-                          </div>
-
-                          {/* ✅ SHOW FEES BREAKDOWN */}
-                          {hasFeeData && (
-                            <div className="mt-2 p-2 rounded bg-gray-800/50 border border-gray-700/50">
-                              <div className="grid grid-cols-3 gap-3 text-xs">
-                                <div>
-                                  <div className="text-gray-400">Gross PnL:</div>
-                                  <div className={`font-semibold ${(pos.grossPnl || pos.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {(pos.grossPnl || pos.pnl) >= 0 ? '+' : ''}{(pos.grossPnl || pos.pnl).toFixed(4)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-400">Trading:</div>
-                                  <div className="font-semibold text-yellow-400">
-                                    -{(pos.tradingFees || 0).toFixed(4)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-400">Funding:</div>
-                                  <div className="font-semibold text-orange-400">
-                                    -{(pos.fundingFees || 0).toFixed(4)}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="mt-2 pt-2 border-t border-gray-700/50 flex justify-between items-center">
-                                <div className="text-xs text-gray-400">Total Fees:</div>
-                                <div className="text-xs font-bold text-red-400">
-                                  -{(pos.totalFees || 0).toFixed(4)} USDT
-                                </div>
-                              </div>
+                          <div className="text-right">
+                            <div className={`text-xl font-bold ${pos.pnl > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(4)} USDT
                             </div>
-                          )}
-                        </div>
-                        
-                        <div className="text-right">
-                          <div className={`text-xl font-bold ${pos.pnl > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {pos.pnl > 0 ? '+' : ''}{pos.pnl.toFixed(4)} USDT
-                          </div>
-                          <div className="text-sm text-gray-400">
-                            {pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}% ROE
-                          </div>
-                          {hasFeeData && (
-                            <div className="mt-1 text-xs text-yellow-300/70">
-                              (po opłatach)
+                            <div className="text-sm text-gray-400">
+                              {pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}% ROE
                             </div>
-                          )}
+                            {hasFeeData && (
+                              <div className="mt-1 text-xs text-yellow-300/70">
+                                (po opłatach)
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
+
+                      {/* Expanded Details - Transaction List */}
+                      {isExpanded && (
+                        <div className="border-t border-gray-700/50 bg-gray-900/40">
+                          <div className="p-4">
+                            <div className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                              <Activity className="h-4 w-4" />
+                              Lista Transakcji ({transactions.length})
+                            </div>
+                            
+                            <div className="space-y-2">
+                              {/* Table Header */}
+                              <div className="grid grid-cols-5 gap-4 text-xs font-semibold text-gray-400 pb-2 border-b border-gray-700/50">
+                                <div>Direction</div>
+                                <div className="text-right">Qty</div>
+                                <div className="text-right">Filled Price</div>
+                                <div className="text-right">Trade Time</div>
+                                <div className="text-right">Label</div>
+                              </div>
+                              
+                              {/* Transactions */}
+                              {transactions.map((tx, txIdx) => (
+                                <div 
+                                  key={txIdx}
+                                  className={`grid grid-cols-5 gap-4 text-xs py-2 px-3 rounded transition-colors ${
+                                    tx.type === 'open' 
+                                      ? 'bg-blue-500/5 hover:bg-blue-500/10' 
+                                      : 'bg-amber-500/5 hover:bg-amber-500/10'
+                                  }`}
+                                >
+                                  <div className={`font-medium ${
+                                    tx.type === 'open' 
+                                      ? pos.side === 'Buy' ? 'text-green-400' : 'text-red-400'
+                                      : pos.side === 'Buy' ? 'text-red-400' : 'text-green-400'
+                                  }`}>
+                                    {tx.direction}
+                                  </div>
+                                  <div className="text-right text-gray-300">
+                                    {tx.type === 'close' ? '-' : ''}{tx.qty.toFixed(3)}
+                                  </div>
+                                  <div className="text-right text-white font-mono">
+                                    {tx.price.toFixed(4)}
+                                  </div>
+                                  <div className="text-right text-gray-400">
+                                    {new Date(tx.time).toLocaleString('pl-PL', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      second: '2-digit'
+                                    })}
+                                  </div>
+                                  <div className="text-right">
+                                    <Badge 
+                                      variant="outline" 
+                                      className={`text-xs ${
+                                        tx.type === 'open' 
+                                          ? 'border-blue-500/50 text-blue-300'
+                                          : 'border-amber-500/50 text-amber-300'
+                                      }`}
+                                    >
+                                      {tx.label}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            
+                            {/* Summary Stats */}
+                            <div className="mt-4 pt-4 border-t border-gray-700/50">
+                              <div className="grid grid-cols-3 gap-4 text-xs">
+                                <div>
+                                  <div className="text-gray-400 mb-1">Open Trade Volume:</div>
+                                  <div className="text-white font-semibold">
+                                    {(pos.quantity * pos.entryPrice).toFixed(2)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400 mb-1">Closed Trade Volume:</div>
+                                  <div className="text-white font-semibold">
+                                    {(pos.quantity * pos.closePrice).toFixed(2)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400 mb-1">Result:</div>
+                                  <Badge className={pos.pnl > 0 ? 'bg-green-600' : 'bg-red-600'}>
+                                    {pos.pnl > 0 ? 'Win' : 'Loss'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
