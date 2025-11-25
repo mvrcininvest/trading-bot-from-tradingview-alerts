@@ -1,7 +1,7 @@
-
-// ✅ DIRECT BYBIT API (no proxy needed)
-// Vercel Edge functions in Singapore/Hong Kong can connect directly
-const BYBIT_API_URL = 'https://api.bybit.com';
+// ✅ USE FLY.IO PROXY to bypass CloudFlare block
+// Direct connection from Vercel is blocked by CloudFlare
+const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || 'https://bybit-proxy-dawn-snowflake-6188.fly.dev/proxy/bybit';
+const USE_PROXY = true; // Always use proxy from Vercel
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)
@@ -50,7 +50,7 @@ export async function makeBybitRequest(
   const timestamp = Date.now().toString();
   const recvWindow = '5000';
   
-  const baseUrl = BYBIT_API_URL;
+  const baseUrl = BYBIT_PROXY_URL;
   let url = `${baseUrl}${endpoint}`;
   let paramsString = '';
   

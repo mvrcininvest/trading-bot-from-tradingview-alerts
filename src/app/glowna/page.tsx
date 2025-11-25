@@ -147,16 +147,6 @@ export default function GlownaPage() {
     try {
       setBalanceError(null);
       
-      // ⚠️ CloudFlare ZAWSZE blokuje Bybit API - to jest znany stały problem
-      // Dokumentacja: BYBIT_GEO_BLOCKING_FIX.md
-      console.log("[Balance] CloudFlare blokuje Bybit API - saldo niedostępne");
-      setBalanceError("⚠️ CloudFlare blokuje Bybit API (znany problem)");
-      setBalance([]);
-      setLoadingBalance(false);
-      return;
-      
-      // KOD PONIŻEJ NIE DZIAŁA z powodu CloudFlare block (zostawiamy dla referencji)
-      /*
       // Pobierz credentials z settings (z cache busting)
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
@@ -198,13 +188,12 @@ export default function GlownaPage() {
         setBalance(data.balances);
         setBalanceError(null);
       } else {
-        // ⚠️ CloudFlare block - wyświetl komunikat ale nie blokuj UI
+        // Jeśli błąd CloudFlare lub inny - pokaż komunikat
         setBalanceError(data.message || "Nie można pobrać salda");
       }
-      */
     } catch (err) {
       console.error("Load balance error:", err);
-      setBalanceError("CloudFlare blokuje Bybit API");
+      setBalanceError("Błąd połączenia z API");
     } finally {
       setLoadingBalance(false);
     }
