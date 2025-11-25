@@ -1,0 +1,18 @@
+{
+  "name": "bybit-proxy-server",
+  "version": "1.0.0",
+  "description": "Proxy server for Bybit API to bypass CloudFront geo-blocking",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["bybit", "proxy", "trading"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5"
+  }
+}
