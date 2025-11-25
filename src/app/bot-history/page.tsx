@@ -7,7 +7,17 @@ import { History, TrendingUp, TrendingDown, Activity, Database, CheckCircle, Dol
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { TradingChart } from "@/components/TradingChart";
+import dynamic from "next/dynamic";
+
+// ✅ Import TradingChart with SSR disabled
+const TradingChart = dynamic(
+  () => import("@/components/TradingChart").then((mod) => ({ default: mod.TradingChart })),
+  { ssr: false, loading: () => (
+    <div className="w-full h-[400px] bg-slate-950 rounded-lg flex items-center justify-center">
+      <Activity className="h-8 w-8 animate-spin text-blue-400" />
+    </div>
+  )}
+);
 
 // ✅ v4.0.0 - FEES SUPPORT: Show trading + funding fees
 interface HistoryPosition {
