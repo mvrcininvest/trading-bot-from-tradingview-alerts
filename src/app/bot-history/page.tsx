@@ -7,6 +7,7 @@ import { History, TrendingUp, TrendingDown, Activity, Database, CheckCircle, Dol
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { TradingChart } from "@/components/TradingChart";
 
 // ✅ v4.0.0 - FEES SUPPORT: Show trading + funding fees
 interface HistoryPosition {
@@ -511,91 +512,110 @@ export default function BotHistoryPage() {
                       {/* Expanded Details - Transaction List */}
                       {isExpanded && (
                         <div className="border-t border-gray-700/50 bg-gray-900/40">
-                          <div className="p-4">
-                            <div className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                              <Activity className="h-4 w-4" />
-                              Lista Transakcji ({transactions.length})
+                          <div className="p-4 space-y-6">
+                            {/* Trading Chart */}
+                            <div>
+                              <div className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                                <Activity className="h-4 w-4" />
+                                Wykres Pozycji
+                              </div>
+                              <TradingChart
+                                symbol={pos.symbol}
+                                entryPrice={pos.entryPrice}
+                                exitPrice={pos.closePrice}
+                                openedAt={pos.openedAt}
+                                closedAt={pos.closedAt}
+                                side={pos.side as "Buy" | "Sell"}
+                              />
                             </div>
-                            
-                            <div className="space-y-2">
-                              {/* Table Header */}
-                              <div className="grid grid-cols-5 gap-4 text-xs font-semibold text-gray-400 pb-2 border-b border-gray-700/50">
-                                <div>Direction</div>
-                                <div className="text-right">Qty</div>
-                                <div className="text-right">Filled Price</div>
-                                <div className="text-right">Trade Time</div>
-                                <div className="text-right">Label</div>
+
+                            {/* Transaction List */}
+                            <div>
+                              <div className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                                <Activity className="h-4 w-4" />
+                                Lista Transakcji ({transactions.length})
                               </div>
                               
-                              {/* Transactions */}
-                              {transactions.map((tx, txIdx) => (
-                                <div 
-                                  key={txIdx}
-                                  className={`grid grid-cols-5 gap-4 text-xs py-2 px-3 rounded transition-colors ${
-                                    tx.type === 'open' 
-                                      ? 'bg-blue-500/5 hover:bg-blue-500/10' 
-                                      : 'bg-amber-500/5 hover:bg-amber-500/10'
-                                  }`}
-                                >
-                                  <div className={`font-medium ${
-                                    tx.type === 'open' 
-                                      ? pos.side === 'Buy' ? 'text-green-400' : 'text-red-400'
-                                      : pos.side === 'Buy' ? 'text-red-400' : 'text-green-400'
-                                  }`}>
-                                    {tx.direction}
+                              <div className="space-y-2">
+                                {/* Table Header */}
+                                <div className="grid grid-cols-5 gap-4 text-xs font-semibold text-gray-400 pb-2 border-b border-gray-700/50">
+                                  <div>Direction</div>
+                                  <div className="text-right">Qty</div>
+                                  <div className="text-right">Filled Price</div>
+                                  <div className="text-right">Trade Time</div>
+                                  <div className="text-right">Label</div>
+                                </div>
+                                
+                                {/* Transactions */}
+                                {transactions.map((tx, txIdx) => (
+                                  <div 
+                                    key={txIdx}
+                                    className={`grid grid-cols-5 gap-4 text-xs py-2 px-3 rounded transition-colors ${
+                                      tx.type === 'open' 
+                                        ? 'bg-blue-500/5 hover:bg-blue-500/10' 
+                                        : 'bg-amber-500/5 hover:bg-amber-500/10'
+                                    }`}
+                                  >
+                                    <div className={`font-medium ${
+                                      tx.type === 'open' 
+                                        ? pos.side === 'Buy' ? 'text-green-400' : 'text-red-400'
+                                        : pos.side === 'Buy' ? 'text-red-400' : 'text-green-400'
+                                    }`}>
+                                      {tx.direction}
+                                    </div>
+                                    <div className="text-right text-gray-300">
+                                      {tx.type === 'close' ? '-' : ''}{tx.qty.toFixed(3)}
+                                    </div>
+                                    <div className="text-right text-white font-mono">
+                                      {tx.price.toFixed(4)}
+                                    </div>
+                                    <div className="text-right text-gray-400">
+                                      {new Date(tx.time).toLocaleString('pl-PL', {
+                                        year: 'numeric',
+                                        month: '2-digit',
+                                        day: '2-digit',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit'
+                                      })}
+                                    </div>
+                                    <div className="text-right">
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`text-xs ${
+                                          tx.type === 'open' 
+                                            ? 'border-blue-500/50 text-blue-300'
+                                            : 'border-amber-500/50 text-amber-300'
+                                        }`}
+                                      >
+                                        {tx.label}
+                                      </Badge>
+                                    </div>
                                   </div>
-                                  <div className="text-right text-gray-300">
-                                    {tx.type === 'close' ? '-' : ''}{tx.qty.toFixed(3)}
+                                ))}
+                              </div>
+                              
+                              {/* Summary Stats */}
+                              <div className="mt-4 pt-4 border-t border-gray-700/50">
+                                <div className="grid grid-cols-3 gap-4 text-xs">
+                                  <div>
+                                    <div className="text-gray-400 mb-1">Open Trade Volume:</div>
+                                    <div className="text-white font-semibold">
+                                      {(pos.quantity * pos.entryPrice).toFixed(2)}
+                                    </div>
                                   </div>
-                                  <div className="text-right text-white font-mono">
-                                    {tx.price.toFixed(4)}
+                                  <div>
+                                    <div className="text-gray-400 mb-1">Closed Trade Volume:</div>
+                                    <div className="text-white font-semibold">
+                                      {(pos.quantity * pos.closePrice).toFixed(2)}
+                                    </div>
                                   </div>
-                                  <div className="text-right text-gray-400">
-                                    {new Date(tx.time).toLocaleString('pl-PL', {
-                                      year: 'numeric',
-                                      month: '2-digit',
-                                      day: '2-digit',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      second: '2-digit'
-                                    })}
-                                  </div>
-                                  <div className="text-right">
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`text-xs ${
-                                        tx.type === 'open' 
-                                          ? 'border-blue-500/50 text-blue-300'
-                                          : 'border-amber-500/50 text-amber-300'
-                                      }`}
-                                    >
-                                      {tx.label}
+                                  <div>
+                                    <div className="text-gray-400 mb-1">Result:</div>
+                                    <Badge className={pos.pnl > 0 ? 'bg-green-600' : 'bg-red-600'}>
+                                      {pos.pnl > 0 ? 'Win' : 'Loss'}
                                     </Badge>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                            
-                            {/* Summary Stats */}
-                            <div className="mt-4 pt-4 border-t border-gray-700/50">
-                              <div className="grid grid-cols-3 gap-4 text-xs">
-                                <div>
-                                  <div className="text-gray-400 mb-1">Open Trade Volume:</div>
-                                  <div className="text-white font-semibold">
-                                    {(pos.quantity * pos.entryPrice).toFixed(2)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-400 mb-1">Closed Trade Volume:</div>
-                                  <div className="text-white font-semibold">
-                                    {(pos.quantity * pos.closePrice).toFixed(2)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-400 mb-1">Result:</div>
-                                  <Badge className={pos.pnl > 0 ? 'bg-green-600' : 'bg-red-600'}>
-                                    {pos.pnl > 0 ? 'Win' : 'Loss'}
-                                  </Badge>
                                 </div>
                               </div>
                             </div>
