@@ -5,21 +5,8 @@
 
 import { createBybitSignature } from './bybit-helpers';
 
-// ✅ USE SAME PROXY AS bybit-helpers.ts
-function getAbsoluteProxyUrl(endpoint: string): string {
-  // On Vercel production/preview
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy${endpoint}`;
-  }
-  
-  // Fallback to custom env var
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return `${process.env.NEXT_PUBLIC_APP_URL}/api/bybit-edge-proxy${endpoint}`;
-  }
-  
-  // Local development - use localhost
-  return `http://localhost:3000/api/bybit-edge-proxy${endpoint}`;
-}
+// ✅ DIRECT CONNECTION - NO PROXY
+const BYBIT_API_BASE = 'https://api.bybit.com';
 
 interface BybitLotSizeFilter {
   minOrderQty: string;
@@ -77,8 +64,8 @@ export async function getSymbolInfo(
     const queryString = new URLSearchParams(queryParams as any).toString();
     const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, queryString);
 
-    // ✅ CRITICAL FIX: Use proxy instead of direct API
-    const url = getAbsoluteProxyUrl(`/v5/market/instruments-info?${queryString}`);
+    // ✅ DIRECT CONNECTION - NO PROXY
+    const url = `${BYBIT_API_BASE}/v5/market/instruments-info?${queryString}`;
 
     console.log(`[SymbolInfo] Fetching from: ${url.substring(0, 50)}...`);
 

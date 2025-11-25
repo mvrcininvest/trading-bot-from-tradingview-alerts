@@ -1,22 +1,8 @@
-// ✅ USE VERCEL EDGE PROXY (Singapore region) - Primary proxy
-// Vercel Edge runs in the same region as deployment (Singapore)
-const BYBIT_PROXY_URL = '/api/bybit-edge-proxy';
+// ============================================
+// 🔐 BYBIT API - DIRECT CONNECTION (NO PROXY)
+// ============================================
 
-// Helper to construct absolute URL for server-side calls
-function getAbsoluteProxyUrl(endpoint: string): string {
-  // On Vercel production/preview
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}${BYBIT_PROXY_URL}${endpoint}`;
-  }
-  
-  // Fallback to custom env var
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return `${process.env.NEXT_PUBLIC_APP_URL}${BYBIT_PROXY_URL}${endpoint}`;
-  }
-  
-  // Local development - use localhost
-  return `http://localhost:3000${BYBIT_PROXY_URL}${endpoint}`;
-}
+const BYBIT_API_BASE = 'https://api.bybit.com';
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)
@@ -51,7 +37,7 @@ export async function createBybitSignature(
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (FIXED - Direct API)
+// 🔄 BYBIT API REQUEST HELPER (DIRECT API - NO PROXY)
 // ============================================
 
 export async function makeBybitRequest(
@@ -65,8 +51,8 @@ export async function makeBybitRequest(
   const timestamp = Date.now().toString();
   const recvWindow = '5000';
   
-  // Build absolute URL for fetch
-  let url = getAbsoluteProxyUrl(endpoint);
+  // Build direct URL to Bybit API
+  let url = `${BYBIT_API_BASE}${endpoint}`;
   let paramsString = '';
   
   if (method === 'GET' && queryParams && Object.keys(queryParams).length > 0) {
