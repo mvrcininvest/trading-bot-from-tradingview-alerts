@@ -79,7 +79,7 @@ export function TradingChart({
         const endTime = new Date(closedAt).getTime();
 
         const response = await fetch(
-          `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=15`
+          `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=5`
         );
 
         const data = await response.json();

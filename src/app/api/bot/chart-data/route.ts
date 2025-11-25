@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get("symbol");
     const startTime = searchParams.get("startTime"); // openedAt timestamp
     const endTime = searchParams.get("endTime"); // closedAt timestamp
-    const interval = searchParams.get("interval") || "15"; // 15 minutes default
+    const interval = searchParams.get("interval") || "5"; // 5 minutes default
 
     if (!symbol || !startTime || !endTime) {
       return NextResponse.json(
