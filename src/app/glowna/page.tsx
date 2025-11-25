@@ -54,6 +54,14 @@ export default function GlownaPage() {
 
   const loadPositions = async () => {
     try {
+      // ✅ AUTOMATYCZNA SYNCHRONIZACJA - Sprawdź czy pozycje w bazie są aktualne
+      try {
+        await fetch("/api/bot/sync-positions", { method: "POST" });
+        console.log("[Auto-sync] Pozycje zsynchronizowane z giełdą");
+      } catch (syncError) {
+        console.warn("[Auto-sync] Błąd synchronizacji (kontynuuję):", syncError);
+      }
+
       const response = await fetch("/api/bot/positions");
       const data = await response.json();
       
