@@ -16,28 +16,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { signBybitRequest } from "@/lib/bybit-utils";
-
-interface Balance {
-  asset: string;
-  free: string;
-  locked: string;
-  total: string;
-}
-
-interface Position {
-  symbol: string;
-  side: "Buy" | "Sell";
-  size: string;
-  entryPrice: string;
-  markPrice: string;
-  leverage: string;
-  unrealisedPnl: string;
-  takeProfit: string;
-  stopLoss: string;
-  positionValue: string;
-  liqPrice?: string;
-}
 
 interface ExchangeCredentials {
   exchange: "bybit";
@@ -77,42 +55,12 @@ interface SymbolLock {
   unlockedAt: string | null;
 }
 
-interface BybitStats {
-  totalEquity: number;
-  totalWalletBalance: number;
-  availableBalance: number;
-  realisedPnL: number;
-  unrealisedPnL: number;
-  totalPnL: number;
-  totalTrades: number;
-  winningTrades: number;
-  losingTrades: number;
-  winRate: number;
-  profitFactor: number;
-  tradingVolume: number;
-  avgHoldingTime: number;
-}
-
-interface BybitStatsResponse {
-  success: boolean;
-  stats: BybitStats;
-  dataSource: "bybit";
-  daysBack: number;
-  fetchedAt: string;
-  message?: string;
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
   const [isCheckingCredentials, setIsCheckingCredentials] = useState(true);
-  const [balances, setBalances] = useState<Balance[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
   const [botPositions, setBotPositions] = useState<BotPosition[]>([]);
-  const [loading, setLoading] = useState(false);
   const [loadingPositions, setLoadingPositions] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [positionsError, setPositionsError] = useState<string | null>(null);
   const [botEnabled, setBotEnabled] = useState<boolean | null>(null);
   const [symbolLocks, setSymbolLocks] = useState<SymbolLock[]>([]);
   const [loadingSync, setLoadingSync] = useState(false);
@@ -120,7 +68,6 @@ export default function DashboardPage() {
   const [selectedAlertData, setSelectedAlertData] = useState<any>(null);
   const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
-  const [bybitBlocked, setBybitBlocked] = useState(false);
 
   const autoMatchAlertsToOpen = useCallback(async () => {
     try {
@@ -156,83 +103,6 @@ export default function DashboardPage() {
       if (!silent) setLoadingPositions(false);
     }
   }, []);
-
-  const fetchBalance = async (creds?: ExchangeCredentials) => {
-    const credsToUse = creds || credentials;
-    if (!credsToUse) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const timestamp = Date.now();
-      const params: Record<string, any> = {
-        accountType: "UNIFIED"
-      };
-      
-      const signature = await signBybitRequest(
-        credsToUse.apiKey,
-        credsToUse.apiSecret,
-        timestamp,
-        params
-      );
-      
-      const baseUrl = "https://api.bybit.com";
-      const queryString = Object.keys(params)
-        .sort()
-        .map(key => `${key}=${params[key]}`)
-        .join("&");
-      const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-BAPI-API-KEY": credsToUse.apiKey,
-          "X-BAPI-TIMESTAMP": timestamp.toString(),
-          "X-BAPI-SIGN": signature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-      });
-
-      if (response.status === 403) {
-        const text = await response.text();
-        if (text.includes('CloudFront') || text.includes('country')) {
-          setBybitBlocked(true);
-          setError("Bybit API zablokowane (geo-restriction)");
-          setBalances([{ asset: "USDT", free: "0", locked: "0", total: "0" }]);
-          return;
-        }
-      }
-
-      const data = await response.json();
-
-      if (data.retCode === 0 && data.result?.list) {
-        const walletData = data.result.list[0];
-        if (walletData?.coin) {
-          const filteredBalances = walletData.coin
-            .filter((c: any) => parseFloat(c.walletBalance || 0) > 0)
-            .map((c: any) => ({
-              asset: c.coin,
-              free: c.availableToWithdraw || "0",
-              locked: (parseFloat(c.walletBalance || 0) - parseFloat(c.availableToWithdraw || 0)).toFixed(8),
-              total: c.walletBalance || "0"
-            }));
-          
-          setBalances(filteredBalances);
-          setError(null);
-          setBybitBlocked(false);
-        }
-      } else {
-        setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
-      }
-    } catch (err) {
-      setError(`Błąd połączenia z Bybit`);
-      setBybitBlocked(true);
-      setBalances([{ asset: "USDT", free: "0", locked: "0", total: "0" }]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchSymbolLocks = async () => {
     try {
@@ -278,7 +148,6 @@ export default function DashboardPage() {
         fetchBotStatus();
         fetchSymbolLocks();
         autoMatchAlertsToOpen();
-        fetchBalance(creds);
         
         setIsCheckingCredentials(false);
         return;
@@ -304,7 +173,6 @@ export default function DashboardPage() {
           fetchBotStatus();
           fetchSymbolLocks();
           autoMatchAlertsToOpen();
-          fetchBalance(creds);
         }
       } catch (err) {
         console.error("[Dashboard] Credential fetch error:", err);
@@ -424,9 +292,8 @@ export default function DashboardPage() {
     }
   };
 
-  const totalBalance = balances.reduce((sum, b) => sum + parseFloat(b.total), 0)
+  // ✅ Oblicz statystyki z lokalnych danych
   const unrealisedPnL = botPositions.reduce((sum, p) => sum + (p.unrealisedPnl || 0), 0)
-  const totalPnL = unrealisedPnL
 
   if (isCheckingCredentials) {
     return (
@@ -472,15 +339,13 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
-        {bybitBlocked && (
-          <Alert className="border-yellow-700 bg-yellow-900/20">
-            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-            <AlertDescription className="text-sm text-yellow-200">
-              <strong>⚠️ Bybit API zablokowane (geo-restriction)</strong><br/>
-              Dashboard pokazuje dane z lokalnej bazy. Otwieraj/zamykaj pozycje działa normalnie przez API bota.
-            </AlertDescription>
-          </Alert>
-        )}
+        <Alert className="border-blue-700 bg-blue-900/20">
+          <Database className="h-4 w-4 text-blue-400" />
+          <AlertDescription className="text-sm text-blue-200">
+            <strong>📊 Dashboard używa lokalnej bazy danych</strong><br/>
+            Pozycje i PnL pobierane z <code>bot_positions</code>. Saldo portfela niedostępne przez geo-blocking Bybit API.
+          </AlertDescription>
+        </Alert>
 
         {symbolLocks.length > 0 && (
           <Alert className="border-red-800 bg-red-900/30 text-red-200">
@@ -494,18 +359,7 @@ export default function DashboardPage() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="p-4 rounded-lg bg-gradient-to-br from-green-900/30 to-green-800/50 border border-green-800/30 backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-green-300">Saldo (lokalne)</h3>
-              <Wallet className="h-4 w-4 text-green-400" />
-            </div>
-            <p className="text-2xl font-bold text-green-100">
-              {totalBalance.toFixed(2)}
-            </p>
-            <p className="text-xs text-green-400">USDT</p>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-blue-800/50 border border-blue-800/30 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-blue-300">PnL Niezrealizowany</h3>
@@ -514,7 +368,7 @@ export default function DashboardPage() {
             <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
               {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
             </p>
-            <p className="text-xs text-blue-400">USDT</p>
+            <p className="text-xs text-blue-400">USDT (z lokalnej bazy)</p>
           </div>
 
           <div className="p-4 rounded-lg bg-gradient-to-br from-amber-900/30 to-amber-800/50 border border-amber-800/30 backdrop-blur-sm">
@@ -606,8 +460,6 @@ export default function DashboardPage() {
                   const posValue = entryPrice * quantity
                   const margin = posValue / leverage
                   
-                  // Szacowana obecna cena (nie mamy live data z Bybit)
-                  const estimatedCurrentPrice = entryPrice
                   const roe = (pnl / margin) * 100
                   
                   const openedAt = new Date(botPos.openedAt)

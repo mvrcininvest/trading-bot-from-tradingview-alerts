@@ -29,135 +29,116 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// ✅ Interface dla historii pozycji z bot API
-interface HistoryPosition {
-  id: string;
-  symbol: string;
-  side: string;
-  tier: string;
-  entryPrice: number;
-  closePrice: number;
-  quantity: number;
-  leverage: number;
-  pnl: number;
-  pnlPercent: number;
-  closeReason: string;
-  openedAt: string;
-  closedAt: string;
-  durationMinutes: number;
-  source: "bybit";
+interface BybitStats {
+  totalEquity: number;
+  totalWalletBalance: number;
+  availableBalance: number;
+  realisedPnL: number;
+  unrealisedPnL: number;
+  totalPnL: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number;
+  profitFactor: number;
+  tradingVolume: number;
+  avgHoldingTime: number;
+  bestTrade: number;
+  worstTrade: number;
+  avgWin: number;
+  avgLoss: number;
+  openPositionsCount: number;
+  last7Days: {
+    totalTrades: number;
+    winRate: number;
+    totalPnL: number;
+  };
+  last30Days: {
+    totalTrades: number;
+    winRate: number;
+    totalPnL: number;
+  };
+  symbolStats: Array<{
+    symbol: string;
+    totalTrades: number;
+    winRate: number;
+    avgPnL: number;
+    totalPnL: number;
+    volume: number;
+  }>;
+}
+
+interface StatsResponse {
+  success: boolean;
+  stats: BybitStats;
+  dataSource: "bybit" | "local_db";
+  daysBack: number;
+  fetchedAt: string;
+  warning?: string;
 }
 
 export default function StatystykiPage() {
   const [loading, setLoading] = useState(true);
-  const [history, setHistory] = useState<HistoryPosition[]>([]);
+  const [stats, setStats] = useState<BybitStats | null>(null);
+  const [dataSource, setDataSource] = useState<"bybit" | "local_db">("bybit");
+  const [warning, setWarning] = useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [daysBack, setDaysBack] = useState(90);
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    fetchStats();
+  }, [daysBack]);
 
-  const fetchHistory = async () => {
+  const fetchStats = async () => {
     setLoading(true);
+    setWarning(null);
+    
     try {
-      // ✅ Bot API pobiera dane z Bybit (server-side)
-      const response = await fetch('/api/bot/history?limit=100');
-      const data = await response.json();
+      // ✅ Użyj server-side API z fallbackiem
+      const response = await fetch(`/api/analytics/bybit-stats?days=${daysBack}`);
+      const data: StatsResponse = await response.json();
 
-      if (data.success && data.history) {
-        setHistory(data.history);
+      if (data.success && data.stats) {
+        setStats(data.stats);
+        setDataSource(data.dataSource);
+        
+        if (data.warning) {
+          setWarning(data.warning);
+          toast.warning("Używam lokalnej bazy danych", {
+            description: "Bybit API niedostępne - dane z bot history"
+          });
+        }
       } else {
-        toast.error("Błąd pobierania historii");
+        toast.error("Błąd pobierania statystyk");
       }
     } catch (error) {
-      console.error("Failed to fetch history:", error);
-      toast.error("Błąd pobierania historii z Bybit");
+      console.error("Failed to fetch stats:", error);
+      toast.error("Błąd pobierania statystyk");
     } finally {
       setLoading(false);
     }
   };
-
-  // ✅ Oblicz statystyki z lokalnych danych historii
-  const calculateStats = () => {
-    if (history.length === 0) {
-      return {
-        totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
-        winRate: 0,
-        totalPnL: 0,
-        avgWin: 0,
-        avgLoss: 0,
-        profitFactor: 0,
-        bestTrade: 0,
-        worstTrade: 0,
-        avgHoldingTime: 0,
-        tradingVolume: 0,
-      };
-    }
-
-    const wins = history.filter(h => h.pnl > 0);
-    const losses = history.filter(h => h.pnl < 0);
-    
-    const totalWins = wins.reduce((sum, h) => sum + h.pnl, 0);
-    const totalLosses = Math.abs(losses.reduce((sum, h) => sum + h.pnl, 0));
-    
-    return {
-      totalTrades: history.length,
-      winningTrades: wins.length,
-      losingTrades: losses.length,
-      winRate: (wins.length / history.length) * 100,
-      totalPnL: history.reduce((sum, h) => sum + h.pnl, 0),
-      avgWin: wins.length > 0 ? totalWins / wins.length : 0,
-      avgLoss: losses.length > 0 ? totalLosses / losses.length : 0,
-      profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
-      bestTrade: history.length > 0 ? Math.max(...history.map(h => h.pnl)) : 0,
-      worstTrade: history.length > 0 ? Math.min(...history.map(h => h.pnl)) : 0,
-      avgHoldingTime: history.reduce((sum, h) => sum + h.durationMinutes, 0) / history.length,
-      tradingVolume: history.reduce((sum, h) => sum + (h.quantity * h.entryPrice), 0),
-    };
-  };
-
-  const stats = calculateStats();
-
-  // Symbol stats
-  const calculateSymbolStats = () => {
-    const symbolMap = new Map<string, { totalTrades: number; winningTrades: number; totalPnL: number; volume: number }>();
-    
-    history.forEach(h => {
-      if (!symbolMap.has(h.symbol)) {
-        symbolMap.set(h.symbol, { totalTrades: 0, winningTrades: 0, totalPnL: 0, volume: 0 });
-      }
-      
-      const s = symbolMap.get(h.symbol)!;
-      s.totalTrades++;
-      if (h.pnl > 0) s.winningTrades++;
-      s.totalPnL += h.pnl;
-      s.volume += h.quantity * h.entryPrice;
-    });
-    
-    return Array.from(symbolMap.entries())
-      .map(([symbol, data]) => ({
-        symbol,
-        totalTrades: data.totalTrades,
-        winRate: (data.winningTrades / data.totalTrades) * 100,
-        avgPnL: data.totalPnL / data.totalTrades,
-        totalPnL: data.totalPnL,
-        volume: data.volume,
-      }))
-      .sort((a, b) => b.totalPnL - a.totalPnL)
-      .slice(0, 15);
-  };
-
-  const symbolStats = calculateSymbolStats();
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-400" />
-          <p className="text-gray-200">Ładowanie statystyk z Bybit...</p>
+          <p className="text-gray-200">Ładowanie statystyk...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 p-6 flex items-center justify-center">
+        <Card className="max-w-md border-red-800 bg-red-900/20">
+          <CardContent className="p-6 text-center">
+            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+            <p className="text-red-200">Brak danych statystyk</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -174,7 +155,9 @@ export default function StatystykiPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 Statystyki Tradingowe
               </h1>
-              <p className="text-sm text-gray-200">Dane z Bybit API (ostatnie 100 pozycji)</p>
+              <p className="text-sm text-gray-200">
+                Źródło: {dataSource === "bybit" ? "Bybit API" : "Lokalna baza"} (ostatnie {daysBack} dni)
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -186,7 +169,7 @@ export default function StatystykiPage() {
               Eksportuj
             </Button>
             <Button
-              onClick={fetchHistory}
+              onClick={fetchStats}
               disabled={loading}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
@@ -196,12 +179,33 @@ export default function StatystykiPage() {
           </div>
         </div>
 
-        <Alert className="border-blue-700 bg-blue-900/20">
-          <Database className="h-4 w-4 text-blue-400" />
-          <AlertDescription className="text-sm text-blue-200">
-            📊 Statystyki obliczane na podstawie danych pobranych server-side z Bybit API przez bot. Bez geo-blockingu.
-          </AlertDescription>
-        </Alert>
+        {warning && (
+          <Alert className="border-yellow-700 bg-yellow-900/20">
+            <AlertTriangle className="h-4 w-4 text-yellow-400" />
+            <AlertDescription className="text-sm text-yellow-200">
+              <strong>⚠️ {warning}</strong><br/>
+              Zobacz <code>/BYBIT_GEO_BLOCKING_FIX.md</code> dla rozwiązań geo-blockingu.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {dataSource === "local_db" && (
+          <Alert className="border-blue-700 bg-blue-900/20">
+            <Database className="h-4 w-4 text-blue-400" />
+            <AlertDescription className="text-sm text-blue-200">
+              📊 Statystyki z lokalnej bazy danych (bot_position_history). Saldo portfela niedostępne.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {dataSource === "bybit" && (
+          <Alert className="border-green-700 bg-green-900/20">
+            <Database className="h-4 w-4 text-green-400" />
+            <AlertDescription className="text-sm text-green-200">
+              ✅ Statystyki pobrane bezpośrednio z Bybit API - dane są aktualne!
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -247,13 +251,15 @@ export default function StatystykiPage() {
                   <DollarSign className="h-5 w-5 text-purple-400" />
                 </div>
                 <Badge variant="outline" className="text-xs text-gray-200">
-                  Średnie
+                  Total PnL
                 </Badge>
               </div>
-              <p className="text-2xl font-bold text-green-400 mb-1">+{stats.avgWin.toFixed(2)}</p>
-              <p className="text-sm text-gray-200">Średni Zysk</p>
-              <div className="mt-3 text-xs">
-                <span className="text-red-400">Średnia strata: -{stats.avgLoss.toFixed(2)}</span>
+              <p className={`text-3xl font-bold mb-1 ${stats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {stats.totalPnL >= 0 ? '+' : ''}{stats.totalPnL.toFixed(2)}
+              </p>
+              <p className="text-sm text-gray-200">USDT</p>
+              <div className="mt-3 text-xs text-gray-300">
+                Realized: {stats.realisedPnL >= 0 ? '+' : ''}{stats.realisedPnL.toFixed(2)}
               </div>
             </CardContent>
           </Card>
@@ -327,6 +333,63 @@ export default function StatystykiPage() {
           </Card>
         </div>
 
+        {/* Time-based Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Ostatnie 7 Dni
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">Trades:</span>
+                  <span className="font-bold text-white">{stats.last7Days.totalTrades}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">Win Rate:</span>
+                  <span className="font-bold text-white">{stats.last7Days.winRate.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">PnL:</span>
+                  <span className={`font-bold ${stats.last7Days.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {stats.last7Days.totalPnL >= 0 ? '+' : ''}{stats.last7Days.totalPnL.toFixed(2)} USDT
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Ostatnie 30 Dni
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">Trades:</span>
+                  <span className="font-bold text-white">{stats.last30Days.totalTrades}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">Win Rate:</span>
+                  <span className="font-bold text-white">{stats.last30Days.winRate.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">PnL:</span>
+                  <span className={`font-bold ${stats.last30Days.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {stats.last30Days.totalPnL >= 0 ? '+' : ''}{stats.last30Days.totalPnL.toFixed(2)} USDT
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Symbol Statistics */}
         <Card className="border-gray-800 bg-gray-900/80 backdrop-blur-sm">
           <CardHeader>
@@ -337,7 +400,7 @@ export default function StatystykiPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {symbolStats.map((symbol, idx) => (
+              {stats.symbolStats.map((symbol, idx) => (
                 <div 
                   key={idx} 
                   className="p-3 rounded-lg border border-gray-800 bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
