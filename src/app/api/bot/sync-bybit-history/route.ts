@@ -384,20 +384,23 @@ export async function POST(request: NextRequest) {
         ? (exitPrice - entryPrice) * qty 
         : (entryPrice - exitPrice) * qty;
       
-      // Total fees = gross - net
+      // Total fees = gross - net (both can be negative, so we need abs of difference)
       const totalFees = Math.abs(grossPnl - netPnl);
       
       // Estimate trading fees (entry + exit)
-      // Bybit standard: 0.055% maker/taker
+      // Bybit taker fee: 0.055% (0.00055)
       const entryValue = qty * entryPrice;
       const exitValue = qty * exitPrice;
-      const tradingFees = (entryValue + exitValue) * 0.00055; // 0.055% each side
+      const estimatedTradingFees = (entryValue + exitValue) * 0.00055; // 0.055% each side = 0.11% total
       
-      // Funding fees = remaining fees
-      const fundingFees = Math.max(0, totalFees - tradingFees);
+      // Funding fees = remaining fees (capped at total fees)
+      const fundingFees = Math.max(0, totalFees - estimatedTradingFees);
       
-      console.log(`   💰 ${bybitPos.symbol}: Gross ${grossPnl.toFixed(2)} - Fees ${totalFees.toFixed(2)} = Net ${netPnl.toFixed(2)}`);
-      console.log(`      Trading: ${tradingFees.toFixed(4)}, Funding: ${fundingFees.toFixed(4)}`);
+      // Use estimated trading fees (more accurate than calculated difference)
+      const tradingFees = estimatedTradingFees;
+      
+      console.log(`   💰 ${bybitPos.symbol}: Gross ${grossPnl.toFixed(4)} - Trading ${tradingFees.toFixed(4)} - Funding ${fundingFees.toFixed(4)} = Net ${netPnl.toFixed(4)}`);
+      console.log(`      Entry value: ${entryValue.toFixed(2)}, Exit value: ${exitValue.toFixed(2)}`);
       
       let closeReason = "closed_on_exchange";
       if (netPnl > 0) {

@@ -222,13 +222,25 @@ export default function DiagnosticsPage() {
 
   const fetchVerifications = async () => {
     try {
-      // ✅ Get only today's verifications (Warsaw timezone)
+      // ✅ Get only today's verifications (Warsaw timezone - UTC+1)
       const now = new Date();
-      const warsawOffset = 1; // UTC+1 (or UTC+2 in summer, but we'll use fixed offset)
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      today.setHours(0 - warsawOffset, 0, 0, 0); // 00:00:00 Warsaw time in UTC
       
-      const todayStart = today.toISOString();
+      // Convert to Warsaw time (UTC+1 in winter, UTC+2 in summer)
+      // Get offset in minutes from UTC
+      const warsawOffset = 60; // UTC+1 (60 minutes)
+      
+      // Calculate today's start in Warsaw timezone
+      const nowUTC = now.getTime();
+      const nowWarsaw = new Date(nowUTC + warsawOffset * 60 * 1000);
+      
+      // Set to start of day in Warsaw
+      const todayWarsaw = new Date(nowWarsaw.getFullYear(), nowWarsaw.getMonth(), nowWarsaw.getDate(), 0, 0, 0, 0);
+      
+      // Convert back to UTC for API query
+      const todayStartUTC = new Date(todayWarsaw.getTime() - warsawOffset * 60 * 1000);
+      const todayStart = todayStartUTC.toISOString();
+      
+      console.log(`[Weryfikacje] Pobieranie od: ${todayStart} (00:00 czasu warszawskiego)`);
       
       const response = await fetch(`/api/bot/diagnostics/verifications?limit=200&startDate=${todayStart}`);
       const data = await response.json();

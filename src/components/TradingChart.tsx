@@ -23,31 +23,31 @@ export function TradingChart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    // Set VERY aggressive timeout - 10 seconds total
-    timeoutRef.current = setTimeout(() => {
+    abortControllerRef.current = new AbortController();
+    
+    // Set aggressive timeout - 3 seconds total
+    const mainTimeout = setTimeout(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       setLoading(false);
-      setError("Wykres nie załadował się w czasie (timeout 10s)");
-    }, 10000);
+      setError("Timeout - wykres nie załadował się w 3s");
+    }, 3000);
 
     const loadChart = async () => {
       try {
-        // Fetch data with longer timeout
-        const controller = new AbortController();
-        const fetchTimeout = setTimeout(() => controller.abort(), 8000); // 8 seconds for fetch
-
+        // Fetch data with abort signal
         const startTime = new Date(openedAt).getTime();
         const endTime = new Date(closedAt).getTime();
         const interval = 5;
 
         const response = await fetch(
           `/api/bot/chart-data?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&interval=${interval}`,
-          { signal: controller.signal }
+          { signal: abortControllerRef.current?.signal }
         );
-
-        clearTimeout(fetchTimeout);
 
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -59,19 +59,17 @@ export function TradingChart({
           throw new Error("Brak danych wykresu");
         }
 
-        // Load library from CDN with longer timeout
+        // Check if already aborted
+        if (abortControllerRef.current?.signal.aborted) {
+          return;
+        }
+
+        // Load library from CDN
         const script = document.createElement("script");
         script.src = "https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js";
         script.async = true;
         
-        const scriptTimeout = setTimeout(() => {
-          setError("CDN timeout - biblioteka nie załadowała się");
-          setLoading(false);
-        }, 6000); // 6 seconds for CDN
-
         script.onload = () => {
-          clearTimeout(scriptTimeout);
-          
           if (!chartContainerRef.current || !(window as any).LightweightCharts) {
             setError("Błąd inicjalizacji wykresu");
             setLoading(false);
@@ -129,7 +127,7 @@ export function TradingChart({
             candlestickSeries.setMarkers(markers as any);
             chart.timeScale().fitContent();
 
-            clearTimeout(timeoutRef.current);
+            clearTimeout(mainTimeout);
             setLoading(false);
             setError(null);
           } catch (err) {
@@ -140,7 +138,6 @@ export function TradingChart({
         };
 
         script.onerror = () => {
-          clearTimeout(scriptTimeout);
           setError("Nie udało się załadować biblioteki wykresu");
           setLoading(false);
         };
@@ -148,12 +145,12 @@ export function TradingChart({
         document.head.appendChild(script);
 
       } catch (err: any) {
-        console.error("Chart load error:", err);
         if (err.name === 'AbortError') {
-          setError("Timeout pobierania danych (8s)");
-        } else {
-          setError(err.message || "Błąd ładowania wykresu");
+          // Timeout already handled
+          return;
         }
+        console.error("Chart load error:", err);
+        setError(err.message || "Błąd ładowania wykresu");
         setLoading(false);
       }
     };
@@ -161,9 +158,10 @@ export function TradingChart({
     loadChart();
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
+      clearTimeout(mainTimeout);
     };
   }, [symbol, entryPrice, exitPrice, openedAt, closedAt, side]);
 

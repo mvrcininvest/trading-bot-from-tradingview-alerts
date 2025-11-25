@@ -183,7 +183,7 @@ export default function StatystykiPage() {
           <Alert className="border-blue-700 bg-blue-900/20">
             <Database className="h-4 w-4 text-blue-400" />
             <AlertDescription className="text-sm text-blue-200">
-              📊 Statystyki z lokalnej bazy danych (bot_position_history). Saldo portfela niedostępne.
+              📊 Statystyki z lokalnej bazy danych (bot_position_history).
             </AlertDescription>
           </Alert>
         )}
