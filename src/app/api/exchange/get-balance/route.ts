@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const getBybitProxyUrl = () => {
+// ✅ FIX: Build full URL for fetch
+const getBybitApiUrl = (path: string) => {
   // In production (Vercel), use absolute URL
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
+    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy${path}`;
   }
-  // In local dev, use relative path
-  return '/api/bybit-edge-proxy';
+  // In local dev, use full localhost URL
+  return `http://localhost:3000/api/bybit-edge-proxy${path}`;
 };
 
 function createBybitSignature(
@@ -27,7 +26,6 @@ async function getBybitBalance(
   apiKey: string,
   apiSecret: string
 ) {
-  const baseUrl = getBybitProxyUrl();
   const timestamp = Date.now().toString();
   const recvWindow = "5000";
   const queryParams = new URLSearchParams({
@@ -37,19 +35,19 @@ async function getBybitBalance(
   const paramsString = queryParams.toString();
   const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
 
-  const response = await fetch(
-    `${baseUrl}/v5/account/wallet-balance?${paramsString}`,
-    {
-      headers: {
-        "X-BAPI-API-KEY": apiKey,
-        "X-BAPI-TIMESTAMP": timestamp,
-        "X-BAPI-SIGN": signature,
-        "X-BAPI-RECV-WINDOW": recvWindow,
-        "X-BAPI-SIGN-TYPE": "2",
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  // ✅ FIX: Build full URL with path
+  const fullUrl = getBybitApiUrl(`/v5/account/wallet-balance?${paramsString}`);
+
+  const response = await fetch(fullUrl, {
+    headers: {
+      "X-BAPI-API-KEY": apiKey,
+      "X-BAPI-TIMESTAMP": timestamp,
+      "X-BAPI-SIGN": signature,
+      "X-BAPI-RECV-WINDOW": recvWindow,
+      "X-BAPI-SIGN-TYPE": "2",
+      "Content-Type": "application/json",
+    },
+  });
 
   const responseText = await response.text();
 

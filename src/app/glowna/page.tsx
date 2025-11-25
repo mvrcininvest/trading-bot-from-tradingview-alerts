@@ -56,18 +56,36 @@ export default function GlownaPage() {
     try {
       // ✅ AUTOMATYCZNA SYNCHRONIZACJA - Sprawdź czy pozycje w bazie są aktualne
       try {
-        await fetch("/api/bot/sync-positions", { method: "POST" });
+        await fetch("/api/bot/sync-positions", { 
+          method: "POST",
+          cache: "no-store", // ✅ Wymuś no-cache
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache"
+          }
+        });
         console.log("[Auto-sync] Pozycje zsynchronizowane z giełdą");
       } catch (syncError) {
         console.warn("[Auto-sync] Błąd synchronizacji (kontynuuję):", syncError);
       }
 
-      const response = await fetch("/api/bot/positions");
+      // ✅ Dodaj timestamp do URL aby wymusić świeże dane
+      const timestamp = Date.now();
+      const response = await fetch(`/api/bot/positions?_t=${timestamp}`, {
+        cache: "no-store", // ✅ Wymuś no-cache
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        }
+      });
       const data = await response.json();
+      
+      console.log("[Glowna] API Response:", data);
       
       if (data.success && Array.isArray(data.positions)) {
         // Filtruj tylko pozycje ze statusem 'open' (nie 'closed')
         const openPositions = data.positions.filter((p: any) => p.status === 'open');
+        console.log("[Glowna] Open positions:", openPositions.length);
         setPositions(openPositions);
       }
     } catch (err) {
@@ -79,11 +97,22 @@ export default function GlownaPage() {
 
   const loadBotSettings = async () => {
     try {
-      const response = await fetch("/api/bot/settings");
+      // ✅ Dodaj timestamp do URL
+      const timestamp = Date.now();
+      const response = await fetch(`/api/bot/settings?_t=${timestamp}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        }
+      });
       const data = await response.json();
+      
+      console.log("[Glowna] Settings Response:", data);
       
       if (data.success && data.settings) {
         setBotEnabled(data.settings.botEnabled);
+        console.log("[Glowna] Bot enabled:", data.settings.botEnabled);
       }
     } catch (err) {
       console.error("Load settings error:", err);
@@ -94,8 +123,14 @@ export default function GlownaPage() {
 
   const loadBalance = async () => {
     try {
-      // Pobierz credentials z settings
-      const settingsResponse = await fetch("/api/bot/settings");
+      // Pobierz credentials z settings (z cache busting)
+      const timestamp = Date.now();
+      const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+      });
       const settingsData = await settingsResponse.json();
       
       if (!settingsData.success || !settingsData.settings?.apiKey) {
@@ -107,7 +142,11 @@ export default function GlownaPage() {
 
       const response = await fetch("/api/exchange/get-balance", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        },
         body: JSON.stringify({
           exchange: "bybit",
           apiKey,
@@ -116,6 +155,8 @@ export default function GlownaPage() {
       });
 
       const data = await response.json();
+      
+      console.log("[Glowna] Balance Response:", data);
       
       if (data.success && data.balances) {
         setBalance(data.balances);
