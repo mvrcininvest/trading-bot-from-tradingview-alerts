@@ -155,9 +155,6 @@ export default function GlownaPage() {
     try {
       setBalanceError(null);
       
-      // ✅ NEW: Try to fetch balance using Vercel Edge Proxy (Singapore)
-      // The backend now uses /api/bybit-edge-proxy which runs in Singapore region
-      
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
         cache: "no-store",
@@ -198,7 +195,6 @@ export default function GlownaPage() {
         setBalance(data.balances);
         setBalanceError(null);
       } else {
-        // Jeśli błąd CloudFlare lub inny - pokaż komunikat
         setBalanceError(data.message || "Nie można pobrać salda");
       }
     } catch (err) {
@@ -400,20 +396,6 @@ export default function GlownaPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* CloudFlare Warning - PERMANENT PROBLEM */}
-        <Card className="border-red-700/40 bg-red-900/20">
-          <CardContent className="py-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-red-400" />
-              <div className="text-sm text-red-300">
-                <strong>⛔ PROBLEM PERMANENTNY:</strong> CloudFlare/Bybit blokuje dostęp do Balance API nawet przez proxy Fly.io (Amsterdam). 
-                <strong className="ml-1">Bot otwiera/zamyka pozycje normalnie</strong> - tylko wyświetlanie salda jest niemożliwe z Vercel. 
-                <span className="text-yellow-300 ml-1">Rozwiązanie: VPS w Singapurze/Hong Kong.</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Emergency Close Button */}
         {positions.length > 0 && (
