@@ -184,80 +184,8 @@ export async function openBybitPosition(
   console.log(`   Original: ${quantity}`);
   console.log(`   Rounded (3 decimals): ${roundedQuantity}`);
 
-  // Get current market price for entry estimation
-  const currentPrice = await getCurrentMarketPrice(symbol, apiKey, apiSecret);
-  console.log(`\n💰 Current Market Price: ${currentPrice}`);
-
-  // ✅ CRITICAL FIX: Validate TP/SL direction based on side AND entry price
-  const isLong = side === 'BUY';
-  
-  // Use current price as entry estimate (market orders fill at current price)
-  const estimatedEntry = currentPrice;
-
-  // ✅ CRITICAL: Zwiększona minimalna odległość z 0.5%/1% na 2.5%/2% (Bybit requirement)
-  const MIN_TP_DISTANCE_PERCENT = 0.025; // 2.5% dla TP
-  const MIN_SL_DISTANCE_PERCENT = 0.02;  // 2% dla SL
-
-  console.log(`\n🔍 TP/SL Validation (Side: ${side}):`);
-  console.log(`   Estimated Entry: ${estimatedEntry}`);
-  console.log(`   Min TP Distance: ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}%`);
-  console.log(`   Min SL Distance: ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}%`);
-  
-  // Validate TP direction
-  if (takeProfit) {
-    console.log(`   Original TP: ${takeProfit}`);
-    
-    if (isLong) {
-      const minTP = estimatedEntry * (1 + MIN_TP_DISTANCE_PERCENT);
-      if (takeProfit <= minTP) {
-        console.warn(`   ⚠️ INVALID TP for LONG: ${takeProfit} must be > ${minTP.toFixed(4)}`);
-        console.warn(`   🔧 Auto-fixing: Setting TP to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% above entry...`);
-        takeProfit = minTP;
-        console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
-      } else {
-        console.log(`   ✅ TP direction valid`);
-      }
-    } else {
-      const minTP = estimatedEntry * (1 - MIN_TP_DISTANCE_PERCENT);
-      if (takeProfit >= minTP) {
-        console.warn(`   ⚠️ INVALID TP for SHORT: ${takeProfit} must be < ${minTP.toFixed(4)}`);
-        console.warn(`   🔧 Auto-fixing: Setting TP to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% below entry...`);
-        takeProfit = minTP;
-        console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
-      } else {
-        console.log(`   ✅ TP direction valid`);
-      }
-    }
-  }
-
-  // Validate SL direction
-  if (stopLoss) {
-    console.log(`   Original SL: ${stopLoss}`);
-    
-    if (isLong) {
-      const minSL = estimatedEntry * (1 - MIN_SL_DISTANCE_PERCENT);
-      if (stopLoss >= minSL) {
-        console.warn(`   ⚠️ INVALID SL for LONG: ${stopLoss} must be < ${minSL.toFixed(4)}`);
-        console.warn(`   🔧 Auto-fixing: Setting SL to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% below entry...`);
-        stopLoss = minSL;
-        console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
-      } else {
-        console.log(`   ✅ SL direction valid`);
-      }
-    } else {
-      const minSL = estimatedEntry * (1 + MIN_SL_DISTANCE_PERCENT);
-      if (stopLoss <= minSL) {
-        console.warn(`   ⚠️ INVALID SL for SHORT: ${stopLoss} must be > ${minSL.toFixed(4)}`);
-        console.warn(`   🔧 Auto-fixing: Setting SL to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% above entry...`);
-        stopLoss = minSL;
-        console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
-      } else {
-        console.log(`   ✅ SL direction valid`);
-      }
-    }
-  }
-
-  console.log(`\n✅ Final TP/SL after validation:`);
+  // ✅ REMOVED: No more forced minimum distances - use exact values from settings
+  console.log(`\n🎯 Using EXACT SL/TP values from bot settings (no auto-adjustments):`);
   console.log(`   Take Profit: ${takeProfit?.toFixed(4) || 'N/A'}`);
   console.log(`   Stop Loss: ${stopLoss?.toFixed(4) || 'N/A'}`);
 
@@ -295,10 +223,6 @@ export async function openBybitPosition(
     timeInForce: 'GTC',
     positionIdx: 0
   };
-
-  // 🚨 CRITICAL: DO NOT add TP/SL to order payload
-  // Bybit can silently ignore them if invalid, leaving position without protection
-  // We'll set them separately after position is open
 
   console.log(`📤 Order payload (NO TP/SL):`, JSON.stringify(orderPayload, null, 2));
 
@@ -354,45 +278,11 @@ export async function openBybitPosition(
       console.log(`      Side: ${actualSide}`);
       console.log(`      Size: ${actualPosition.size}`);
 
-      // Recalculate TP/SL based on ACTUAL entry (not estimated)
+      // ✅ REMOVED: No more recalculation - use EXACT values from settings
       let finalTP = takeProfit;
       let finalSL = stopLoss;
 
-      if (finalTP) {
-        // Ensure TP is in correct direction relative to ACTUAL entry with SAFE DISTANCE
-        if (actualSide === 'Buy') {
-          const minTP = actualEntry * (1 + MIN_TP_DISTANCE_PERCENT);
-          if (finalTP <= minTP) {
-            console.warn(`      ⚠️ TP too close - adjusting to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% above actual entry`);
-            finalTP = minTP;
-          }
-        } else {
-          const minTP = actualEntry * (1 - MIN_TP_DISTANCE_PERCENT);
-          if (finalTP >= minTP) {
-            console.warn(`      ⚠️ TP too close - adjusting to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% below actual entry`);
-            finalTP = minTP;
-          }
-        }
-      }
-
-      if (finalSL) {
-        // Ensure SL is in correct direction relative to ACTUAL entry with SAFE DISTANCE
-        if (actualSide === 'Buy') {
-          const minSL = actualEntry * (1 - MIN_SL_DISTANCE_PERCENT);
-          if (finalSL >= minSL) {
-            console.warn(`      ⚠️ SL too close - adjusting to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% below actual entry`);
-            finalSL = minSL;
-          }
-        } else {
-          const minSL = actualEntry * (1 + MIN_SL_DISTANCE_PERCENT);
-          if (finalSL <= minSL) {
-            console.warn(`      ⚠️ SL too close - adjusting to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% above actual entry`);
-            finalSL = minSL;
-          }
-        }
-      }
-
-      console.log(`   🎯 Final TP/SL (adjusted to actual entry with safe distance):`);
+      console.log(`   🎯 Using EXACT TP/SL from settings (no adjustments):`);
       console.log(`      TP: ${finalTP?.toFixed(4) || 'N/A'}`);
       console.log(`      SL: ${finalSL?.toFixed(4) || 'N/A'}`);
 
