@@ -135,7 +135,7 @@ async function verifyPositionOpening(
   const discrepancies: VerificationResult['discrepancies'] = [];
   
   // ✅ SCALPING TOLERANCES - REDUCED FOR PRECISION
-  const PRICE_TOLERANCE = 0.01; // 1% for entry, SL, TP
+  const PRICE_TOLERANCE = 0.03; // 3% for entry, SL, TP (increased to account for Bybit's 2-2.5% minimum distances)
   const QUANTITY_TOLERANCE = 0.03; // 3% for quantity
   
   console.log(`   ⚙️ Tolerances: Price ${(PRICE_TOLERANCE * 100).toFixed(1)}%, Quantity ${(QUANTITY_TOLERANCE * 100).toFixed(1)}%`);
