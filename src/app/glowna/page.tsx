@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Position {
   id: number;
@@ -38,6 +48,7 @@ export default function GlownaPage() {
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
+  const [showCloseAllDialog, setShowCloseAllDialog] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -211,12 +222,12 @@ export default function GlownaPage() {
       return;
     }
 
-    const confirmed = confirm(
-      `⚠️ UWAGA!\n\nZamkniesz WSZYSTKIE ${positions.length} otwarte pozycje market order!\n\nCzy na pewno chcesz kontynuować?`
-    );
+    // Show dialog instead of confirm()
+    setShowCloseAllDialog(true);
+  };
 
-    if (!confirmed) return;
-
+  const confirmCloseAll = async () => {
+    setShowCloseAllDialog(false);
     setClosingAll(true);
 
     try {
@@ -495,6 +506,36 @@ export default function GlownaPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Close All Confirmation Dialog */}
+      <AlertDialog open={showCloseAllDialog} onOpenChange={setShowCloseAllDialog}>
+        <AlertDialogContent className="bg-gray-900 border-red-500/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl text-white flex items-center gap-2">
+              <AlertTriangle className="h-6 w-6 text-red-400" />
+              Potwierdzenie Zamknięcia Pozycji
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300 text-base">
+              Zamkniesz <span className="font-bold text-red-400">WSZYSTKIE {positions.length} otwarte pozycje</span> zleceniem market order.
+              <br /><br />
+              <span className="text-red-300">⚠️ Ta operacja jest nieodwracalna!</span>
+              <br /><br />
+              Czy na pewno chcesz kontynuować?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700">
+              Anuluj
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCloseAll}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Tak, Zamknij Wszystkie
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
