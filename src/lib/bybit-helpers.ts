@@ -4,6 +4,16 @@
 
 const BYBIT_API_BASE = 'https://api.bybit.com';
 
+// ✅ FIX: Enhanced headers to avoid CloudFront blocking
+const ENHANCED_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive',
+  'Upgrade-Insecure-Requests': '1',
+};
+
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)
 // ============================================
@@ -37,7 +47,7 @@ export async function createBybitSignature(
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (DIRECT API - NO PROXY)
+// 🔄 BYBIT API REQUEST HELPER (ENHANCED HEADERS)
 // ============================================
 
 export async function makeBybitRequest(
@@ -68,6 +78,7 @@ export async function makeBybitRequest(
   const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
 
   const headers: Record<string, string> = {
+    ...ENHANCED_HEADERS,
     'X-BAPI-API-KEY': apiKey,
     'X-BAPI-TIMESTAMP': timestamp,
     'X-BAPI-SIGN': signature,
@@ -85,12 +96,15 @@ export async function makeBybitRequest(
     options.body = JSON.stringify(body);
   }
 
+  console.log(`🌐 [DIRECT] ${method} ${endpoint}`);
+
   const response = await fetch(url, options);
   const responseText = await response.text();
 
   if (!response.ok) {
     if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
-      throw new Error('CloudFlare/WAF block (403)');
+      console.error(`❌ CloudFront block detected - Response: ${responseText.substring(0, 300)}`);
+      throw new Error(`CloudFlare/WAF block (${response.status}) - Your server region may be blocked by Bybit. Consider using a VPN or proxy service.`);
     }
     throw new Error(`Bybit API error: ${response.status} - ${responseText}`);
   }
@@ -98,7 +112,7 @@ export async function makeBybitRequest(
   const data = JSON.parse(responseText);
 
   if (data.retCode !== 0) {
-    throw new Error(`Bybit API error: ${data.retMsg}`);
+    throw new Error(`Bybit API error (${data.retCode}): ${data.retMsg}`);
   }
 
   return data;
@@ -498,29 +512,83 @@ export async function getBybitPositions(
   apiSecret: string,
   symbol?: string
 ) {
+  console.log(`\n📊 [GET POSITIONS] Fetching open positions...`);
+  console.log(`   Symbol filter: ${symbol || 'ALL (settleCoin=USDT)'}`);
+  
+  // ✅ CRITICAL FIX: According to Bybit V5 API docs:
+  // - Using settleCoin=USDT WITHOUT symbol = returns ONLY positions with size > 0 (automatic filtering)
+  // - Using symbol parameter = returns ALL positions including size=0 (no automatic filtering)
+  // 
+  // For monitoring open positions, we should use settleCoin approach
+  
   const params: any = {
     category: 'linear',
-    settleCoin: 'USDT'
   };
 
   if (symbol) {
+    // If specific symbol requested, use symbol parameter
     params.symbol = symbol;
+    console.log(`   ⚠️ Using symbol parameter - will return position even if size=0`);
+  } else {
+    // If no symbol, use settleCoin for automatic size>0 filtering
+    params.settleCoin = 'USDT';
+    console.log(`   ✅ Using settleCoin=USDT - automatic size>0 filtering`);
   }
 
-  const data = await makeBybitRequest(
-    'GET',
-    '/v5/position/list',
-    apiKey,
-    apiSecret,
-    params
-  );
+  try {
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/position/list',
+      apiKey,
+      apiSecret,
+      params
+    );
 
-  if (!data.result?.list) {
-    return [];
+    console.log(`   📊 API Response retCode: ${data.retCode}, retMsg: ${data.retMsg}`);
+
+    if (!data.result?.list) {
+      console.warn(`   ⚠️ No result.list in response`);
+      return [];
+    }
+
+    console.log(`   📊 Total positions in response: ${data.result.list.length}`);
+
+    // Log each position for debugging
+    data.result.list.forEach((p: any, index: number) => {
+      console.log(`   [${index + 1}] ${p.symbol} ${p.side}: size=${p.size}, entry=${p.avgPrice}, unrealisedPnl=${p.unrealisedPnl}`);
+    });
+
+    // Filter only open positions (size > 0)
+    const openPositions = data.result.list.filter((p: any) => {
+      const size = parseFloat(p.size);
+      return size > 0;
+    });
+
+    console.log(`   ✅ Open positions (size > 0): ${openPositions.length}`);
+
+    if (openPositions.length === 0 && data.result.list.length > 0) {
+      console.warn(`   ⚠️ API returned ${data.result.list.length} positions but all have size=0`);
+      console.warn(`   💡 This means positions are closed on exchange but API returned them anyway`);
+    }
+
+    return openPositions;
+  } catch (error: any) {
+    console.error(`   ❌ Failed to get positions: ${error.message}`);
+    
+    // Check for common errors
+    if (error.message.includes('10001')) {
+      console.error(`   ⚠️ Error 10001: Missing parameters - check if settleCoin or symbol is required`);
+    } else if (error.message.includes('10003')) {
+      console.error(`   ⚠️ Error 10003: Invalid API key`);
+    } else if (error.message.includes('10004')) {
+      console.error(`   ⚠️ Error 10004: Invalid signature - check API secret`);
+    } else if (error.message.includes('10005')) {
+      console.error(`   ⚠️ Error 10005: Permission denied - API key needs "Position" permission`);
+      console.error(`   💡 Solution: Go to Bybit → API Management → Enable "Contract Trade" → "Position" permission`);
+    }
+    
+    throw error;
   }
-
-  // Filter only open positions
-  return data.result.list.filter((p: any) => parseFloat(p.size) > 0);
 }
 
 // ============================================
@@ -628,38 +696,117 @@ export async function getBybitWalletBalance(
   apiKey: string,
   apiSecret: string
 ) {
-  const data = await makeBybitRequest(
-    'GET',
-    '/v5/account/wallet-balance',
-    apiKey,
-    apiSecret,
-    {
-      accountType: 'UNIFIED'
-    }
-  );
-
-  const balances: Array<{ asset: string; free: string; locked: string }> = [];
-
-  if (data.result?.list?.[0]?.coin) {
-    data.result.list[0].coin.forEach((coin: any) => {
-      const free = parseFloat(coin.availableToWithdraw || coin.walletBalance || '0');
-      const locked = parseFloat(coin.locked || '0');
-
-      if (free > 0 || locked > 0) {
-        balances.push({
-          asset: coin.coin,
-          free: free.toFixed(8),
-          locked: locked.toFixed(8),
-        });
+  console.log(`\n💰 [GET BALANCE] Fetching wallet balance...`);
+  
+  // ✅ FIX: Try UNIFIED first, then CONTRACT as fallback
+  // Users may have either UTA 2.0 (UNIFIED) or Classic Account (CONTRACT)
+  
+  let lastError: any = null;
+  
+  // Try UNIFIED account type first (UTA 2.0)
+  try {
+    console.log(`   🔄 Trying accountType: UNIFIED (UTA 2.0)...`);
+    
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/account/wallet-balance',
+      apiKey,
+      apiSecret,
+      {
+        accountType: 'UNIFIED'
       }
-    });
+    );
+
+    console.log(`   📊 UNIFIED Response:`, JSON.stringify(data, null, 2));
+
+    const balances: Array<{ asset: string; free: string; locked: string }> = [];
+
+    if (data.result?.list?.[0]?.coin) {
+      data.result.list[0].coin.forEach((coin: any) => {
+        const walletBalance = parseFloat(coin.walletBalance || '0');
+        const availableToWithdraw = parseFloat(coin.availableToWithdraw || '0');
+        const locked = parseFloat(coin.locked || '0');
+
+        console.log(`      [${coin.coin}] Wallet: ${walletBalance}, Available: ${availableToWithdraw}, Locked: ${locked}`);
+
+        if (walletBalance > 0 || locked > 0) {
+          balances.push({
+            asset: coin.coin,
+            free: availableToWithdraw.toFixed(8),
+            locked: locked.toFixed(8),
+          });
+        }
+      });
+    }
+
+    console.log(`   ✅ UNIFIED account - Found ${balances.length} coins with balance`);
+
+    return {
+      success: true,
+      balances,
+      canTrade: true,
+      accountType: 'UNIFIED'
+    };
+  } catch (unifiedError: any) {
+    console.warn(`   ⚠️ UNIFIED failed: ${unifiedError.message}`);
+    lastError = unifiedError;
   }
 
-  return {
-    success: true,
-    balances,
-    canTrade: true
-  };
+  // Fallback: Try CONTRACT account type (Classic Derivatives Account)
+  try {
+    console.log(`   🔄 Trying accountType: CONTRACT (Classic Account)...`);
+    
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/account/wallet-balance',
+      apiKey,
+      apiSecret,
+      {
+        accountType: 'CONTRACT'
+      }
+    );
+
+    console.log(`   📊 CONTRACT Response:`, JSON.stringify(data, null, 2));
+
+    const balances: Array<{ asset: string; free: string; locked: string }> = [];
+
+    if (data.result?.list?.[0]?.coin) {
+      data.result.list[0].coin.forEach((coin: any) => {
+        const walletBalance = parseFloat(coin.walletBalance || '0');
+        const availableToWithdraw = parseFloat(coin.availableToWithdraw || '0');
+        const locked = parseFloat(coin.locked || '0');
+
+        console.log(`      [${coin.coin}] Wallet: ${walletBalance}, Available: ${availableToWithdraw}, Locked: ${locked}`);
+
+        if (walletBalance > 0 || locked > 0) {
+          balances.push({
+            asset: coin.coin,
+            free: availableToWithdraw.toFixed(8),
+            locked: locked.toFixed(8),
+          });
+        }
+      });
+    }
+
+    console.log(`   ✅ CONTRACT account - Found ${balances.length} coins with balance`);
+
+    return {
+      success: true,
+      balances,
+      canTrade: true,
+      accountType: 'CONTRACT'
+    };
+  } catch (contractError: any) {
+    console.error(`   ❌ CONTRACT also failed: ${contractError.message}`);
+    
+    // Both failed - throw detailed error
+    throw new Error(
+      `Failed to fetch balance from both UNIFIED and CONTRACT accounts. ` +
+      `Last error: ${contractError.message}. ` +
+      `Please check: 1) API key permissions include "Wallet" permission, ` +
+      `2) API key and secret are correct, 3) Account type is either UTA 2.0 or Classic`
+    );
+  }
 }
 
 // ============================================
