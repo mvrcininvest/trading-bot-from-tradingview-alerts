@@ -3,17 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-// ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-// This bypasses CloudFront geo-blocking!
-const getBybitProxyUrl = () => {
-  // In production (Vercel), use absolute URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/bybit-edge-proxy`;
-  }
-  // In local dev, use relative path
-  return '/api/bybit-edge-proxy';
-};
-
 interface BybitHistoryPosition {
   symbol: string;
   side: "Buy" | "Sell";
@@ -98,9 +87,10 @@ export async function GET(request: NextRequest) {
       .map((key) => `${key}=${params[key]}`)
       .join("&");
 
-    const url = `${getBybitProxyUrl()}/v5/position/closed-pnl?${queryString}`;
+    // ✅ DIRECT CONNECTION - No proxy
+    const url = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
 
-    console.log(`[Bybit History API] Fetching from proxy: ${url.split('?')[0]}`);
+    console.log(`[Bybit History API] Direct request to Bybit API...`);
 
     const response = await fetch(url, {
       method: "GET",
@@ -109,6 +99,7 @@ export async function GET(request: NextRequest) {
         "X-BAPI-TIMESTAMP": timestamp.toString(),
         "X-BAPI-SIGN": signature,
         "X-BAPI-RECV-WINDOW": "5000",
+        "Content-Type": "application/json",
       },
     });
 

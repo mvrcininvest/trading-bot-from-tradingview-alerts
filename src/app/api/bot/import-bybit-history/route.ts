@@ -1,30 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { positionHistory } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
-
-// ✅ PRIORITY: USE VERCEL EDGE PROXY (Singapore region - close to Bybit)
-// Fly.io (Amsterdam) jako backup
-function getProxyUrls(request: NextRequest): string[] {
-  const host = request.headers.get("host");
-  const protocol = request.headers.get("x-forwarded-proto") || "https";
-  
-  // Build full Vercel Edge proxy URL (avoid localhost)
-  let vercelEdgeProxyUrl: string | null = null;
-  if (host && !host.includes("localhost")) {
-    vercelEdgeProxyUrl = `${protocol}://${host}/api/bybit-edge-proxy`;
-  }
-  
-  return [
-    vercelEdgeProxyUrl, // ✅ FIRST: Vercel Edge proxy (Singapore) - closest to Bybit
-    process.env.BYBIT_PROXY_URL, // ✅ BACKUP: Fly.io proxy (Amsterdam)
-    "https://api.allorigins.win/raw?url=", // Public CORS proxy (last resort)
-    "https://api.bybit.com", // Direct (if nothing else works)
-  ].filter(Boolean) as string[];
-}
 
 interface BybitHistoryPosition {
   symbol: string;
@@ -73,13 +52,12 @@ async function signBybitRequest(
   return hashHex;
 }
 
-// ✅ FIXED: Use full URL for Vercel Edge proxy
+// ✅ DIRECT CONNECTION - No proxy needed (works from Vercel Singapore)
 async function fetchBybitHistoryPage(
   apiKey: string,
   apiSecret: string,
   startTime: number,
   endTime: number,
-  request: NextRequest,
   cursor?: string
 ): Promise<{ positions: BybitHistoryPosition[]; nextCursor: string | null }> {
   const timestamp = Date.now();
@@ -110,63 +88,33 @@ async function fetchBybitHistoryPage(
     "Content-Type": "application/json",
   };
 
-  // ✅ Try each proxy until one works
-  const PROXY_URLS = getProxyUrls(request);
-  let lastError: Error | null = null;
-  
-  for (const proxyUrl of PROXY_URLS) {
-    if (!proxyUrl) continue;
+  const fullUrl = `https://api.bybit.com/v5/position/closed-pnl?${queryString}`;
 
-    try {
-      // Special handling for CORS proxy
-      const isCorsProxy = proxyUrl.includes("allorigins");
-      let fullUrl: string;
-      
-      if (isCorsProxy) {
-        // Encode the full Bybit URL for CORS proxy
-        const bybitUrl = encodeURIComponent(`https://api.bybit.com/v5/position/closed-pnl?${queryString}`);
-        fullUrl = `${proxyUrl}${bybitUrl}`;
-      } else {
-        fullUrl = `${proxyUrl}/v5/position/closed-pnl?${queryString}`;
-      }
+  console.log(`[Import] Direct request to Bybit API...`);
 
-      console.log(`[Import] Trying proxy: ${proxyUrl}`);
+  const response = await fetch(fullUrl, {
+    method: "GET",
+    headers,
+  });
 
-      const response = await fetch(fullUrl, {
-        method: "GET",
-        headers: isCorsProxy ? { "Content-Type": "application/json" } : headers,
-      });
+  const data = await response.json();
 
-      const data = await response.json();
-
-      // Check if CloudFront blocked
-      if (response.status === 403) {
-        console.log(`[Import] ❌ Proxy ${proxyUrl} blocked (403)`);
-        lastError = new Error(`Geo-blocked by CloudFront`);
-        continue;
-      }
-
-      if (data.retCode !== 0) {
-        console.log(`[Import] ❌ Proxy ${proxyUrl} API error: ${data.retMsg} (retCode: ${data.retCode})`);
-        lastError = new Error(`Bybit API error: ${data.retMsg}`);
-        continue;
-      }
-
-      console.log(`[Import] ✅ Success using proxy: ${proxyUrl}`);
-      
-      return {
-        positions: data.result?.list || [],
-        nextCursor: data.result?.nextPageCursor || null,
-      };
-    } catch (error) {
-      console.log(`[Import] ❌ Proxy ${proxyUrl} failed:`, error);
-      lastError = error instanceof Error ? error : new Error(String(error));
-      continue;
-    }
+  if (response.status === 403) {
+    console.error(`[Import] ❌ 403 Forbidden - Check Vercel region or API permissions`);
+    throw new Error(`Geo-blocked by CloudFront (403)`);
   }
 
-  // All proxies failed
-  throw lastError || new Error("All proxy attempts failed");
+  if (data.retCode !== 0) {
+    console.error(`[Import] ❌ Bybit API error: ${data.retMsg} (retCode: ${data.retCode})`);
+    throw new Error(`Bybit API error: ${data.retMsg}`);
+  }
+
+  console.log(`[Import] ✅ Success - fetched ${data.result?.list?.length || 0} positions`);
+  
+  return {
+    positions: data.result?.list || [],
+    nextCursor: data.result?.nextPageCursor || null,
+  };
 }
 
 // ✅ Fetch all positions for a 7-day segment
@@ -174,8 +122,7 @@ async function fetchBybitHistorySegment(
   apiKey: string,
   apiSecret: string,
   startTime: number,
-  endTime: number,
-  request: NextRequest
+  endTime: number
 ): Promise<BybitHistoryPosition[]> {
   let allPositions: BybitHistoryPosition[] = [];
   let cursor: string | null = null;
@@ -188,7 +135,6 @@ async function fetchBybitHistorySegment(
       apiSecret,
       startTime,
       endTime,
-      request,
       cursor || undefined
     );
 
@@ -216,7 +162,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Import Bybit History] 🚀 Starting import for last ${daysBack} days using multi-proxy strategy...`);
+    console.log(`[Import Bybit History] 🚀 Starting import for last ${daysBack} days...`);
 
     // ✅ Divide time range into 7-day segments
     const now = Date.now();
@@ -248,8 +194,7 @@ export async function POST(request: NextRequest) {
           apiKey,
           apiSecret,
           segment.start,
-          segment.end,
-          request
+          segment.end
         );
 
         allPositions = [...allPositions, ...segmentPositions];
@@ -265,7 +210,7 @@ export async function POST(request: NextRequest) {
     if (allPositions.length === 0) {
       return NextResponse.json({
         success: false,
-        message: "Nie udało się pobrać danych z Bybit - wszystkie proxy zablokowały CloudFront",
+        message: "Nie udało się pobrać danych z Bybit - sprawdź region Vercel (powinien być Singapur/HK)",
         imported: 0,
         skipped: 0,
         total: 0,

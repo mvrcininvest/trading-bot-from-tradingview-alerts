@@ -74,10 +74,10 @@ export default function TestManualOpenPage() {
     setResult(null);
 
     try {
-      // ✅ USE VERCEL EDGE PROXY (deployed in Singapore/Hong Kong/Seoul)
-      const baseUrl = "/api/bybit-edge-proxy"; // Use relative path - works in iframe
+      // ✅ DIRECT CONNECTION - No proxy (works from Vercel Singapore)
+      const baseUrl = "https://api.bybit.com";
 
-      console.log("🔧 Using Vercel Edge Proxy (Singapore/Hong Kong/Seoul)");
+      console.log("🔧 Using DIRECT connection to Bybit API");
       console.log("🔧 Base URL:", baseUrl);
 
       // Step 1: Set Leverage (optional, non-critical)
@@ -152,8 +152,8 @@ export default function TestManualOpenPage() {
       if (orderText.includes('<!DOCTYPE') || orderText.includes('<html')) {
         setResult({
           success: false,
-          message: "❌ Request został zablokowany!\n\nOtrzymano HTML zamiast JSON - prawdopodobnie CloudFlare block lub blokada geo.\n\n✅ ROZWIĄZANIE: Używaj proxy serwera (który już używasz) lub spróbuj za kilka minut.",
-          step: "cloudflare_block",
+          message: "❌ Request został zablokowany przez CloudFront!\n\nOtrzymano HTML zamiast JSON - blokada geograficzna.\n\n✅ ROZWIĄZANIE: Przenieś Vercel deployment do regionu Singapur/Hong Kong.",
+          step: "cloudfront_block",
           data: { responsePreview: orderText.substring(0, 200) }
         });
         return;
@@ -178,7 +178,7 @@ export default function TestManualOpenPage() {
       if (orderData.retCode === 0) {
         setResult({
           success: true,
-          message: `✅ POZYCJA OTWARTA POMYŚLNIE!\n\nOrder ID: ${orderData.result?.orderId}\nSymbol: ${symbol}\nSide: ${side}\nQuantity: ${quantity}\n\n🎉 Vercel Edge Proxy działa poprawnie!`,
+          message: `✅ POZYCJA OTWARTA POMYŚLNIE!\n\nOrder ID: ${orderData.result?.orderId}\nSymbol: ${symbol}\nSide: ${side}\nQuantity: ${quantity}\n\n🎉 Bezpośrednie połączenie działa!`,
           step: "success",
           data: orderData
         });
@@ -235,9 +235,9 @@ export default function TestManualOpenPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              🧪 Test Otwierania Pozycji (CLIENT-SIDE)
+              🧪 Test Otwierania Pozycji (DIRECT)
             </h1>
-            <p className="text-gray-400">Ten test używa DOKŁADNIE tej samej metody co Dashboard (client-side, z przeglądarki)</p>
+            <p className="text-gray-400">Bezpośrednie połączenie do Bybit API (bez proxy)</p>
           </div>
         </div>
 
@@ -246,8 +246,8 @@ export default function TestManualOpenPage() {
           <AlertDescription className="text-sm text-gray-300">
             <strong className="text-blue-400">🎯 CEL TEGO TESTU:</strong>
             <ul className="list-disc list-inside mt-2 space-y-1">
-              <li><strong>Jeśli ZADZIAŁA:</strong> Klucze są dobre, problem jest w server-side signing (webhook)</li>
-              <li><strong>Jeśli NIE ZADZIAŁA:</strong> Klucze nie mają uprawnień do tradingu LUB Bybit blokuje wszystkie POST requesty</li>
+              <li><strong>Jeśli ZADZIAŁA:</strong> Klucze są dobre i region Vercel jest OK</li>
+              <li><strong>Jeśli NIE ZADZIAŁA:</strong> CloudFront blokuje region lub klucze nie mają uprawnień</li>
             </ul>
           </AlertDescription>
         </Alert>
@@ -316,7 +316,7 @@ export default function TestManualOpenPage() {
               ) : (
                 <>
                   <Rocket className="mr-2 h-5 w-5" />
-                  🚀 Otwórz Pozycję (CLIENT-SIDE)
+                  🚀 Otwórz Pozycję (DIRECT)
                 </>
               )}
             </Button>
