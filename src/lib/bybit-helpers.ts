@@ -194,25 +194,39 @@ export async function openBybitPosition(
   // Use current price as entry estimate (market orders fill at current price)
   const estimatedEntry = currentPrice;
 
+  // ✅ CRITICAL: Zwiększona minimalna odległość z 0.5%/1% na 2.5%/2% (Bybit requirement)
+  const MIN_TP_DISTANCE_PERCENT = 0.025; // 2.5% dla TP
+  const MIN_SL_DISTANCE_PERCENT = 0.02;  // 2% dla SL
+
   console.log(`\n🔍 TP/SL Validation (Side: ${side}):`);
   console.log(`   Estimated Entry: ${estimatedEntry}`);
+  console.log(`   Min TP Distance: ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}%`);
+  console.log(`   Min SL Distance: ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}%`);
   
   // Validate TP direction
   if (takeProfit) {
     console.log(`   Original TP: ${takeProfit}`);
     
-    if (isLong && takeProfit <= estimatedEntry) {
-      console.warn(`   ⚠️ INVALID TP for LONG: ${takeProfit} must be ABOVE ${estimatedEntry}`);
-      console.warn(`   🔧 Auto-fixing: Setting TP to 0.5% above entry...`);
-      takeProfit = estimatedEntry * 1.005;
-      console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
-    } else if (!isLong && takeProfit >= estimatedEntry) {
-      console.warn(`   ⚠️ INVALID TP for SHORT: ${takeProfit} must be BELOW ${estimatedEntry}`);
-      console.warn(`   🔧 Auto-fixing: Setting TP to 0.5% below entry...`);
-      takeProfit = estimatedEntry * 0.995;
-      console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
+    if (isLong) {
+      const minTP = estimatedEntry * (1 + MIN_TP_DISTANCE_PERCENT);
+      if (takeProfit <= minTP) {
+        console.warn(`   ⚠️ INVALID TP for LONG: ${takeProfit} must be > ${minTP.toFixed(4)}`);
+        console.warn(`   🔧 Auto-fixing: Setting TP to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% above entry...`);
+        takeProfit = minTP;
+        console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
+      } else {
+        console.log(`   ✅ TP direction valid`);
+      }
     } else {
-      console.log(`   ✅ TP direction valid`);
+      const minTP = estimatedEntry * (1 - MIN_TP_DISTANCE_PERCENT);
+      if (takeProfit >= minTP) {
+        console.warn(`   ⚠️ INVALID TP for SHORT: ${takeProfit} must be < ${minTP.toFixed(4)}`);
+        console.warn(`   🔧 Auto-fixing: Setting TP to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% below entry...`);
+        takeProfit = minTP;
+        console.warn(`   ✅ New TP: ${takeProfit.toFixed(4)}`);
+      } else {
+        console.log(`   ✅ TP direction valid`);
+      }
     }
   }
 
@@ -220,18 +234,26 @@ export async function openBybitPosition(
   if (stopLoss) {
     console.log(`   Original SL: ${stopLoss}`);
     
-    if (isLong && stopLoss >= estimatedEntry) {
-      console.warn(`   ⚠️ INVALID SL for LONG: ${stopLoss} must be BELOW ${estimatedEntry}`);
-      console.warn(`   🔧 Auto-fixing: Setting SL to 1% below entry...`);
-      stopLoss = estimatedEntry * 0.99;
-      console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
-    } else if (!isLong && stopLoss <= estimatedEntry) {
-      console.warn(`   ⚠️ INVALID SL for SHORT: ${stopLoss} must be ABOVE ${estimatedEntry}`);
-      console.warn(`   🔧 Auto-fixing: Setting SL to 1% above entry...`);
-      stopLoss = estimatedEntry * 1.01;
-      console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
+    if (isLong) {
+      const minSL = estimatedEntry * (1 - MIN_SL_DISTANCE_PERCENT);
+      if (stopLoss >= minSL) {
+        console.warn(`   ⚠️ INVALID SL for LONG: ${stopLoss} must be < ${minSL.toFixed(4)}`);
+        console.warn(`   🔧 Auto-fixing: Setting SL to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% below entry...`);
+        stopLoss = minSL;
+        console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
+      } else {
+        console.log(`   ✅ SL direction valid`);
+      }
     } else {
-      console.log(`   ✅ SL direction valid`);
+      const minSL = estimatedEntry * (1 + MIN_SL_DISTANCE_PERCENT);
+      if (stopLoss <= minSL) {
+        console.warn(`   ⚠️ INVALID SL for SHORT: ${stopLoss} must be > ${minSL.toFixed(4)}`);
+        console.warn(`   🔧 Auto-fixing: Setting SL to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% above entry...`);
+        stopLoss = minSL;
+        console.warn(`   ✅ New SL: ${stopLoss.toFixed(4)}`);
+      } else {
+        console.log(`   ✅ SL direction valid`);
+      }
     }
   }
 
@@ -299,8 +321,8 @@ export async function openBybitPosition(
   console.log(`${'='.repeat(60)}`);
 
   // Wait for position to open (Bybit needs ~500ms)
-  console.log(`⏳ Waiting 1s for position to settle...`);
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  console.log(`⏳ Waiting 1.5s for position to settle...`);
+  await new Promise(resolve => setTimeout(resolve, 1500));
 
   let slTpSetSuccess = false;
   const maxAttempts = 3;
@@ -337,28 +359,40 @@ export async function openBybitPosition(
       let finalSL = stopLoss;
 
       if (finalTP) {
-        // Ensure TP is in correct direction relative to ACTUAL entry
-        if (actualSide === 'Buy' && finalTP <= actualEntry) {
-          console.warn(`      ⚠️ TP too close/wrong - adjusting to 0.5% above actual entry`);
-          finalTP = actualEntry * 1.005;
-        } else if (actualSide === 'Sell' && finalTP >= actualEntry) {
-          console.warn(`      ⚠️ TP too close/wrong - adjusting to 0.5% below actual entry`);
-          finalTP = actualEntry * 0.995;
+        // Ensure TP is in correct direction relative to ACTUAL entry with SAFE DISTANCE
+        if (actualSide === 'Buy') {
+          const minTP = actualEntry * (1 + MIN_TP_DISTANCE_PERCENT);
+          if (finalTP <= minTP) {
+            console.warn(`      ⚠️ TP too close - adjusting to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% above actual entry`);
+            finalTP = minTP;
+          }
+        } else {
+          const minTP = actualEntry * (1 - MIN_TP_DISTANCE_PERCENT);
+          if (finalTP >= minTP) {
+            console.warn(`      ⚠️ TP too close - adjusting to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% below actual entry`);
+            finalTP = minTP;
+          }
         }
       }
 
       if (finalSL) {
-        // Ensure SL is in correct direction relative to ACTUAL entry
-        if (actualSide === 'Buy' && finalSL >= actualEntry) {
-          console.warn(`      ⚠️ SL too close/wrong - adjusting to 1% below actual entry`);
-          finalSL = actualEntry * 0.99;
-        } else if (actualSide === 'Sell' && finalSL <= actualEntry) {
-          console.warn(`      ⚠️ SL too close/wrong - adjusting to 1% above actual entry`);
-          finalSL = actualEntry * 1.01;
+        // Ensure SL is in correct direction relative to ACTUAL entry with SAFE DISTANCE
+        if (actualSide === 'Buy') {
+          const minSL = actualEntry * (1 - MIN_SL_DISTANCE_PERCENT);
+          if (finalSL >= minSL) {
+            console.warn(`      ⚠️ SL too close - adjusting to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% below actual entry`);
+            finalSL = minSL;
+          }
+        } else {
+          const minSL = actualEntry * (1 + MIN_SL_DISTANCE_PERCENT);
+          if (finalSL <= minSL) {
+            console.warn(`      ⚠️ SL too close - adjusting to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% above actual entry`);
+            finalSL = minSL;
+          }
         }
       }
 
-      console.log(`   🎯 Final TP/SL (adjusted to actual entry):`);
+      console.log(`   🎯 Final TP/SL (adjusted to actual entry with safe distance):`);
       console.log(`      TP: ${finalTP?.toFixed(4) || 'N/A'}`);
       console.log(`      SL: ${finalSL?.toFixed(4) || 'N/A'}`);
 
@@ -417,8 +451,8 @@ export async function openBybitPosition(
       console.error(`   ❌ Attempt ${attempt} failed: ${error.message}`);
       
       if (attempt < maxAttempts) {
-        console.log(`   ⏳ Waiting ${1000 * attempt}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        console.log(`   ⏳ Waiting ${1500 * attempt}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
       }
     }
   }
@@ -427,17 +461,47 @@ export async function openBybitPosition(
     console.error(`\n🚨🚨🚨 CRITICAL FAILURE: COULD NOT SET SL/TP AFTER ${maxAttempts} ATTEMPTS!`);
     console.error(`   This position is UNPROTECTED - EMERGENCY CLOSE REQUIRED!`);
     
-    // Emergency close
-    try {
-      console.log(`   🚨 Executing emergency close...`);
-      await closeBybitPosition(symbol, side, apiKey, apiSecret);
-      console.error(`   ✅ Position emergency closed - funds protected`);
-      
+    // ✅ IMPROVED: Emergency close with multiple retries
+    let closeSuccess = false;
+    const maxCloseAttempts = 5;
+    
+    for (let closeAttempt = 1; closeAttempt <= maxCloseAttempts; closeAttempt++) {
+      try {
+        console.log(`   🚨 Emergency close attempt ${closeAttempt}/${maxCloseAttempts}...`);
+        
+        await closeBybitPosition(symbol, side, apiKey, apiSecret);
+        
+        // Verify position was closed
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const checkPositions = await getBybitPositions(apiKey, apiSecret, symbol);
+        const stillOpen = checkPositions.find((p: any) => 
+          p.symbol === symbol && parseFloat(p.size) > 0
+        );
+        
+        if (!stillOpen) {
+          console.error(`   ✅ Position emergency closed successfully - funds protected`);
+          closeSuccess = true;
+          break;
+        } else {
+          console.error(`   ⚠️ Position still open after close attempt ${closeAttempt}`);
+          if (closeAttempt < maxCloseAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * closeAttempt));
+          }
+        }
+      } catch (closeError: any) {
+        console.error(`   ❌ Close attempt ${closeAttempt} failed: ${closeError.message}`);
+        if (closeAttempt < maxCloseAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * closeAttempt));
+        }
+      }
+    }
+    
+    if (closeSuccess) {
       throw new Error(`EMERGENCY: Position opened but SL/TP could not be set - position was closed for safety`);
-    } catch (closeError: any) {
-      console.error(`   ❌❌❌ EMERGENCY CLOSE FAILED: ${closeError.message}`);
+    } else {
+      console.error(`   ❌❌❌ ALL ${maxCloseAttempts} EMERGENCY CLOSE ATTEMPTS FAILED!`);
       console.error(`   🚨 MANUAL INTERVENTION REQUIRED - POSITION WITHOUT SL/TP!`);
-      throw new Error(`CRITICAL: Position opened without SL/TP and emergency close failed - manual intervention required!`);
+      throw new Error(`CRITICAL: Position opened without SL/TP and emergency close failed after ${maxCloseAttempts} attempts - manual intervention required!`);
     }
   }
 
