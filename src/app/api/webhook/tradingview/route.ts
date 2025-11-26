@@ -912,7 +912,10 @@ export async function POST(request: Request) {
 
     console.log(`💰 Position: $${positionSizeUsd}, Leverage: ${leverage}x`);
 
-    // ✅ CRITICAL FIX: Validate TP/SL direction BEFORE sending to exchange
+    // ✅ CRITICAL FIX: Use SAME minimum distances as bybit-helpers.ts to prevent discrepancies
+    const MIN_TP_DISTANCE_PERCENT = 0.025; // 2.5% - matches bybit-helpers.ts
+    const MIN_SL_DISTANCE_PERCENT = 0.02;  // 2.0% - matches bybit-helpers.ts
+
     console.log(`\n🔍 Pre-Exchange TP/SL Validation:`);
     console.log(`   Entry Price: ${entryPrice}`);
     console.log(`   Side: ${data.side}`);
@@ -925,16 +928,25 @@ export async function POST(request: Request) {
     if (tp1Price) {
       if (isLong && tp1Price <= entryPrice) {
         console.warn(`   ⚠️ INVALID TP1 for LONG: ${tp1Price} must be > ${entryPrice}`);
-        console.warn(`   🔧 Auto-fixing: Setting TP1 to 0.5% above entry...`);
-        tp1Price = entryPrice * 1.005;
+        console.warn(`   🔧 Auto-fixing: Setting TP1 to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% above entry...`);
+        tp1Price = entryPrice * (1 + MIN_TP_DISTANCE_PERCENT);
         console.warn(`   ✅ New TP1: ${tp1Price.toFixed(4)}`);
       } else if (!isLong && tp1Price >= entryPrice) {
         console.warn(`   ⚠️ INVALID TP1 for SHORT: ${tp1Price} must be < ${entryPrice}`);
-        console.warn(`   🔧 Auto-fixing: Setting TP1 to 0.5% below entry...`);
-        tp1Price = entryPrice * 0.995;
+        console.warn(`   🔧 Auto-fixing: Setting TP1 to ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}% below entry...`);
+        tp1Price = entryPrice * (1 - MIN_TP_DISTANCE_PERCENT);
         console.warn(`   ✅ New TP1: ${tp1Price.toFixed(4)}`);
       } else {
-        console.log(`   ✅ TP1 direction valid`);
+        // Check if TP1 is too close to entry (enforce minimum distance)
+        const tpDistance = isLong ? (tp1Price - entryPrice) / entryPrice : (entryPrice - tp1Price) / entryPrice;
+        if (tpDistance < MIN_TP_DISTANCE_PERCENT) {
+          console.warn(`   ⚠️ TP1 too close to entry: ${(tpDistance * 100).toFixed(2)}% < ${(MIN_TP_DISTANCE_PERCENT * 100).toFixed(2)}%`);
+          console.warn(`   🔧 Enforcing minimum distance...`);
+          tp1Price = isLong ? entryPrice * (1 + MIN_TP_DISTANCE_PERCENT) : entryPrice * (1 - MIN_TP_DISTANCE_PERCENT);
+          console.warn(`   ✅ New TP1: ${tp1Price.toFixed(4)}`);
+        } else {
+          console.log(`   ✅ TP1 direction and distance valid`);
+        }
       }
     }
 
@@ -942,16 +954,25 @@ export async function POST(request: Request) {
     if (slPrice) {
       if (isLong && slPrice >= entryPrice) {
         console.warn(`   ⚠️ INVALID SL for LONG: ${slPrice} must be < ${entryPrice}`);
-        console.warn(`   🔧 Auto-fixing: Setting SL to 1% below entry...`);
-        slPrice = entryPrice * 0.99;
+        console.warn(`   🔧 Auto-fixing: Setting SL to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% below entry...`);
+        slPrice = entryPrice * (1 - MIN_SL_DISTANCE_PERCENT);
         console.warn(`   ✅ New SL: ${slPrice.toFixed(4)}`);
       } else if (!isLong && slPrice <= entryPrice) {
         console.warn(`   ⚠️ INVALID SL for SHORT: ${slPrice} must be > ${entryPrice}`);
-        console.warn(`   🔧 Auto-fixing: Setting SL to 1% above entry...`);
-        slPrice = entryPrice * 1.01;
+        console.warn(`   🔧 Auto-fixing: Setting SL to ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}% above entry...`);
+        slPrice = entryPrice * (1 + MIN_SL_DISTANCE_PERCENT);
         console.warn(`   ✅ New SL: ${slPrice.toFixed(4)}`);
       } else {
-        console.log(`   ✅ SL direction valid`);
+        // Check if SL is too close to entry (enforce minimum distance)
+        const slDistance = isLong ? (entryPrice - slPrice) / entryPrice : (slPrice - entryPrice) / entryPrice;
+        if (slDistance < MIN_SL_DISTANCE_PERCENT) {
+          console.warn(`   ⚠️ SL too close to entry: ${(slDistance * 100).toFixed(2)}% < ${(MIN_SL_DISTANCE_PERCENT * 100).toFixed(2)}%`);
+          console.warn(`   🔧 Enforcing minimum distance...`);
+          slPrice = isLong ? entryPrice * (1 - MIN_SL_DISTANCE_PERCENT) : entryPrice * (1 + MIN_SL_DISTANCE_PERCENT);
+          console.warn(`   ✅ New SL: ${slPrice.toFixed(4)}`);
+        } else {
+          console.log(`   ✅ SL direction and distance valid`);
+        }
       }
     }
 
