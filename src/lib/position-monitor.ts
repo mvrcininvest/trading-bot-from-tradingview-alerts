@@ -966,7 +966,7 @@ async function importManualPositions(
         
         // Insert into DB
         const [insertedPos] = await db.insert(botPositions).values({
-          alertId: null, // Manual position - no alert
+          alertId: null,
           symbol,
           side,
           tier: 'Standard',
@@ -985,12 +985,12 @@ async function importManualPositions(
           status: 'open',
           positionValue,
           initialMargin,
-          confidenceScore: 0.5, // Default confidence for manual positions
+          confidenceScore: 0.5,
           openedAt: new Date().toISOString(),
           unrealisedPnl: parseFloat(bybitPos.unrealisedPnl || '0'),
           lastUpdated: new Date().toISOString(),
           confirmationCount: 1,
-          alertData: JSON.stringify({ imported: true, importedAt: new Date().toISOString() }),
+          alertData: null,
         }).returning();
         
         console.log(`   ✅ Imported to DB (ID: ${insertedPos.id})`);
