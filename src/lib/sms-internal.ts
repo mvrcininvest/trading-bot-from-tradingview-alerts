@@ -2,12 +2,15 @@
 // 📱 INTERNAL SMS SERVICE - SERVER-SIDE ONLY
 // ============================================
 // ✅ Shared function for sending SMS across API routes
-// ✅ Uses Twilio with proper ESM imports
-// ✅ Created: 2025-01-27 - Fixed Next.js route export conflict
+// ✅ Uses Twilio with CommonJS require (Vercel-safe)
+// ✅ Updated: 2025-01-27 - Fixed Vercel build by using require() instead of import
 
 import { db } from '@/db';
 import { botSettings, botLogs } from '@/db/schema';
-import twilio from 'twilio';
+
+// ✅ VERCEL FIX: Use CommonJS require() instead of ESM import
+// This avoids TypeScript compilation errors on Vercel
+const twilio: any = require('twilio');
 
 export interface SMSAlert {
   phone: string;

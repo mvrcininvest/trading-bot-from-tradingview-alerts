@@ -1,5 +1,6 @@
 // Force Vercel rebuild - 2025-11-27 15:15
 // Force Vercel rebuild - 2025-11-27 15:24 - Fixed Twilio import (lowercase)
+// Force Vercel rebuild - 2025-11-27 15:30 - Use CommonJS require() for Twilio
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
