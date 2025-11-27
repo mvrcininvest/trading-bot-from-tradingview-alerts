@@ -1511,12 +1511,12 @@ export async function monitorAndManagePositions(silent = true) {
           
           const newCounter = await incrementCapitulationCounter();
           const okoSettings = config;
-          const capitulationThreshold = okoSettings.okoCapitulationThreshold || 3;
+          const capitulationThreshold = okoSettings.okoCapitulationChecks || 1;
           
           if (newCounter >= capitulationThreshold) {
             console.log(`🚨 [OKO] CAPITULATION THRESHOLD REACHED (${newCounter}/${capitulationThreshold})`);
             
-            const banDuration = okoSettings.okoBanDurationHours || 24;
+            const banDuration = okoSettings.okoCapitulationBanDurationHours || 6;
             await banSymbol(
               dbPos.symbol,
               `Capitulation after ${newCounter} Oko emergency closures`,

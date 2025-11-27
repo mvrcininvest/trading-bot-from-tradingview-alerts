@@ -4,6 +4,7 @@
 // ✅ This endpoint safely imports twilio on the server side
 // ✅ Webpack won't bundle twilio because it's a server-only API route
 // ✅ Called by sms-service.ts client-side helper functions
+// ✅ Updated: 2025-01-27 - Force rebuild with Function constructor
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
