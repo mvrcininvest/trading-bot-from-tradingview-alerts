@@ -15,6 +15,108 @@ const ENHANCED_HEADERS = {
 };
 
 // ============================================
+// 🚨 CLOUDFRONT BLOCK HANDLER
+// ============================================
+
+async function handleCloudFrontBlock(endpoint: string, responseText: string) {
+  console.error(`\n${'='.repeat(80)}`);
+  console.error(`🚨🚨🚨 CRITICAL: CLOUDFRONT BLOCK DETECTED 🚨🚨🚨`);
+  console.error(`${'='.repeat(80)}`);
+  console.error(`📍 Endpoint: ${endpoint}`);
+  console.error(`🌍 Region: Server region is BLOCKED by Bybit CloudFront`);
+  console.error(`⚠️  Bot CANNOT monitor positions, set SL/TP, or fetch data`);
+  console.error(`${'='.repeat(80)}\n`);
+
+  try {
+    // 1. Get server IP and region info
+    let serverInfo = 'Unknown';
+    try {
+      const ipResponse = await fetch('https://api.ipify.org?format=json');
+      const ipData = await ipResponse.json();
+      serverInfo = `IP: ${ipData.ip}`;
+      
+      // Try to get region info
+      const geoResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
+      const geoData = await geoResponse.json();
+      serverInfo += ` | Region: ${geoData.country_name || 'Unknown'} (${geoData.country_code || '?'})`;
+      serverInfo += ` | City: ${geoData.city || 'Unknown'}`;
+      
+      console.error(`📊 Server Info: ${serverInfo}`);
+    } catch (e) {
+      console.error(`⚠️  Could not fetch server info: ${e}`);
+    }
+
+    // 2. Disable bot
+    console.error(`🛑 Disabling bot...`);
+    await fetch('/api/bot/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false })
+    });
+    console.error(`✅ Bot disabled`);
+
+    // 3. Emergency close all positions
+    console.error(`🚨 Emergency closing all positions...`);
+    const closeResponse = await fetch('/api/exchange/close-all-positions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const closeData = await closeResponse.json();
+    console.error(`${closeData.success ? '✅' : '❌'} Close all result: ${JSON.stringify(closeData)}`);
+
+    // 4. Log to bot logs
+    console.error(`📝 Logging to bot logs...`);
+    await fetch('/api/bot/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        level: 'error',
+        message: `🚨 CLOUDFRONT BLOCK DETECTED - Bot disabled and positions closed`,
+        context: {
+          endpoint,
+          serverInfo,
+          action: 'emergency_shutdown',
+          timestamp: new Date().toISOString()
+        }
+      })
+    });
+    console.error(`✅ Logged to bot logs`);
+
+    // 5. Log to Oko Saurona
+    console.error(`👁️  Logging to Oko Saurona...`);
+    await fetch('/api/bot/oko-actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'cloudfront_block_emergency_shutdown',
+        status: 'critical',
+        details: {
+          endpoint,
+          serverInfo,
+          botDisabled: true,
+          positionsClosedAttempt: closeData.success || false,
+          timestamp: new Date().toISOString()
+        }
+      })
+    });
+    console.error(`✅ Logged to Oko Saurona`);
+
+  } catch (emergencyError: any) {
+    console.error(`❌ Emergency shutdown failed: ${emergencyError.message}`);
+    console.error(`⚠️  MANUAL INTERVENTION REQUIRED!`);
+  }
+
+  console.error(`\n${'='.repeat(80)}`);
+  console.error(`🚨 EMERGENCY SHUTDOWN COMPLETE`);
+  console.error(`📋 Actions taken:`);
+  console.error(`   1. ✅ Bot disabled`);
+  console.error(`   2. 🚨 All positions emergency closed (attempted)`);
+  console.error(`   3. 📝 Logged to bot logs`);
+  console.error(`   4. 👁️  Logged to Oko Saurona`);
+  console.error(`${'='.repeat(80)}\n`);
+}
+
+// ============================================
 // 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)
 // ============================================
 
@@ -102,9 +204,14 @@ export async function makeBybitRequest(
   const responseText = await response.text();
 
   if (!response.ok) {
+    // 🚨 CRITICAL: Detect CloudFront block
     if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
       console.error(`❌ CloudFront block detected - Response: ${responseText.substring(0, 300)}`);
-      throw new Error(`CloudFlare/WAF block (${response.status}) - Your server region may be blocked by Bybit. Consider using a VPN or proxy service.`);
+      
+      // Trigger emergency shutdown
+      await handleCloudFrontBlock(endpoint, responseText);
+      
+      throw new Error(`🚨 CLOUDFRONT BLOCK: Your server region is blocked by Bybit. Bot has been disabled and positions closed for safety.`);
     }
     throw new Error(`Bybit API error: ${response.status} - ${responseText}`);
   }
