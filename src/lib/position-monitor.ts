@@ -978,16 +978,19 @@ async function importManualPositions(
           tp1Price: existingTP || tp1Price,
           tp2Price: null,
           tp3Price: null,
+          mainTpPrice: existingTP || tp1Price,
           tp1Hit: false,
           tp2Hit: false,
           tp3Hit: false,
           status: 'open',
-          openedAt: new Date().toISOString(),
+          positionValue,
           initialMargin,
+          confidenceScore: 0.5, // Default confidence for manual positions
+          openedAt: new Date().toISOString(),
           unrealisedPnl: parseFloat(bybitPos.unrealisedPnl || '0'),
           lastUpdated: new Date().toISOString(),
           confirmationCount: 1,
-          alertData: { imported: true, importedAt: new Date().toISOString() },
+          alertData: JSON.stringify({ imported: true, importedAt: new Date().toISOString() }),
         }).returning();
         
         console.log(`   ✅ Imported to DB (ID: ${insertedPos.id})`);
@@ -1972,15 +1975,15 @@ export async function monitorAndManagePositions(silent = true) {
                   await db.insert(diagnosticFailures).values({
                     positionId: dbPos.id,
                     failureType: 'emergency_close_verification_failed',
-                    severity: 'critical',
-                    errorMessage: `Position ${symbol} still open after close - Size: ${verification.finalSize}, Error: ${verification.error}`,
-                    metadata: {
+                    reason: `Position ${symbol} still open after close - Size: ${verification.finalSize}, Error: ${verification.error}`,
+                    attemptCount: 5,
+                    errorDetails: JSON.stringify({
                       symbol,
                       closeOrderId,
                       finalSize: verification.finalSize,
                       verificationError: verification.error,
                       timestamp: new Date().toISOString()
-                    },
+                    }),
                     createdAt: new Date().toISOString(),
                   });
                 } catch (logError: any) {
@@ -2064,9 +2067,9 @@ export async function monitorAndManagePositions(silent = true) {
                 await db.insert(diagnosticFailures).values({
                   positionId: dbPos.id,
                   failureType: 'emergency_close_exception',
-                  severity: 'critical',
-                  errorMessage: `Emergency close threw exception: ${error.message}`,
-                  metadata: {
+                  reason: `Emergency close threw exception: ${error.message}`,
+                  attemptCount: 3,
+                  errorDetails: JSON.stringify({
                     symbol,
                     side,
                     quantity,
@@ -2076,7 +2079,7 @@ export async function monitorAndManagePositions(silent = true) {
                     error: error.message,
                     stack: error.stack,
                     timestamp: new Date().toISOString()
-                  },
+                  }),
                   createdAt: new Date().toISOString(),
                 });
                 console.log(`   ✅ Diagnostic failure logged to database`);

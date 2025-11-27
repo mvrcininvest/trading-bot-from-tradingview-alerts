@@ -21,15 +21,8 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
-  // ✅ Mark twilio as external to prevent webpack bundling issues
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Mark twilio as external on server-side builds
-      config.externals = config.externals || [];
-      config.externals.push('twilio');
-    }
-    return config;
-  },
+  // ✅ CRITICAL: Mark twilio as server-only external package (Next.js 15 approach)
+  serverExternalPackages: ['twilio'],
 };
 
 export default nextConfig;

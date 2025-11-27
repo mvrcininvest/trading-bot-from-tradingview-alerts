@@ -107,11 +107,16 @@ async function handleCloudFrontBlock(endpoint: string, responseText: string) {
     });
     console.error(`✅ Logged to Oko Saurona`);
 
-    // 6. 📱 SEND SMS ALERT - ✅ FIX: Use dynamic import to avoid bundling twilio at build time
-    console.error(`📱 Sending SMS alert...`);
+    // 6. 📱 SEND SMS ALERT - ✅ FIX: Call API endpoint instead of importing module
+    console.error(`📱 Sending SMS alert via API...`);
     try {
-      const { sendCloudFrontBlockAlert } = await import('./sms-service');
-      const smsResult = await sendCloudFrontBlockAlert(serverInfo);
+      const smsResponse = await fetch('/api/bot/send-cloudfront-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverInfo })
+      });
+      const smsResult = await smsResponse.json();
+      
       if (smsResult.success) {
         console.error(`✅ SMS alert sent successfully (Message ID: ${smsResult.messageId})`);
       } else {
