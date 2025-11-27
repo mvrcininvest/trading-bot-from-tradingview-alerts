@@ -16,7 +16,7 @@ import {
 interface OkoSettings {
   enabled: boolean;
   accountDrawdownThreshold: number; // percentage (e.g., 50 = -50%)
-  capitulationThreshold: number; // number of closures before ban
+  capitulationChecks: number; // number of checks before ban (FIXED NAME)
   banDurationHours: number;
   timeBasedExitHours: number;
   timeBasedExitEnabled: boolean;
@@ -72,9 +72,9 @@ async function getOkoSettings(): Promise<OkoSettings | null> {
   
   return {
     enabled: config.okoEnabled || false,
-    accountDrawdownThreshold: config.okoAccountDrawdownThreshold || 50,
-    capitulationThreshold: config.okoCapitulationThreshold || 3,
-    banDurationHours: config.okoBanDurationHours || 24,
+    accountDrawdownThreshold: config.okoAccountDrawdownPercent || 50,
+    capitulationChecks: config.okoCapitulationChecks || 1, // ✅ FIXED: use correct column name
+    banDurationHours: config.okoCapitulationBanDurationHours || 6, // ✅ FIXED: use correct column name
     timeBasedExitHours: config.okoTimeBasedExitHours || 24,
     timeBasedExitEnabled: config.okoTimeBasedExitEnabled || false,
     capitulationCounter: config.okoCapitulationCounter || 0,

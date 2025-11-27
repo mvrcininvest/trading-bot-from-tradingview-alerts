@@ -23,6 +23,19 @@ const nextConfig: NextConfig = {
   },
   // ✅ CRITICAL: Mark twilio as server-only external package (Next.js 15 approach)
   serverExternalPackages: ['twilio'],
+  
+  // ✅ WEBPACK FALLBACK: Force webpack to externalize twilio completely
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Mark twilio as external for server-side bundles
+      config.externals = config.externals || [];
+      config.externals.push({
+        twilio: 'commonjs twilio',
+      });
+    }
+    
+    return config;
+  },
 };
 
 export default nextConfig;

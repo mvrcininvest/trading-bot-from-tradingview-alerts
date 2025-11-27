@@ -136,9 +136,9 @@ export async function POST(req: NextRequest) {
       message = message.substring(0, 157) + '...';
     }
     
-    // ✅ SAFE: Import twilio only in server-side API route
-    const twilio = require('twilio');
-    const client = twilio(config.twilioAccountSid, config.twilioAuthToken);
+    // ✅ SAFE: Dynamic import twilio to prevent Webpack bundling
+    const { default: Twilio } = await import('twilio');
+    const client = Twilio(config.twilioAccountSid, config.twilioAuthToken);
     
     // Retry loop with exponential backoff
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
