@@ -442,40 +442,48 @@ export default function GlownaPage() {
                 {/* GŁÓWNE WYJAŚNIENIE */}
                 <div className="bg-red-950/40 p-4 rounded-lg border border-red-700/50">
                   <p className="text-sm font-semibold text-red-200 mb-2">
-                    🚫 Bybit CloudFront blokuje połączenia z tego serwera
+                    🚫 Bybit CloudFront blokuje połączenia z Vercel
                   </p>
                   <ul className="space-y-1 text-xs text-red-300">
                     <li>• <strong>Nie możesz zobaczyć:</strong> Salda konta, otwartych pozycji live, aktualnego PnL</li>
-                    <li>• <strong>Region (Washington) nie ma znaczenia</strong> - CloudFront blokuje niezależnie od lokalizacji</li>
-                    <li>• <strong>Zmiana regionu NIE rozwiązuje problemu</strong> - to nie jest problem lokalizacji</li>
+                    <li>• <strong>Vercel używa wielu dynamicznych IP</strong> - każdy request może mieć inne IP</li>
+                    <li>• <strong>Whitelist IP NIE ZADZIAŁA</strong> - Vercel nie ma stałego IP do dodania</li>
+                    <li>• <strong>Zmiana regionu NIE POMAGA</strong> - CloudFront blokuje wszystkie regiony Vercel</li>
                   </ul>
                 </div>
 
-                {/* ROZWIĄZANIE */}
+                {/* DLACZEGO WHITELIST NIE DZIAŁA */}
+                <div className="bg-purple-950/40 p-4 rounded-lg border border-purple-700/50">
+                  <p className="text-sm font-bold text-purple-200 mb-2">🔄 Dlaczego whitelist IP nie pomoże:</p>
+                  <ul className="space-y-1 text-xs text-purple-300">
+                    <li>• Vercel Serverless = <strong>losowe IP przy każdym requeście</strong></li>
+                    <li>• Nawet jeśli dodasz 1 IP, następny request użyje innego IP</li>
+                    <li>• Vercel ma setki IP adresów w puli - niemożliwe dodać wszystkie</li>
+                  </ul>
+                </div>
+
+                {/* PRAWDZIWE ROZWIĄZANIA */}
                 <div className="bg-green-950/40 p-4 rounded-lg border border-green-700/50">
-                  <p className="text-sm font-bold text-green-200 mb-3">✅ JEDYNE ROZWIĄZANIE - Whitelist IP na Bybit</p>
+                  <p className="text-sm font-bold text-green-200 mb-3">✅ PRAWDZIWE ROZWIĄZANIA:</p>
                   <div className="space-y-3 text-sm text-green-300">
                     <div>
-                      <p className="font-semibold mb-1">Krok 1: Sprawdź IP serwera</p>
-                      <a 
-                        href="/ip-diagnostics" 
-                        className="text-xs underline hover:text-green-200 flex items-center gap-1"
-                      >
-                        → Otwórz zakładkę "IP Diagnostics" <Globe className="h-3 w-3" />
-                      </a>
+                      <p className="font-semibold mb-1">Opcja 1: Przejdź na platformę z dedykowanym IP</p>
+                      <ul className="list-disc list-inside text-xs space-y-1 ml-2">
+                        <li><strong>Fly.io</strong> - darmowy tier, 1 dedykowane IP, łatwy deploy</li>
+                        <li><strong>Railway</strong> - proste w użyciu, stałe IP</li>
+                        <li><strong>DigitalOcean App Platform</strong> - dedykowany IP od $5/mc</li>
+                        <li>Po migracji: whitelist tego 1 IP na Bybit i problem rozwiązany ✅</li>
+                      </ul>
                     </div>
                     <div>
-                      <p className="font-semibold mb-1">Krok 2: Dodaj IP do whitelisty</p>
-                      <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
-                        <li>Zaloguj się na <a href="https://www.bybit.com" target="_blank" rel="noopener noreferrer" className="underline">Bybit.com</a></li>
-                        <li>Przejdź do: API Management → API Keys</li>
-                        <li>Edytuj swój API Key</li>
-                        <li>W sekcji "IP Restrictions" dodaj IP z kroku 1</li>
-                        <li>Zapisz zmiany</li>
-                      </ol>
-                    </div>
-                    <div className="text-xs text-green-400 bg-green-900/30 p-2 rounded">
-                      <strong>⚡ Po dodaniu IP:</strong> CloudFront przestanie blokować połączenia w ciągu 1-2 minut
+                      <p className="font-semibold mb-1">Opcja 2: Zostań na Vercel (ograniczone funkcje)</p>
+                      <ul className="list-disc list-inside text-xs space-y-1 ml-2">
+                        <li>❌ Brak live danych z giełdy (saldo, pozycje, PnL)</li>
+                        <li>✅ Historia pozycji w bazie danych działa</li>
+                        <li>✅ Statystyki i analityka działają</li>
+                        <li>✅ SMS alerty działają</li>
+                        <li>💡 Sprawdzaj saldo ręcznie na Bybit Dashboard</li>
+                      </ul>
                     </div>
                   </div>
                 </div>
