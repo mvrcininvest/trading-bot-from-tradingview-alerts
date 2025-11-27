@@ -338,6 +338,29 @@ export async function bybitFetchWithGuard(
   options: RequestInit,
   context: string = 'Unknown'
 ): Promise<Response> {
+  // ✅ SPRAWDŹ CZY LOCK JUŻ AKTYWNY - jeśli tak, nie próbuj nawet fetchować
+  const lockActive = await isShutdownLockActive();
+  
+  if (lockActive) {
+    console.log(`[CloudFront Guard] 🔒 Lock aktywny - pomijam request do Bybit: ${context}`);
+    console.log('   → Zwracam graceful error response zamiast próby połączenia');
+    
+    // Zwróć error response w formacie Bybit API
+    const errorResponse = {
+      retCode: 10024, // Custom error code for CloudFront block
+      retMsg: 'CloudFront block active - bot disabled. Enable bot in settings to retry.',
+      result: null,
+      retExtInfo: {},
+      time: Date.now()
+    };
+    
+    return new Response(JSON.stringify(errorResponse), {
+      status: 503, // Service Unavailable
+      statusText: 'CloudFront Block Active',
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
   console.log(`[CloudFront Guard] ${context} - Request to: ${url.substring(0, 100)}`);
   
   try {
@@ -364,8 +387,20 @@ export async function bybitFetchWithGuard(
         serverInfo
       );
       
-      // Throw error to stop further processing
-      throw new Error(`CLOUDFRONT_BLOCK: ${context}`);
+      // Return error response instead of throwing
+      const errorResponse = {
+        retCode: 10024,
+        retMsg: 'CloudFront block detected - emergency shutdown triggered',
+        result: null,
+        retExtInfo: {},
+        time: Date.now()
+      };
+      
+      return new Response(JSON.stringify(errorResponse), {
+        status: 503,
+        statusText: 'CloudFront Block Detected',
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
     
     // Return response with text already read
@@ -376,12 +411,7 @@ export async function bybitFetchWithGuard(
     });
     
   } catch (error: any) {
-    // If it's our CloudFront block error, re-throw it
-    if (error.message?.includes('CLOUDFRONT_BLOCK')) {
-      throw error;
-    }
-    
-    // For other network errors, check if it might be geo-blocking
+    // For network errors, check if it might be geo-blocking
     if (error.message?.includes('fetch') || error.message?.includes('network')) {
       console.warn(`[CloudFront Guard] Network error in ${context} - might be geo-block: ${error.message}`);
     }
