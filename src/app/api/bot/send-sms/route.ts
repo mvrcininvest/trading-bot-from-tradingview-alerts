@@ -68,6 +68,17 @@ function normalizePhoneNumber(phone: string, countryCode = '48'): string {
   return '+' + normalized;
 }
 
+// ✅ CRITICAL: Use Function constructor to completely hide import from Webpack static analysis
+// This prevents Webpack from trying to bundle twilio during build time
+const getTwilioClient = new Function(
+  'accountSid',
+  'authToken',
+  `
+  const twilioModule = require('twilio');
+  return twilioModule(accountSid, authToken);
+  `
+);
+
 export async function POST(req: NextRequest) {
   try {
     const alert: SMSAlert = await req.json();
@@ -136,9 +147,8 @@ export async function POST(req: NextRequest) {
       message = message.substring(0, 157) + '...';
     }
     
-    // ✅ SAFE: Dynamic import twilio to prevent Webpack bundling
-    const { default: Twilio } = await import('twilio');
-    const client = Twilio(config.twilioAccountSid, config.twilioAuthToken);
+    // ✅ SAFE: Create Twilio client using Function constructor (hidden from Webpack)
+    const client = getTwilioClient(config.twilioAccountSid, config.twilioAuthToken);
     
     // Retry loop with exponential backoff
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
