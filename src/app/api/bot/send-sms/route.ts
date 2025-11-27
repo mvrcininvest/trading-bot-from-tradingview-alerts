@@ -4,7 +4,7 @@
 // ✅ This endpoint safely imports twilio on the server side
 // ✅ Webpack won't bundle twilio because it's a server-only API route
 // ✅ Called by sms-service.ts client-side helper functions
-// ✅ Updated: 2025-01-27 - Force rebuild with Function constructor
+// ✅ Updated: 2025-01-27 - Export internal function for server-side use
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -80,108 +80,141 @@ const getTwilioClient = new Function(
   `
 );
 
-export async function POST(req: NextRequest) {
-  try {
-    const alert: SMSAlert = await req.json();
-    
-    const maxAttempts = 5;
-    const timeoutMs = 10000;
-    
-    // Fetch SMS settings from database
-    const settings = await db.select().from(botSettings).limit(1);
-    
-    if (!settings || settings.length === 0) {
-      console.error('[SMS API] No bot settings found');
-      return NextResponse.json({
-        success: false,
-        error: 'No bot settings configured',
-        attempt: 0,
-      }, { status: 500 });
-    }
-    
-    const config = settings[0];
-    
-    // Check if SMS alerts are enabled
-    if (!config.smsAlertsEnabled) {
-      console.log('[SMS API] SMS alerts disabled in settings');
-      return NextResponse.json({
-        success: false,
-        error: 'SMS alerts disabled',
-        attempt: 0,
-      }, { status: 400 });
-    }
-    
-    // Validate configuration
-    if (!config.twilioAccountSid || !config.twilioAuthToken || !config.twilioPhoneNumber) {
-      console.error('[SMS API] Twilio credentials not configured');
-      return NextResponse.json({
-        success: false,
-        error: 'Twilio credentials not configured',
-        attempt: 0,
-      }, { status: 500 });
-    }
-    
-    if (!config.alertPhoneNumber) {
-      console.error('[SMS API] Alert phone number not configured');
-      return NextResponse.json({
-        success: false,
-        error: 'Alert phone number not configured',
-        attempt: 0,
-      }, { status: 500 });
-    }
-    
-    // Normalize and validate phone number
-    const normalizedPhone = normalizePhoneNumber(config.alertPhoneNumber);
-    if (!validateE164Format(normalizedPhone)) {
-      console.error('[SMS API] Invalid phone format:', config.alertPhoneNumber);
-      return NextResponse.json({
-        success: false,
-        error: `Invalid phone format: ${config.alertPhoneNumber}`,
-        attempt: 0,
-      }, { status: 400 });
-    }
-    
-    // Validate message length (SMS limit: 160 characters)
-    let message = alert.message;
-    if (message.length > 160) {
-      console.warn('[SMS API] Message too long, truncating to 160 chars');
-      message = message.substring(0, 157) + '...';
-    }
-    
-    // ✅ SAFE: Create Twilio client using Function constructor (hidden from Webpack)
-    const client = getTwilioClient(config.twilioAccountSid, config.twilioAuthToken);
-    
-    // Retry loop with exponential backoff
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        console.log(`[SMS API] Sending SMS (attempt ${attempt + 1}/${maxAttempts})...`);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        
-        const twilioMessage = await Promise.race([
-          client.messages.create({
-            body: message,
-            from: config.twilioPhoneNumber,
-            to: normalizedPhone,
-          }),
-          new Promise<never>((_, reject) =>
-            controller.signal.addEventListener('abort', () =>
-              reject(new Error('SMS send timeout'))
-            )
-          ),
-        ]).finally(() => clearTimeout(timeoutId));
-        
-        console.log(`[SMS API] ✅ SMS sent successfully! Message ID: ${twilioMessage.sid}`);
-        
-        // Log to bot logs
+/**
+ * ✅ EXPORTED: Internal SMS sending function (can be used by other API routes)
+ * This avoids fetch() calls between API routes
+ */
+export async function sendSMSInternal(alert: SMSAlert): Promise<{
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  attempt: number;
+}> {
+  const maxAttempts = 5;
+  const timeoutMs = 10000;
+  
+  // Fetch SMS settings from database
+  const settings = await db.select().from(botSettings).limit(1);
+  
+  if (!settings || settings.length === 0) {
+    console.error('[SMS API] No bot settings found');
+    return {
+      success: false,
+      error: 'No bot settings configured',
+      attempt: 0,
+    };
+  }
+  
+  const config = settings[0];
+  
+  // Check if SMS alerts are enabled
+  if (!config.smsAlertsEnabled) {
+    console.log('[SMS API] SMS alerts disabled in settings');
+    return {
+      success: false,
+      error: 'SMS alerts disabled',
+      attempt: 0,
+    };
+  }
+  
+  // Validate configuration
+  if (!config.twilioAccountSid || !config.twilioAuthToken || !config.twilioPhoneNumber) {
+    console.error('[SMS API] Twilio credentials not configured');
+    return {
+      success: false,
+      error: 'Twilio credentials not configured',
+      attempt: 0,
+    };
+  }
+  
+  if (!config.alertPhoneNumber) {
+    console.error('[SMS API] Alert phone number not configured');
+    return {
+      success: false,
+      error: 'Alert phone number not configured',
+      attempt: 0,
+    };
+  }
+  
+  // Normalize and validate phone number
+  const normalizedPhone = normalizePhoneNumber(config.alertPhoneNumber);
+  if (!validateE164Format(normalizedPhone)) {
+    console.error('[SMS API] Invalid phone format:', config.alertPhoneNumber);
+    return {
+      success: false,
+      error: `Invalid phone format: ${config.alertPhoneNumber}`,
+      attempt: 0,
+    };
+  }
+  
+  // Validate message length (SMS limit: 160 characters)
+  let message = alert.message;
+  if (message.length > 160) {
+    console.warn('[SMS API] Message too long, truncating to 160 chars');
+    message = message.substring(0, 157) + '...';
+  }
+  
+  // ✅ SAFE: Create Twilio client using Function constructor (hidden from Webpack)
+  const client = getTwilioClient(config.twilioAccountSid, config.twilioAuthToken);
+  
+  // Retry loop with exponential backoff
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      console.log(`[SMS API] Sending SMS (attempt ${attempt + 1}/${maxAttempts})...`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      const twilioMessage = await Promise.race([
+        client.messages.create({
+          body: message,
+          from: config.twilioPhoneNumber,
+          to: normalizedPhone,
+        }),
+        new Promise<never>((_, reject) =>
+          controller.signal.addEventListener('abort', () =>
+            reject(new Error('SMS send timeout'))
+          )
+        ),
+      ]).finally(() => clearTimeout(timeoutId));
+      
+      console.log(`[SMS API] ✅ SMS sent successfully! Message ID: ${twilioMessage.sid}`);
+      
+      // Log to bot logs
+      await db.insert(botLogs).values({
+        timestamp: Date.now(),
+        level: 'info',
+        action: 'sms_sent',
+        message: `SMS alert sent: ${alert.context}`,
+        details: JSON.stringify({
+          messageId: twilioMessage.sid,
+          phone: normalizedPhone,
+          alertLevel: alert.alertLevel,
+          attempt: attempt + 1,
+        }),
+        createdAt: Date.now(),
+      });
+      
+      return {
+        success: true,
+        messageId: twilioMessage.sid,
+        attempt: attempt + 1,
+      };
+      
+    } catch (error: any) {
+      const errorMsg = error.message || String(error);
+      console.error(`[SMS API] Attempt ${attempt + 1} failed:`, errorMsg);
+      
+      // Check if error is retryable
+      if (!isRetryableError(errorMsg)) {
+        // Non-retryable error - fail immediately
         await db.insert(botLogs).values({
           timestamp: Date.now(),
-          level: 'info',
-          action: 'sms_sent',
-          message: `SMS alert sent: ${alert.context}`,
+          level: 'error',
+          action: 'sms_failed',
+          message: `SMS alert failed (non-retryable): ${alert.context}`,
           details: JSON.stringify({
-            messageId: twilioMessage.sid,
+            error: errorMsg,
             phone: normalizedPhone,
             alertLevel: alert.alertLevel,
             attempt: attempt + 1,
@@ -189,71 +222,55 @@ export async function POST(req: NextRequest) {
           createdAt: Date.now(),
         });
         
-        return NextResponse.json({
-          success: true,
-          messageId: twilioMessage.sid,
+        return {
+          success: false,
+          error: errorMsg,
           attempt: attempt + 1,
-        });
-        
-      } catch (error: any) {
-        const errorMsg = error.message || String(error);
-        console.error(`[SMS API] Attempt ${attempt + 1} failed:`, errorMsg);
-        
-        // Check if error is retryable
-        if (!isRetryableError(errorMsg)) {
-          // Non-retryable error - fail immediately
-          await db.insert(botLogs).values({
-            timestamp: Date.now(),
-            level: 'error',
-            action: 'sms_failed',
-            message: `SMS alert failed (non-retryable): ${alert.context}`,
-            details: JSON.stringify({
-              error: errorMsg,
-              phone: normalizedPhone,
-              alertLevel: alert.alertLevel,
-              attempt: attempt + 1,
-            }),
-            createdAt: Date.now(),
-          });
-          
-          return NextResponse.json({
-            success: false,
-            error: errorMsg,
-            attempt: attempt + 1,
-          }, { status: 500 });
-        }
-        
-        // Retryable error - wait before retry (except on last attempt)
-        if (attempt < maxAttempts - 1) {
-          const backoffDelay = calculateBackoffDelay(attempt);
-          console.log(`[SMS API] Retrying in ${backoffDelay.toFixed(0)}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, backoffDelay));
-        }
+        };
+      }
+      
+      // Retryable error - wait before retry (except on last attempt)
+      if (attempt < maxAttempts - 1) {
+        const backoffDelay = calculateBackoffDelay(attempt);
+        console.log(`[SMS API] Retrying in ${backoffDelay.toFixed(0)}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
       }
     }
+  }
+  
+  // All attempts failed
+  console.error('[SMS API] ❌ All retry attempts exhausted');
+  
+  await db.insert(botLogs).values({
+    timestamp: Date.now(),
+    level: 'error',
+    action: 'sms_failed',
+    message: `SMS alert failed after ${maxAttempts} attempts: ${alert.context}`,
+    details: JSON.stringify({
+      phone: normalizedPhone,
+      alertLevel: alert.alertLevel,
+      attempts: maxAttempts,
+    }),
+    createdAt: Date.now(),
+  });
+  
+  return {
+    success: false,
+    error: 'Max retry attempts exceeded',
+    attempt: maxAttempts,
+  };
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const alert: SMSAlert = await req.json();
+    const result = await sendSMSInternal(alert);
     
-    // All attempts failed
-    console.error('[SMS API] ❌ All retry attempts exhausted');
-    
-    await db.insert(botLogs).values({
-      timestamp: Date.now(),
-      level: 'error',
-      action: 'sms_failed',
-      message: `SMS alert failed after ${maxAttempts} attempts: ${alert.context}`,
-      details: JSON.stringify({
-        phone: normalizedPhone,
-        alertLevel: alert.alertLevel,
-        attempts: maxAttempts,
-      }),
-      createdAt: Date.now(),
-    });
-    
-    return NextResponse.json({
-      success: false,
-      error: 'Max retry attempts exceeded',
-      attempt: maxAttempts,
-    }, { status: 500 });
-    
+    if (result.success) {
+      return NextResponse.json(result);
+    } else {
+      return NextResponse.json(result, { status: 500 });
+    }
   } catch (error: any) {
     console.error('[SMS API] ❌ Endpoint error:', error.message);
     return NextResponse.json({

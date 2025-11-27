@@ -1,13 +1,10 @@
 // ============================================
-// 📱 SMS SERVICE - API CLIENT (NO TWILIO IMPORTS)
+// 📱 SMS SERVICE - HELPER FUNCTIONS
 // ============================================
-// ✅ This file NO LONGER imports twilio directly
-// ✅ All SMS logic moved to /api/bot/send-sms endpoint
-// ✅ This file only provides helper functions to call the API
-// ✅ Updated: 2025-01-27 - Fix server-side fetch with full URL
+// ✅ Updated: 2025-01-27 - Use sendSMSInternal directly for server-side calls
+// ✅ This file provides wrapper functions that work in both client and server contexts
 
-import { db } from '@/db';
-import { botSettings } from '@/db/schema';
+import { sendSMSInternal } from '@/app/api/bot/send-sms/route';
 
 export interface SMSAlert {
   phone: string; // E.164 format: +48123456789
@@ -24,60 +21,22 @@ export interface SMSResult {
 }
 
 /**
- * Validate E.164 phone number format
- */
-export function validateE164Format(phone: string): boolean {
-  return /^\+[1-9]\d{1,14}$/.test(phone);
-}
-
-/**
- * Normalize phone number to E.164 format
- */
-export function normalizePhoneNumber(phone: string, countryCode = '48'): string {
-  let normalized = phone.replace(/\D/g, '');
-  
-  if (!normalized.startsWith(countryCode) && normalized.length >= 9) {
-    if (normalized.startsWith('0')) {
-      normalized = normalized.substring(1);
-    }
-    normalized = countryCode + normalized;
-  }
-  
-  return '+' + normalized;
-}
-
-/**
- * Get base URL for API calls (works both server-side and client-side)
- */
-function getBaseUrl(): string {
-  // Client-side: use relative URL
-  if (typeof window !== 'undefined') {
-    return '';
-  }
-  
-  // Server-side: construct full URL
-  // Check for Vercel environment first
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  
-  // Fallback to localhost for local development
-  return 'http://localhost:3000';
-}
-
-/**
- * Send SMS by calling the API endpoint (NO DIRECT TWILIO IMPORT)
+ * Send SMS - works in both server-side and client-side contexts
+ * Server-side: calls sendSMSInternal directly
+ * Client-side: calls API endpoint via fetch
  */
 export async function sendSMS(alert: SMSAlert): Promise<SMSResult> {
+  // Check if we're in server-side context (API routes, server components)
+  if (typeof window === 'undefined') {
+    // ✅ SERVER-SIDE: Call sendSMSInternal directly (no fetch needed)
+    console.log('[SMS] Server-side: calling sendSMSInternal directly');
+    return await sendSMSInternal(alert);
+  }
+  
+  // ✅ CLIENT-SIDE: Use fetch to call API endpoint
   try {
-    console.log(`[SMS] Calling API endpoint to send SMS...`);
-    
-    const baseUrl = getBaseUrl();
-    const apiUrl = `${baseUrl}/api/bot/send-sms`;
-    
-    console.log(`[SMS] Using API URL: ${apiUrl}`);
-    
-    const response = await fetch(apiUrl, {
+    console.log('[SMS] Client-side: calling API endpoint');
+    const response = await fetch('/api/bot/send-sms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(alert)
@@ -86,10 +45,10 @@ export async function sendSMS(alert: SMSAlert): Promise<SMSResult> {
     const result = await response.json();
 
     if (response.ok && result.success) {
-      console.log(`[SMS] ✅ SMS sent successfully via API`);
+      console.log('[SMS] ✅ SMS sent successfully via API');
       return result;
     } else {
-      console.error(`[SMS] ❌ SMS API call failed:`, result.error);
+      console.error('[SMS] ❌ SMS API call failed:', result.error);
       return {
         success: false,
         error: result.error || 'API call failed',
@@ -97,7 +56,7 @@ export async function sendSMS(alert: SMSAlert): Promise<SMSResult> {
       };
     }
   } catch (error: any) {
-    console.error(`[SMS] ❌ Failed to call SMS API:`, error.message);
+    console.error('[SMS] ❌ Failed to call SMS API:', error.message);
     return {
       success: false,
       error: error.message,
@@ -117,7 +76,7 @@ export async function sendCloudFrontBlockAlert(serverInfo: {
   const message = `🚨 CRITICAL: Bot disabled! CloudFront blocks region: ${serverInfo.region || 'Unknown'}. All positions closed. Check dashboard.`;
   
   return await sendSMS({
-    phone: '', // Will be fetched from settings by API
+    phone: '', // Will be fetched from settings by sendSMSInternal
     message,
     alertLevel: 'critical',
     context: 'cloudfront_block',
@@ -131,7 +90,7 @@ export async function sendEmergencyCloseFailureAlert(failedPositions: number, to
   const message = `⚠️ ALERT: Emergency close failed for ${failedPositions}/${totalPositions} positions! Manual intervention needed. Check bot logs.`;
   
   return await sendSMS({
-    phone: '', // Will be fetched from settings by API
+    phone: '', // Will be fetched from settings by sendSMSInternal
     message,
     alertLevel: 'critical',
     context: 'emergency_close_failure',

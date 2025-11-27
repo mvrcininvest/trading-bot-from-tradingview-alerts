@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendSMS } from '@/lib/sms-service';
+import { sendSMSInternal } from '@/app/api/bot/send-sms/route';
 
 export async function POST(request: NextRequest) {
   try {
     console.log('\n📱 Testing SMS alert functionality...');
     
-    const result = await sendSMS({
-      phone: '', // Will be fetched from settings
+    const result = await sendSMSInternal({
+      phone: '', // Will be fetched from settings by sendSMSInternal
       message: '🧪 Test SMS: Trading bot alert system działa poprawnie!',
       alertLevel: 'info',
       context: 'test_sms',
