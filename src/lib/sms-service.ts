@@ -4,6 +4,7 @@
 // ✅ This file NO LONGER imports twilio directly
 // ✅ All SMS logic moved to /api/bot/send-sms endpoint
 // ✅ This file only provides helper functions to call the API
+// ✅ Updated: 2025-01-27 - Fix server-side fetch with full URL
 
 import { db } from '@/db';
 import { botSettings } from '@/db/schema';
@@ -46,13 +47,37 @@ export function normalizePhoneNumber(phone: string, countryCode = '48'): string 
 }
 
 /**
+ * Get base URL for API calls (works both server-side and client-side)
+ */
+function getBaseUrl(): string {
+  // Client-side: use relative URL
+  if (typeof window !== 'undefined') {
+    return '';
+  }
+  
+  // Server-side: construct full URL
+  // Check for Vercel environment first
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  // Fallback to localhost for local development
+  return 'http://localhost:3000';
+}
+
+/**
  * Send SMS by calling the API endpoint (NO DIRECT TWILIO IMPORT)
  */
 export async function sendSMS(alert: SMSAlert): Promise<SMSResult> {
   try {
     console.log(`[SMS] Calling API endpoint to send SMS...`);
     
-    const response = await fetch('/api/bot/send-sms', {
+    const baseUrl = getBaseUrl();
+    const apiUrl = `${baseUrl}/api/bot/send-sms`;
+    
+    console.log(`[SMS] Using API URL: ${apiUrl}`);
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(alert)
