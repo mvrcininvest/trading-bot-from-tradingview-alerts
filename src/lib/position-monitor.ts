@@ -845,7 +845,7 @@ async function savePositionToHistory(
 }
 
 // ============================================
-// 🏦 GET OPEN POSITIONS FROM BYBIT
+// 📊 GET OPEN POSITIONS FROM BYBIT
 // ============================================
 
 async function getBybitPositions(
@@ -881,6 +881,206 @@ async function getBybitPositions(
 }
 
 // ============================================
+// 📥 IMPORT MANUAL POSITIONS FROM BYBIT
+// ============================================
+
+async function importManualPositions(
+  apiKey: string,
+  apiSecret: string,
+  config: any
+): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  try {
+    console.log(`\n📥 [IMPORT] Checking for manual positions on Bybit...`);
+    
+    // Get all open positions from Bybit
+    const bybitPositions = await getBybitPositions(apiKey, apiSecret);
+    
+    if (bybitPositions.length === 0) {
+      console.log(`   ✅ No open positions on Bybit`);
+      return { imported: 0, skipped: 0, errors: [] };
+    }
+    
+    console.log(`   📊 Found ${bybitPositions.length} open positions on Bybit`);
+    
+    // Get existing positions from DB
+    const dbPositions = await db.select()
+      .from(botPositions)
+      .where(eq(botPositions.status, "open"));
+    
+    const dbSymbols = new Set(dbPositions.map(p => p.symbol));
+    
+    let imported = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    
+    for (const bybitPos of bybitPositions) {
+      const symbol = bybitPos.symbol;
+      const size = Math.abs(parseFloat(bybitPos.size));
+      
+      if (size === 0) {
+        continue;
+      }
+      
+      // Skip if already in DB
+      if (dbSymbols.has(symbol)) {
+        skipped++;
+        continue;
+      }
+      
+      console.log(`   🆕 Found manual position: ${symbol} ${bybitPos.side} (${size})`);
+      
+      try {
+        const entryPrice = parseFloat(bybitPos.avgPrice);
+        const leverage = parseInt(bybitPos.leverage);
+        const side = bybitPos.side === 'Buy' ? 'BUY' : 'SELL';
+        const isLong = side === 'BUY';
+        
+        // Calculate position value and margin
+        const positionValue = size * entryPrice;
+        const initialMargin = positionValue / leverage;
+        
+        // Get current price
+        const currentPrice = await getCurrentPrice(symbol, apiKey, apiSecret);
+        
+        // Calculate default SL/TP (conservative: 2% SL, 3% TP)
+        const slRR = config.defaultSlRR || 2.0;
+        const tp1RR = config.tp1RR || 3.0;
+        
+        const stopLoss = isLong 
+          ? entryPrice * (1 - slRR / 100)
+          : entryPrice * (1 + slRR / 100);
+        
+        const tp1Price = isLong
+          ? entryPrice * (1 + tp1RR / 100)
+          : entryPrice * (1 - tp1RR / 100);
+        
+        // Check if position already has SL/TP from Bybit
+        const hasSL = bybitPos.stopLoss && parseFloat(bybitPos.stopLoss) > 0;
+        const hasTP = bybitPos.takeProfit && parseFloat(bybitPos.takeProfit) > 0;
+        
+        const existingSL = hasSL ? parseFloat(bybitPos.stopLoss) : null;
+        const existingTP = hasTP ? parseFloat(bybitPos.takeProfit) : null;
+        
+        console.log(`   📊 Entry: ${entryPrice}, Current: ${currentPrice}, Leverage: ${leverage}x`);
+        console.log(`   🎯 Existing SL/TP: SL=${existingSL ? existingSL.toFixed(4) : 'NONE'}, TP=${existingTP ? existingTP.toFixed(4) : 'NONE'}`);
+        
+        // Insert into DB
+        const [insertedPos] = await db.insert(botPositions).values({
+          alertId: null, // Manual position - no alert
+          symbol,
+          side,
+          tier: 'Standard',
+          entryPrice,
+          quantity: size,
+          leverage,
+          stopLoss: existingSL || stopLoss,
+          currentSl: existingSL || stopLoss,
+          tp1Price: existingTP || tp1Price,
+          tp2Price: null,
+          tp3Price: null,
+          tp1Hit: false,
+          tp2Hit: false,
+          tp3Hit: false,
+          status: 'open',
+          openedAt: new Date().toISOString(),
+          initialMargin,
+          unrealisedPnl: parseFloat(bybitPos.unrealisedPnl || '0'),
+          lastUpdated: new Date().toISOString(),
+          confirmationCount: 1,
+          alertData: { imported: true, importedAt: new Date().toISOString() },
+        }).returning();
+        
+        console.log(`   ✅ Imported to DB (ID: ${insertedPos.id})`);
+        
+        // If position doesn't have SL/TP on Bybit, set them now
+        if (!hasSL || !hasTP) {
+          console.log(`   🔧 Setting missing SL/TP...`);
+          
+          if (!hasSL) {
+            const slAlgoId = await setAlgoOrderWithRetry(
+              symbol,
+              side,
+              size,
+              stopLoss,
+              "sl",
+              insertedPos.id,
+              apiKey,
+              apiSecret,
+              3
+            );
+            
+            if (slAlgoId) {
+              console.log(`   ✅ SL set @ ${stopLoss.toFixed(4)}`);
+            } else {
+              console.error(`   ⚠️ Failed to set SL - will retry on monitor cycle`);
+            }
+          }
+          
+          if (!hasTP) {
+            const tpAlgoId = await setAlgoOrderWithRetry(
+              symbol,
+              side,
+              size,
+              tp1Price,
+              "tp",
+              insertedPos.id,
+              apiKey,
+              apiSecret,
+              3
+            );
+            
+            if (tpAlgoId) {
+              console.log(`   ✅ TP set @ ${tp1Price.toFixed(4)}`);
+            } else {
+              console.error(`   ⚠️ Failed to set TP - will retry on monitor cycle`);
+            }
+          }
+        } else {
+          console.log(`   ✅ Position already has SL/TP - no action needed`);
+        }
+        
+        await logOkoAction(
+          insertedPos.id,
+          'MANUAL_IMPORT',
+          'manual_position_imported',
+          `Manual position imported from Bybit: ${symbol} ${side} @ ${entryPrice.toFixed(4)}`,
+          1,
+          { 
+            symbol, 
+            side, 
+            entryPrice, 
+            quantity: size, 
+            hasSL, 
+            hasTP,
+            existingSL,
+            existingTP
+          }
+        );
+        
+        imported++;
+        
+      } catch (error: any) {
+        const errMsg = `Failed to import ${symbol}: ${error.message}`;
+        console.error(`   ❌ ${errMsg}`);
+        errors.push(errMsg);
+      }
+    }
+    
+    if (imported > 0) {
+      console.log(`\n🎉 [IMPORT] Complete: ${imported} manual positions imported, ${skipped} already in DB`);
+    } else {
+      console.log(`   ✅ All positions already tracked in DB`);
+    }
+    
+    return { imported, skipped, errors };
+    
+  } catch (error: any) {
+    console.error(`[IMPORT] Error:`, error.message);
+    return { imported: 0, skipped: 0, errors: [error.message] };
+  }
+}
+
+// ============================================
 // 🤖 MAIN MONITOR FUNCTION (WITH OKO INTEGRATION)
 // ============================================
 
@@ -911,6 +1111,17 @@ export async function monitorAndManagePositions(silent = true) {
     console.log(`\n🔄 [AUTO-SYNC] Checking for new closed positions on Bybit...`);
     const syncResult = await autoSyncClosedPositions(apiKey, apiSecret);
     console.log(`   📊 Sync result: ${syncResult.synced} new, ${syncResult.skipped} already in database`);
+
+    // ============================================
+    // 📥 IMPORT MANUAL POSITIONS: Check for positions on Bybit not in DB
+    // ============================================
+    console.log(`\n📥 [IMPORT] Checking for manual positions...`);
+    const importResult = await importManualPositions(apiKey, apiSecret, config);
+    console.log(`   📊 Import result: ${importResult.imported} imported, ${importResult.skipped} already tracked`);
+    
+    if (importResult.errors.length > 0) {
+      console.error(`   ⚠️ Import errors: ${importResult.errors.join(', ')}`);
+    }
 
     // Get bot positions from DB
     const dbPositions = await db.select()
@@ -987,7 +1198,8 @@ export async function monitorAndManagePositions(silent = true) {
         slTpFixed: 0, 
         emergencyClosed: 0, 
         okoActions: 0,
-        ghostOrdersCleaned: ghostCleanupResult.cleaned
+        ghostOrdersCleaned: ghostCleanupResult.cleaned,
+        manualImported: importResult.imported
       };
     }
 
@@ -1083,7 +1295,8 @@ export async function monitorAndManagePositions(silent = true) {
         emergencyClosed: closedCount,
         okoActions: closedCount,
         accountDrawdownTriggered: true,
-        ghostOrdersCleaned: ghostCleanupResult.cleaned
+        ghostOrdersCleaned: ghostCleanupResult.cleaned,
+        manualImported: importResult.imported
       };
     }
 
@@ -1754,6 +1967,26 @@ export async function monitorAndManagePositions(silent = true) {
                 console.error(`   Final size: ${verification.finalSize}`);
                 console.error(`   Error: ${verification.error}`);
                 
+                // ✅✅✅ ALWAYS LOG TO DIAGNOSTICS - EVEN IF EVERYTHING ELSE FAILS
+                try {
+                  await db.insert(diagnosticFailures).values({
+                    positionId: dbPos.id,
+                    failureType: 'emergency_close_verification_failed',
+                    severity: 'critical',
+                    errorMessage: `Position ${symbol} still open after close - Size: ${verification.finalSize}, Error: ${verification.error}`,
+                    metadata: {
+                      symbol,
+                      closeOrderId,
+                      finalSize: verification.finalSize,
+                      verificationError: verification.error,
+                      timestamp: new Date().toISOString()
+                    },
+                    createdAt: new Date().toISOString(),
+                  });
+                } catch (logError: any) {
+                  console.error(`   ❌ Failed to log diagnostic failure: ${logError.message}`);
+                }
+                
                 await logOkoAction(
                   dbPos.id,
                   'CLOSE_VERIFICATION_FAILED',
@@ -1825,6 +2058,39 @@ export async function monitorAndManagePositions(silent = true) {
               
             } catch (error: any) {
               console.error(`   ❌ CRITICAL: Failed to close position without SL: ${error.message}`);
+              
+              // ✅✅✅ ALWAYS LOG TO DIAGNOSTICS - EVEN IF EVERYTHING ELSE FAILS
+              try {
+                await db.insert(diagnosticFailures).values({
+                  positionId: dbPos.id,
+                  failureType: 'emergency_close_exception',
+                  severity: 'critical',
+                  errorMessage: `Emergency close threw exception: ${error.message}`,
+                  metadata: {
+                    symbol,
+                    side,
+                    quantity,
+                    entryPrice: dbPos.entryPrice,
+                    currentPrice,
+                    unrealisedPnl: livePnl,
+                    error: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                  },
+                  createdAt: new Date().toISOString(),
+                });
+                console.log(`   ✅ Diagnostic failure logged to database`);
+              } catch (logError: any) {
+                console.error(`   ❌ Failed to log diagnostic failure: ${logError.message}`);
+                // If we can't even log to DB, at least log to console
+                console.error(`   📋 CRITICAL UNLOGGED ERROR:`, {
+                  positionId: dbPos.id,
+                  symbol,
+                  error: error.message,
+                  stack: error.stack
+                });
+              }
+              
               errors.push(`CRITICAL: ${symbol} - Failed to close position without SL`);
               
               await logOkoAction(
@@ -1833,7 +2099,7 @@ export async function monitorAndManagePositions(silent = true) {
                 'emergency_close_exception',
                 `Exception during emergency close: ${error.message}`,
                 1,
-                { symbol, error: error.message }
+                { symbol, error: error.message, stack: error.stack }
               );
               
               // DO NOT ban symbol if we couldn't close - keep position in DB for retry
@@ -2107,6 +2373,7 @@ export async function monitorAndManagePositions(silent = true) {
       emergencyClosed,
       okoActions,
       ghostOrdersCleaned: ghostCleanupResult.cleaned,
+      manualImported: importResult.imported,
       errors,
       details,
     };
