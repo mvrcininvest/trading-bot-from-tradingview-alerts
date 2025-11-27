@@ -13,14 +13,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // ✅ DISABLED: Custom loader and turbopack to fix Vercel chunk loading errors
-  // turbopack: {
-  //   rules: {
-  //     "*.{jsx,tsx}": {
-  //       loaders: [LOADER]
-  //     }
-  //   }
-  // },
   // Force cache invalidation for Vercel deployments
   generateBuildId: async () => {
     return `build-${Date.now()}`;
@@ -29,6 +21,16 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
+  // ✅ Mark twilio as external to prevent webpack bundling issues
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Mark twilio as external on server-side builds
+      config.externals = config.externals || [];
+      config.externals.push('twilio');
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
+// Orchids restart: 1764152845217
