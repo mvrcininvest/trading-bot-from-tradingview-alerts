@@ -4,7 +4,7 @@
 // ✅ Updated: 2025-01-27 - Use sendSMSInternal directly for server-side calls
 // ✅ This file provides wrapper functions that work in both client and server contexts
 
-import { sendSMSInternal } from '@/app/api/bot/send-sms/route';
+import { sendSMSInternal } from '@/lib/sms-internal';
 
 export interface SMSAlert {
   phone: string; // E.164 format: +48123456789
