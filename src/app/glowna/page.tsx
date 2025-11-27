@@ -431,114 +431,94 @@ export default function GlownaPage() {
 
         {/* 📊 API STATUS INFO PANEL */}
         {isGeoBlocked && (
-          <Card className="border-blue-700/40 bg-blue-900/20">
+          <Card className="border-orange-700/40 bg-orange-900/20">
             <CardContent className="py-4">
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-blue-400" />
-                  <h3 className="text-lg font-bold text-blue-200">Status Połączenia z Bybit API</h3>
+                  <AlertTriangle className="h-5 w-5 text-orange-400" />
+                  <h3 className="text-lg font-bold text-orange-200">⚠️ CloudFront Blokada API - Co to znaczy?</h3>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* ❌ Nie działa */}
-                  <div className="bg-red-950/40 p-4 rounded-lg border border-red-700/50">
-                    <div className="flex items-center gap-2 mb-3">
-                      <XCircle className="h-5 w-5 text-red-400" />
-                      <h4 className="font-semibold text-red-200">❌ Zablokowane przez CloudFront</h4>
+                {/* GŁÓWNE WYJAŚNIENIE */}
+                <div className="bg-red-950/40 p-4 rounded-lg border border-red-700/50">
+                  <p className="text-sm font-semibold text-red-200 mb-2">
+                    🚫 Bybit CloudFront blokuje połączenia z tego serwera
+                  </p>
+                  <ul className="space-y-1 text-xs text-red-300">
+                    <li>• <strong>Nie możesz zobaczyć:</strong> Salda konta, otwartych pozycji live, aktualnego PnL</li>
+                    <li>• <strong>Region (Washington) nie ma znaczenia</strong> - CloudFront blokuje niezależnie od lokalizacji</li>
+                    <li>• <strong>Zmiana regionu NIE rozwiązuje problemu</strong> - to nie jest problem lokalizacji</li>
+                  </ul>
+                </div>
+
+                {/* ROZWIĄZANIE */}
+                <div className="bg-green-950/40 p-4 rounded-lg border border-green-700/50">
+                  <p className="text-sm font-bold text-green-200 mb-3">✅ JEDYNE ROZWIĄZANIE - Whitelist IP na Bybit</p>
+                  <div className="space-y-3 text-sm text-green-300">
+                    <div>
+                      <p className="font-semibold mb-1">Krok 1: Sprawdź IP serwera</p>
+                      <a 
+                        href="/ip-diagnostics" 
+                        className="text-xs underline hover:text-green-200 flex items-center gap-1"
+                      >
+                        → Otwórz zakładkę "IP Diagnostics" <Globe className="h-3 w-3" />
+                      </a>
                     </div>
-                    <ul className="space-y-2 text-sm text-red-300">
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-0.5">•</span>
-                        <span>Pobieranie salda konta z giełdy</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-0.5">•</span>
-                        <span>Pobieranie otwartych pozycji live</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-0.5">•</span>
-                        <span>Synchronizacja live PnL</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-0.5">•</span>
-                        <span>Otwieranie nowych pozycji (jeśli bot włączony)</span>
-                      </li>
-                    </ul>
-                    <div className="mt-3 text-xs text-red-400">
-                      <p>🌐 <strong>Region aktualny:</strong> Washington D.C. (iad1)</p>
-                      <p>⚠️ CloudFront nadal blokuje ten region</p>
+                    <div>
+                      <p className="font-semibold mb-1">Krok 2: Dodaj IP do whitelisty</p>
+                      <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                        <li>Zaloguj się na <a href="https://www.bybit.com" target="_blank" rel="noopener noreferrer" className="underline">Bybit.com</a></li>
+                        <li>Przejdź do: API Management → API Keys</li>
+                        <li>Edytuj swój API Key</li>
+                        <li>W sekcji "IP Restrictions" dodaj IP z kroku 1</li>
+                        <li>Zapisz zmiany</li>
+                      </ol>
                     </div>
-                  </div>
-                  
-                  {/* ✅ Działa normalnie */}
-                  <div className="bg-green-950/40 p-4 rounded-lg border border-green-700/50">
-                    <div className="flex items-center gap-2 mb-3">
-                      <CheckCircle className="h-5 w-5 text-green-400" />
-                      <h4 className="font-semibold text-green-200">✅ Działa Normalnie</h4>
-                    </div>
-                    <ul className="space-y-2 text-sm text-green-300">
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        <span>Historia zamkniętych pozycji (z bazy danych)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        <span>Statystyki i wykresy (z bazy danych)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        <span>Logi i alerty (z bazy danych)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        <span>SMS alerty (działają niezależnie)</span>
-                      </li>
-                    </ul>
-                    <div className="mt-3 text-xs text-green-400">
-                      <p>💾 Wszystkie dane historyczne są dostępne</p>
-                      <p>📊 Dashboard i analityka działają bez przeszkód</p>
+                    <div className="text-xs text-green-400 bg-green-900/30 p-2 rounded">
+                      <strong>⚡ Po dodaniu IP:</strong> CloudFront przestanie blokować połączenia w ciągu 1-2 minut
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-orange-950/40 p-4 rounded-lg border border-orange-700/50">
-                  <p className="text-sm font-semibold text-orange-200 mb-3">💡 Możliwe rozwiązania:</p>
-                  <div className="space-y-2 text-sm text-orange-300">
-                    <div className="flex items-start gap-2">
-                      <span className="font-bold min-w-[20px]">1.</span>
-                      <div>
-                        <strong>Whitelist IP na Bybit:</strong>
-                        <br />
-                        <span className="text-xs">Dodaj IP serwera do whitelisty w API Management na Bybit → CloudFront przestanie blokować</span>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="font-bold min-w-[20px]">2.</span>
-                      <div>
-                        <strong>Sprawdź IP diagnostics:</strong>
-                        <br />
-                        <span className="text-xs">Przejdź do zakładki "IP Diagnostics" aby zobaczyć aktualny region i IP serwera</span>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="font-bold min-w-[20px]">3.</span>
-                      <div>
-                        <strong>Historia działa:</strong>
-                        <br />
-                        <span className="text-xs">Przejdź do "Historia Pozycji" lub "Statystyki" - wszystkie dane historyczne są dostępne</span>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="font-bold min-w-[20px]">4.</span>
-                      <div>
-                        <strong>Manual check na Bybit:</strong>
-                        <br />
-                        <a href="https://www.bybit.com/app/user/assets/home" target="_blank" rel="noopener noreferrer" className="text-xs underline hover:text-orange-100">
-                          Sprawdź saldo ręcznie na Bybit Dashboard →
-                        </a>
-                      </div>
-                    </div>
+                {/* CO DZIAŁA */}
+                <div className="bg-blue-950/40 p-4 rounded-lg border border-blue-700/50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle className="h-5 w-5 text-blue-400" />
+                    <h4 className="font-semibold text-blue-200">✅ Co działa pomimo blokady:</h4>
                   </div>
+                  <ul className="space-y-2 text-sm text-blue-300">
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">•</span>
+                      <span><strong>Historia pozycji</strong> - wszystkie zamknięte transakcje są w bazie danych</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">•</span>
+                      <span><strong>Statystyki</strong> - wykresy, win ratio, PnL analysis</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">•</span>
+                      <span><strong>Logi i alerty</strong> - pełna historia działań bota</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">•</span>
+                      <span><strong>SMS powiadomienia</strong> - działają bez przeszkód</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* MANUAL CHECK */}
+                <div className="bg-gray-800/40 p-3 rounded-lg border border-gray-700/50">
+                  <p className="text-sm text-gray-300">
+                    <strong>💡 Tymczasowo:</strong> Sprawdź saldo i pozycje ręcznie na{' '}
+                    <a 
+                      href="https://www.bybit.com/app/user/assets/home" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-orange-300 underline hover:text-orange-200"
+                    >
+                      Bybit Dashboard →
+                    </a>
+                  </p>
                 </div>
               </div>
             </CardContent>
