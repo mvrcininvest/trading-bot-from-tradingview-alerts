@@ -7,7 +7,7 @@
 
 import { db } from '@/db';
 import { botSettings, botLogs } from '@/db/schema';
-import Twilio from 'twilio';
+import twilio from 'twilio';
 
 export interface SMSAlert {
   phone: string;
@@ -143,7 +143,7 @@ export async function sendSMSInternal(alert: SMSAlert): Promise<{
   }
   
   // ✅ SAFE: Direct import works because serverExternalPackages: ['twilio'] in next.config.ts
-  const client = Twilio(config.twilioAccountSid, config.twilioAuthToken);
+  const client = twilio(config.twilioAccountSid, config.twilioAuthToken);
   
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
