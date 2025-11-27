@@ -73,7 +73,6 @@ export default function GlownaPage() {
     try {
       setPositionsError(null);
       
-      // ✅ AUTOMATYCZNA SYNCHRONIZACJA - Sprawdź czy pozycje w bazie są aktualne
       try {
         const syncTimestamp = Date.now();
         await fetch(`/api/bot/sync-positions?_t=${syncTimestamp}`, { 
@@ -87,7 +86,6 @@ export default function GlownaPage() {
         console.log("[Auto-sync] Pozycje zsynchronizowane z giełdą");
       } catch (syncError) {
         console.warn("[Auto-sync] Błąd synchronizacji (kontynuuję):", syncError);
-        // Check if it's CloudFront block
         const errorMsg = syncError instanceof Error ? syncError.message : String(syncError);
         if (errorMsg.includes("CloudFront") || errorMsg.includes("403")) {
           setIsGeoBlocked(true);
@@ -95,7 +93,6 @@ export default function GlownaPage() {
         }
       }
 
-      // ✅ Dodaj timestamp do URL aby wymusić świeże dane
       const timestamp = Date.now();
       const response = await fetch(`/api/bot/positions?_t=${timestamp}`, {
         cache: "no-store",
@@ -115,13 +112,11 @@ export default function GlownaPage() {
       console.log("[Glowna] API Response:", data);
       
       if (data.success && Array.isArray(data.positions)) {
-        // Filtruj tylko pozycje ze statusem 'open' (nie 'closed')
         const openPositions = data.positions.filter((p: any) => p.status === 'open');
         console.log("[Glowna] Open positions:", openPositions.length);
         setPositions(openPositions);
         setPositionsError(null);
       } else if (data.error) {
-        // Check for CloudFront block in error
         if (data.error.includes("CloudFront") || data.error.includes("403")) {
           setIsGeoBlocked(true);
           setPositionsError("CloudFront blokuje dostęp do API Bybit");
@@ -133,7 +128,6 @@ export default function GlownaPage() {
       console.error("Load positions error:", err);
       const errorMsg = err instanceof Error ? err.message : "Nieznany błąd";
       
-      // Check for CloudFront block
       if (errorMsg.includes("CloudFront") || errorMsg.includes("403")) {
         setIsGeoBlocked(true);
         setPositionsError("CloudFront blokuje dostęp do API Bybit");
@@ -147,7 +141,6 @@ export default function GlownaPage() {
 
   const loadBotSettings = async () => {
     try {
-      // ✅ FORCE NO CACHE with unique timestamp
       const timestamp = Date.now();
       const randomParam = Math.random().toString(36).substring(7);
       const response = await fetch(`/api/bot/settings?_t=${timestamp}&_r=${randomParam}`, {
@@ -169,10 +162,8 @@ export default function GlownaPage() {
       console.log("[Glowna] Settings Raw Response:", JSON.stringify(data, null, 2));
       
       if (data.success && data.settings) {
-        // ✅ CRITICAL FIX: Strict boolean check - handle all truthy values
         const rawValue = data.settings.botEnabled;
         
-        // Check for all possible truthy representations
         const isBotEnabled = Boolean(
           rawValue === true || 
           rawValue === 1 || 
@@ -181,7 +172,6 @@ export default function GlownaPage() {
           rawValue === "TRUE"
         );
         
-        // ✅ CHECK FOR CLOUDFRONT LOCK
         const hasCloudFrontLock = data.settings.migrationDate?.includes('CLOUDFRONT_LOCK');
         setCloudFrontLockActive(hasCloudFrontLock || false);
         
@@ -249,7 +239,6 @@ export default function GlownaPage() {
         setBalanceError(null);
         setIsGeoBlocked(false);
       } else {
-        // Check for geo-blocking
         const errorMessage = data.message || "Nie można pobrać salda";
         if (errorMessage.includes("CloudFront") || errorMessage.includes("403") || errorMessage.includes("blocked")) {
           setIsGeoBlocked(true);
@@ -262,7 +251,6 @@ export default function GlownaPage() {
       console.error("Load balance error:", err);
       const errorMsg = err instanceof Error ? err.message : "Błąd połączenia";
       
-      // Check for CloudFront block
       if (errorMsg.includes("CloudFront") || errorMsg.includes("403") || errorMsg.includes("blocked")) {
         setIsGeoBlocked(true);
         setBalanceError("CloudFront blokuje dostęp");
@@ -306,7 +294,6 @@ export default function GlownaPage() {
       return;
     }
 
-    // Show dialog instead of confirm()
     setShowCloseAllDialog(true);
   };
 
@@ -315,7 +302,6 @@ export default function GlownaPage() {
     setClosingAll(true);
 
     try {
-      // Pobierz credentials
       const timestamp = Date.now();
       const settingsResponse = await fetch(`/api/bot/settings?_t=${timestamp}`, {
         cache: "no-store",
@@ -346,7 +332,7 @@ export default function GlownaPage() {
 
       if (data.success) {
         toast.success(`✅ Zamknięto ${data.results.positionsClosed} pozycji`);
-        await loadPositions(); // Odśwież listę
+        await loadPositions();
       } else {
         toast.error(`Błąd: ${data.message}`);
       }
@@ -358,10 +344,8 @@ export default function GlownaPage() {
     }
   };
 
-  // Oblicz total PnL
   const totalUnrealisedPnl = positions.reduce((sum, p) => sum + (p.unrealisedPnl || 0), 0);
 
-  // Znajdź USDT balance
   const usdtBalance = balance.find((b) => b.asset === "USDT");
   const totalBalance = usdtBalance ? parseFloat(usdtBalance.free) + parseFloat(usdtBalance.locked) : 0;
 
@@ -481,9 +465,8 @@ export default function GlownaPage() {
                       </li>
                     </ul>
                     <div className="mt-3 text-xs text-red-400">
-                      <p>💡 Aktualny region: Washington D.C. (iad1)</p>
-                      <p>🌐 CloudFront blokuje ten region</p>
-                      <p className="mt-2 text-orange-300">⚠️ <strong>Możliwa przyczyna:</strong> Stary deployment w Singapurze (sin1) nadal aktywny</p>
+                      <p>🌐 <strong>Region aktualny:</strong> Washington D.C. (iad1)</p>
+                      <p>⚠️ CloudFront nadal blokuje ten region</p>
                     </div>
                   </div>
                   
@@ -518,49 +501,48 @@ export default function GlownaPage() {
                   </div>
                 </div>
 
-                <div className="bg-orange-950/40 p-3 rounded-lg border border-orange-700/50">
-                  <p className="text-sm font-semibold text-orange-200 mb-2">💡 Co możesz zrobić:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-orange-300">
-                    <div>
-                      <strong>1. Zrób redeploy na Vercel:</strong>
-                      <br />
-                      Region zmieniony na Washington D.C. (iad1)
+                <div className="bg-orange-950/40 p-4 rounded-lg border border-orange-700/50">
+                  <p className="text-sm font-semibold text-orange-200 mb-3">💡 Możliwe rozwiązania:</p>
+                  <div className="space-y-2 text-sm text-orange-300">
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold min-w-[20px]">1.</span>
+                      <div>
+                        <strong>Whitelist IP na Bybit:</strong>
+                        <br />
+                        <span className="text-xs">Dodaj IP serwera do whitelisty w API Management na Bybit → CloudFront przestanie blokować</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong>2. Sprawdź saldo manualnie:</strong>
-                      <br />
-                      <a href="https://www.bybit.com/app/user/assets/home" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-100">
-                        Bybit Dashboard →
-                      </a>
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold min-w-[20px]">2.</span>
+                      <div>
+                        <strong>Sprawdź IP diagnostics:</strong>
+                        <br />
+                        <span className="text-xs">Przejdź do zakładki "IP Diagnostics" aby zobaczyć aktualny region i IP serwera</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong>3. Test diagnostyczny:</strong>
-                      <br />
-                      Przejdź do zakładki "IP Diagnostics" po redeploy
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold min-w-[20px]">3.</span>
+                      <div>
+                        <strong>Historia działa:</strong>
+                        <br />
+                        <span className="text-xs">Przejdź do "Historia Pozycji" lub "Statystyki" - wszystkie dane historyczne są dostępne</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong>4. Historia działa:</strong>
-                      <br />
-                      Przejdź do "Historia Pozycji" lub "Statystyki"
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold min-w-[20px]">4.</span>
+                      <div>
+                        <strong>Manual check na Bybit:</strong>
+                        <br />
+                        <a href="https://www.bybit.com/app/user/assets/home" target="_blank" rel="noopener noreferrer" className="text-xs underline hover:text-orange-100">
+                          Sprawdź saldo ręcznie na Bybit Dashboard →
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* 🚨 CRITICAL GEO-BLOCK WARNING */}
-        {isGeoBlocked && (
-          <Alert className="border-red-700 bg-red-900/20 border">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            <AlertDescription className="text-red-100">
-              <p className="font-bold text-base">🚨 CloudFront Blokuje Dostęp do API Bybit</p>
-              <p className="text-sm mt-1">
-                Region zmieniony na <strong>Washington D.C. (iad1)</strong>. Zrób <strong>redeploy na Vercel</strong> aby zmiany zadziałały.
-              </p>
-            </AlertDescription>
-          </Alert>
         )}
 
         {/* Status Cards */}
