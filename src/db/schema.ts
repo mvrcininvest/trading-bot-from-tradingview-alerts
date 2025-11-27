@@ -77,7 +77,7 @@ export const botSettings = sqliteTable('bot_settings', {
   slAsMarginPercent: integer('sl_as_margin_percent', { mode: 'boolean' }).notNull().default(false),
   slMarginRiskPercent: real('sl_margin_risk_percent').notNull().default(2.0),
   
-  // Oko Saurona Settings
+  // Oko Saurona Settings - FIXED COLUMN NAMES
   okoEnabled: integer('oko_enabled', { mode: 'boolean' }).notNull().default(false),
   okoCheckFrequencySeconds: integer('oko_check_frequency_seconds').notNull().default(5),
   okoAccountDrawdownPercent: real('oko_account_drawdown_percent').notNull().default(50.0),
