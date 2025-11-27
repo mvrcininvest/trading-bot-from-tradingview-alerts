@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+// Force Vercel rebuild - 2025-11-27 15:15
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
