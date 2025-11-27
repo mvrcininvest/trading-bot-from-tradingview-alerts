@@ -1,10 +1,13 @@
 // ============================================
-// 🔐 BYBIT API - DIRECT CONNECTION (Singapore Region)
+// 🔐 BYBIT API - PROXY CONNECTION (FLY.IO SINGAPORE)
 // ============================================
 
-// ✅ SINGAPORE FIX: Try direct connection since Vercel is now in Singapore (Asian region)
-// Bybit should NOT block Singapore region
-const BYBIT_BASE_URL = 'https://api.bybit.com';
+// ✅ PROXY FIX: Use working proxy server in Singapore
+// CRITICAL: CloudFront blocks direct connections from Vercel - MUST use proxy
+const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || 'https://bybit-proxy-dawn-snowflake-6188.fly.dev';
+const BYBIT_BASE_URL = BYBIT_PROXY_URL; // Use proxy, NOT direct api.bybit.com
+
+console.log(`🔧 [BYBIT CONFIG] Using proxy: ${BYBIT_BASE_URL}`);
 
 // ✅ FIX: Enhanced headers to avoid CloudFront blocking
 const ENHANCED_HEADERS = {
