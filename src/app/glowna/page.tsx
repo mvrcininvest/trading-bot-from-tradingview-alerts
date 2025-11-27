@@ -481,8 +481,9 @@ export default function GlownaPage() {
                       </li>
                     </ul>
                     <div className="mt-3 text-xs text-red-400">
-                      <p>💡 Region: {process.env.NEXT_PUBLIC_VERCEL_REGION || 'Singapur (domyślnie)'}</p>
-                      <p>🌐 CloudFront blokuje dostęp z tego regionu</p>
+                      <p>💡 Aktualny region: Washington D.C. (iad1)</p>
+                      <p>🌐 CloudFront blokuje ten region</p>
+                      <p className="mt-2 text-orange-300">⚠️ <strong>Możliwa przyczyna:</strong> Stary deployment w Singapurze (sin1) nadal aktywny</p>
                     </div>
                   </div>
                   
@@ -521,21 +522,21 @@ export default function GlownaPage() {
                   <p className="text-sm font-semibold text-orange-200 mb-2">💡 Co możesz zrobić:</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-orange-300">
                     <div>
-                      <strong>1. Sprawdź saldo manualnie:</strong>
+                      <strong>1. Zrób redeploy na Vercel:</strong>
+                      <br />
+                      Region zmieniony na Washington D.C. (iad1)
+                    </div>
+                    <div>
+                      <strong>2. Sprawdź saldo manualnie:</strong>
                       <br />
                       <a href="https://www.bybit.com/app/user/assets/home" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-100">
                         Bybit Dashboard →
                       </a>
                     </div>
                     <div>
-                      <strong>2. Zmień region Vercel:</strong>
+                      <strong>3. Test diagnostyczny:</strong>
                       <br />
-                      Spróbuj Europe (fra1) lub USA (iad1)
-                    </div>
-                    <div>
-                      <strong>3. Kontakt z Bybit:</strong>
-                      <br />
-                      Poproś o odblokowanie twojego regionu
+                      Przejdź do zakładki "IP Diagnostics" po redeploy
                     </div>
                     <div>
                       <strong>4. Historia działa:</strong>
@@ -549,14 +550,14 @@ export default function GlownaPage() {
           </Card>
         )}
 
-        {/* 🚨 CRITICAL GEO-BLOCK WARNING - Keep existing but make it less prominent */}
+        {/* 🚨 CRITICAL GEO-BLOCK WARNING */}
         {isGeoBlocked && (
           <Alert className="border-red-700 bg-red-900/20 border">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <AlertDescription className="text-red-100">
               <p className="font-bold text-base">🚨 CloudFront Blokuje Dostęp do API Bybit</p>
               <p className="text-sm mt-1">
-                Nie można pobrać danych live z giełdy. Zobacz panel powyżej dla szczegółów.
+                Region zmieniony na <strong>Washington D.C. (iad1)</strong>. Zrób <strong>redeploy na Vercel</strong> aby zmiany zadziałały.
               </p>
             </AlertDescription>
           </Alert>
