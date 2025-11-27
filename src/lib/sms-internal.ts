@@ -2,15 +2,11 @@
 // 📱 INTERNAL SMS SERVICE - SERVER-SIDE ONLY
 // ============================================
 // ✅ Shared function for sending SMS across API routes
-// ✅ Uses Twilio with CommonJS require (Vercel-safe)
-// ✅ Updated: 2025-01-27 - Fixed Vercel build by using require() instead of import
+// ✅ Uses Twilio REST API directly (no package needed - Vercel-safe!)
+// ✅ Updated: 2025-01-27 - Use Twilio REST API via fetch() for maximum compatibility
 
 import { db } from '@/db';
 import { botSettings, botLogs } from '@/db/schema';
-
-// ✅ VERCEL FIX: Use CommonJS require() instead of ESM import
-// This avoids TypeScript compilation errors on Vercel
-const twilio: any = require('twilio');
 
 export interface SMSAlert {
   phone: string;
@@ -69,6 +65,60 @@ function normalizePhoneNumber(phone: string, countryCode = '48'): string {
   }
   
   return '+' + normalized;
+}
+
+/**
+ * ✅ Send SMS using Twilio REST API (no package dependency!)
+ * More reliable for Vercel deployments than node.js package
+ */
+async function sendTwilioSMS(
+  accountSid: string,
+  authToken: string,
+  from: string,
+  to: string,
+  body: string,
+  timeoutMs: number
+): Promise<{ sid: string }> {
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  
+  // Create Basic Auth header
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+  
+  // Create form body
+  const formBody = new URLSearchParams({
+    From: from,
+    To: to,
+    Body: body,
+  });
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formBody.toString(),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Twilio API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return { sid: data.sid };
+    
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 /**
@@ -145,29 +195,19 @@ export async function sendSMSInternal(alert: SMSAlert): Promise<{
     message = message.substring(0, 157) + '...';
   }
   
-  // ✅ SAFE: Direct import works because serverExternalPackages: ['twilio'] in next.config.ts
-  const client = twilio(config.twilioAccountSid, config.twilioAuthToken);
-  
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       console.log(`[SMS Internal] Sending SMS (attempt ${attempt + 1}/${maxAttempts})...`);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
-      const twilioMessage = await Promise.race([
-        client.messages.create({
-          body: message,
-          from: config.twilioPhoneNumber,
-          to: normalizedPhone,
-        }),
-        new Promise<never>((_, reject) =>
-          controller.signal.addEventListener('abort', () =>
-            reject(new Error('SMS send timeout'))
-          )
-        ),
-      ]).finally(() => clearTimeout(timeoutId));
+      const twilioMessage = await sendTwilioSMS(
+        config.twilioAccountSid,
+        config.twilioAuthToken,
+        config.twilioPhoneNumber,
+        normalizedPhone,
+        message,
+        timeoutMs
+      );
       
       console.log(`[SMS Internal] ✅ SMS sent successfully! Message ID: ${twilioMessage.sid}`);
       

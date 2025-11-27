@@ -1,6 +1,7 @@
 // Force Vercel rebuild - 2025-11-27 15:15
 // Force Vercel rebuild - 2025-11-27 15:24 - Fixed Twilio import (lowercase)
 // Force Vercel rebuild - 2025-11-27 15:30 - Use CommonJS require() for Twilio
+// Force Vercel rebuild - 2025-11-27 15:35 - Use Twilio REST API (no package dependency!)
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
@@ -23,21 +24,6 @@ const nextConfig: NextConfig = {
   // ✅ Optimize production build
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-  },
-  // ✅ CRITICAL: Mark twilio as server-only external package (Next.js 15 approach)
-  serverExternalPackages: ['twilio'],
-  
-  // ✅ WEBPACK FALLBACK: Force webpack to externalize twilio completely
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Mark twilio as external for server-side bundles
-      config.externals = config.externals || [];
-      config.externals.push({
-        twilio: 'commonjs twilio',
-      });
-    }
-    
-    return config;
   },
 };
 
