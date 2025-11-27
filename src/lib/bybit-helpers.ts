@@ -1,11 +1,9 @@
 // ============================================
-// 🔐 BYBIT API - DIRECT CONNECTION (NO PROXY)
+// 🔐 BYBIT API - PROXY CONNECTION (FIX GEO-BLOCK)
 // ============================================
 
-// ✅ REMOVED: Static import causes webpack to bundle twilio at build time
-// import { sendCloudFrontBlockAlert, sendEmergencyCloseFailureAlert } from './sms-service';
-
-const BYBIT_API_BASE = 'https://api.bybit.com';
+// ✅ RESTORED: Use proxy to bypass CloudFront geo-blocking
+const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || 'https://bybit-proxy-dawn-snowflake-6188.fly.dev';
 
 // ✅ FIX: Enhanced headers to avoid CloudFront blocking
 const ENHANCED_HEADERS = {
@@ -175,7 +173,7 @@ export async function createBybitSignature(
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (ENHANCED HEADERS)
+// 🔄 BYBIT API REQUEST HELPER (WITH PROXY)
 // ============================================
 
 export async function makeBybitRequest(
@@ -189,8 +187,8 @@ export async function makeBybitRequest(
   const timestamp = Date.now().toString();
   const recvWindow = '5000';
   
-  // Build direct URL to Bybit API
-  let url = `${BYBIT_API_BASE}${endpoint}`;
+  // ✅ RESTORED: Build proxy URL
+  let url = `${BYBIT_PROXY_URL}${endpoint}`;
   let paramsString = '';
   
   if (method === 'GET' && queryParams && Object.keys(queryParams).length > 0) {
@@ -224,7 +222,7 @@ export async function makeBybitRequest(
     options.body = JSON.stringify(body);
   }
 
-  console.log(`🌐 [DIRECT] ${method} ${endpoint}`);
+  console.log(`🌐 [PROXY] ${method} ${endpoint}`);
 
   const response = await fetch(url, options);
   const responseText = await response.text();
