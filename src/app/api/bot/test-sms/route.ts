@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendSMSInternal } from '@/app/api/bot/send-sms/route';
+import { sendSMSInternal } from '@/lib/sms-internal';
 
 export async function POST(request: NextRequest) {
   try {
