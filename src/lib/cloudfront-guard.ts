@@ -5,6 +5,10 @@
 // 1. SMS Alert
 // 2. Bot Disable
 // 3. Close All Positions
+// 
+// 🔒 SMART LOCK SYSTEM:
+// - Lock aktywny dopóki użytkownik nie włączy bota ręcznie
+// - Nie wysyła duplikatów SMS dopóki bot nie zostanie reaktywowany
 
 import { db } from '@/db';
 import { botSettings, botPositions } from '@/db/schema';
@@ -12,10 +16,69 @@ import { eq } from 'drizzle-orm';
 import { sendCloudFrontBlockAlert } from '@/lib/sms-service';
 import crypto from 'crypto';
 
-let isShuttingDown = false; // Prevent multiple simultaneous shutdowns
-
 // ✅ DIRECT BYBIT API CONNECTION
 const BYBIT_API_BASE = 'https://api.bybit.com';
+
+// ============================================
+// 🔒 CHECK IF CLOUDFRONT SHUTDOWN IS ACTIVE
+// ============================================
+async function isShutdownLockActive(): Promise<boolean> {
+  try {
+    const settings = await db.select().from(botSettings).limit(1);
+    
+    if (settings.length === 0) {
+      return false;
+    }
+    
+    // Check if bot is disabled AND migration_date contains "cloudfront"
+    // We use migration_date as a flag field (hacky but works without schema change)
+    const isDisabled = !settings[0].botEnabled;
+    const hasCloudFrontFlag = settings[0].migrationDate?.includes('CLOUDFRONT_LOCK');
+    
+    const lockActive = isDisabled && hasCloudFrontFlag;
+    
+    console.log(`[CloudFront Guard] Lock status check:`, {
+      botEnabled: settings[0].botEnabled,
+      hasCloudFrontFlag,
+      lockActive
+    });
+    
+    return lockActive;
+  } catch (error: any) {
+    console.error('[CloudFront Guard] Error checking lock status:', error);
+    return false;
+  }
+}
+
+// ============================================
+// 🔓 RESET CLOUDFRONT LOCK (called when user enables bot)
+// ============================================
+export async function resetCloudFrontLock(): Promise<void> {
+  try {
+    const settings = await db.select().from(botSettings).limit(1);
+    
+    if (settings.length === 0) {
+      return;
+    }
+    
+    // Check if CloudFront flag exists
+    if (settings[0].migrationDate?.includes('CLOUDFRONT_LOCK')) {
+      console.log('[CloudFront Guard] 🔓 Resetting CloudFront lock - user enabled bot');
+      
+      // Remove CloudFront flag
+      await db.update(botSettings)
+        .set({
+          migrationDate: null,
+          updatedAt: new Date().toISOString()
+        })
+        .where(eq(botSettings.id, settings[0].id));
+      
+      console.log('✅ CloudFront lock reset - może wysłać kolejny SMS jeśli znowu będzie blokada');
+    }
+  } catch (error: any) {
+    console.error('[CloudFront Guard] Error resetting lock:', error);
+  }
+}
 
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER
@@ -165,22 +228,25 @@ export function isCloudFrontBlock(response: Response, text: string): boolean {
 
 /**
  * Emergency shutdown: Disable bot, close positions, send SMS
+ * 🔒 SMART LOCK: Won't send duplicate SMS until user manually enables bot
  */
 export async function triggerEmergencyShutdown(reason: string, serverInfo?: any): Promise<void> {
-  if (isShuttingDown) {
-    console.log('[CloudFront Guard] 🚨 Shutdown already in progress - skipping duplicate');
+  // ✅ Check if lock is already active
+  const lockActive = await isShutdownLockActive();
+  
+  if (lockActive) {
+    console.log('[CloudFront Guard] 🔒 Lock aktywny - bot już wyłączony przez poprzedni CloudFront block');
+    console.log('   → Nie wysyłam SMS dopóki użytkownik nie włączy bota ręcznie');
     return;
   }
-  
-  isShuttingDown = true;
   
   try {
     console.log('\n🚨🚨🚨 [CLOUDFRONT GUARD] EMERGENCY SHUTDOWN TRIGGERED 🚨🚨🚨');
     console.log(`Reason: ${reason}`);
     console.log(`Server Info:`, serverInfo);
     
-    // Step 1: Disable bot immediately
-    console.log('\n🔴 Step 1: Disabling bot...');
+    // Step 1: Disable bot immediately + SET CLOUDFRONT LOCK FLAG
+    console.log('\n🔴 Step 1: Disabling bot + setting CloudFront lock...');
     const settings = await db.select().from(botSettings).limit(1);
     
     if (settings.length === 0) {
@@ -189,11 +255,13 @@ export async function triggerEmergencyShutdown(reason: string, serverInfo?: any)
       await db.update(botSettings)
         .set({
           botEnabled: false,
+          migrationDate: `CLOUDFRONT_LOCK_${new Date().toISOString()}`, // Flag for lock
           updatedAt: new Date().toISOString()
         })
         .where(eq(botSettings.id, settings[0].id));
       
-      console.log('✅ Bot DISABLED');
+      console.log('✅ Bot DISABLED + CloudFront lock SET');
+      console.log('   🔒 Lock będzie aktywny dopóki użytkownik nie włączy bota ręcznie');
     }
     
     // Step 2: Get all open positions
@@ -233,7 +301,7 @@ export async function triggerEmergencyShutdown(reason: string, serverInfo?: any)
       }
     }
     
-    // Step 4: Send SMS alert
+    // Step 4: Send SMS alert (TYLKO RAZ - dzięki lock-owi)
     console.log('\n📱 Step 4: Sending SMS alert...');
     try {
       const smsResult = await sendCloudFrontBlockAlert(serverInfo || {
@@ -254,16 +322,11 @@ export async function triggerEmergencyShutdown(reason: string, serverInfo?: any)
     console.log('   ✅ Bot disabled');
     console.log(`   ✅ ${openPositions.length} positions handled`);
     console.log('   ✅ SMS alert sent');
-    console.log('\n⚠️ Manual intervention required - check dashboard for details\n');
+    console.log('   🔒 Lock aktywny - nie wyśle więcej SMS dopóki nie włączysz bota');
+    console.log('\n⚠️ Aby zresetować lock: Włącz bota ręcznie w ustawieniach\n');
     
   } catch (error: any) {
     console.error('[CloudFront Guard] ❌ Emergency shutdown error:', error.message);
-  } finally {
-    // Reset flag after 5 minutes to allow retry if needed
-    setTimeout(() => {
-      isShuttingDown = false;
-      console.log('[CloudFront Guard] Reset shutdown flag');
-    }, 5 * 60 * 1000);
   }
 }
 
@@ -295,7 +358,7 @@ export async function bybitFetchWithGuard(
         status: response.status
       };
       
-      // Trigger emergency shutdown
+      // Trigger emergency shutdown (with smart lock)
       await triggerEmergencyShutdown(
         `CloudFront block detected in ${context}`,
         serverInfo

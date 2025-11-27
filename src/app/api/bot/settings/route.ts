@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { botSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { resetCloudFrontLock } from '@/lib/cloudfront-guard';
 
 const VALID_POSITION_SIZE_MODES = ['percent', 'fixed_amount'];
 const VALID_LEVERAGE_MODES = ['from_alert', 'fixed'];
@@ -54,6 +55,12 @@ async function updateSettings(request: NextRequest) {
         error: 'Bot settings not found. Cannot update non-existent settings.',
         code: 'SETTINGS_NOT_FOUND' 
       }, { status: 404 });
+    }
+
+    // ✅ RESET CLOUDFRONT LOCK when user enables bot
+    if (body.botEnabled === true) {
+      console.log('[Bot Settings] User is enabling bot - checking CloudFront lock...');
+      await resetCloudFrontLock();
     }
 
     // Validate positionSizeMode

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle, Smartphone, Globe } from "lucide-react";
+import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle, Smartphone, Globe, CheckCircle, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -53,6 +53,7 @@ export default function GlownaPage() {
   const [testingSMS, setTestingSMS] = useState(false);
   const [isGeoBlocked, setIsGeoBlocked] = useState(false);
   const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [cloudFrontLockActive, setCloudFrontLockActive] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -180,10 +181,15 @@ export default function GlownaPage() {
           rawValue === "TRUE"
         );
         
+        // ✅ CHECK FOR CLOUDFRONT LOCK
+        const hasCloudFrontLock = data.settings.migrationDate?.includes('CLOUDFRONT_LOCK');
+        setCloudFrontLockActive(hasCloudFrontLock || false);
+        
         console.log("[Glowna] Bot Status Debug:");
         console.log("  Raw Value:", rawValue);
         console.log("  Type:", typeof rawValue);
         console.log("  Converted to Boolean:", isBotEnabled);
+        console.log("  CloudFront Lock Active:", hasCloudFrontLock);
         
         setBotEnabled(isBotEnabled);
       } else {
@@ -415,42 +421,143 @@ export default function GlownaPage() {
           </div>
         </div>
 
-        {/* 🚨 CRITICAL GEO-BLOCK WARNING - VERY VISIBLE */}
-        {isGeoBlocked && (
-          <Alert className="border-red-700 bg-red-900/30 border-2">
-            <AlertTriangle className="h-6 w-6 text-red-400" />
-            <AlertDescription className="text-red-100">
-              <div className="space-y-3">
-                <p className="font-bold text-xl">🚨 CLOUDFRONT BLOKUJE DOSTĘP DO API BYBIT</p>
-                <p className="text-base">
-                  Twój serwer Vercel w Singapurze jest <strong className="text-red-300">zablokowany przez CloudFront</strong> i nie może pobrać danych z Bybit API.
+        {/* 🔒 CLOUDFRONT LOCK INFO */}
+        {cloudFrontLockActive && (
+          <Alert className="border-orange-700 bg-orange-900/30 border-2">
+            <Lock className="h-6 w-6 text-orange-400" />
+            <AlertDescription className="text-orange-100">
+              <div className="space-y-2">
+                <p className="font-bold text-lg">🔒 CloudFront Lock Aktywny</p>
+                <p className="text-sm">
+                  Bot został automatycznie wyłączony przez system CloudFront Guard po wykryciu blokady API.
                 </p>
-                <div className="bg-red-950/60 p-4 rounded-lg space-y-2 text-sm border border-red-700/50">
-                  <p className="font-semibold text-red-200">❌ Nie działa:</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2">
-                    <li>Pobieranie salda konta z Bybit</li>
-                    <li>Pobieranie otwartych pozycji z giełdy</li>
-                    <li>Synchronizacja live PnL</li>
-                  </ul>
-                  
-                  <p className="font-semibold text-green-200 mt-3">✅ Działa normalnie:</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2">
-                    <li>Historia zamkniętych pozycji (z lokalnej bazy danych)</li>
-                    <li>Statystyki i wykresy (z lokalnej bazy danych)</li>
-                    <li>Wszystkie dane historyczne</li>
-                  </ul>
-                  
-                  <div className="bg-orange-950/40 p-3 rounded mt-4 border border-orange-700/50">
-                    <p className="font-semibold text-orange-200">💡 Co możesz zrobić:</p>
-                    <ul className="list-decimal list-inside space-y-1 ml-2 mt-2">
-                      <li><strong>Sprawdź saldo manualnie</strong> na <a href="https://www.bybit.com/app/user/assets/home" target="_blank" rel="noopener noreferrer" className="underline text-orange-100 hover:text-orange-50">Bybit Dashboard →</a></li>
-                      <li><strong>Zmień region Vercel</strong> na Europe lub USA (może pomóc)</li>
-                      <li><strong>Skontaktuj się z Bybit Support</strong> aby odblokować Twój region</li>
-                      <li><strong>Użyj VPN</strong> na serwerze (trudniejsze w Vercel)</li>
+                <p className="text-sm">
+                  <strong>Aby zresetować lock i móc otrzymać kolejny SMS alert:</strong>
+                </p>
+                <ol className="list-decimal list-inside text-sm space-y-1 ml-2">
+                  <li>Przejdź do zakładki "Ustawienia Bota"</li>
+                  <li>Włącz bota ręcznie przełącznikiem</li>
+                  <li>Lock zostanie automatycznie zresetowany</li>
+                  <li>Jeśli CloudFront znowu zablokuje API, otrzymasz kolejny SMS</li>
+                </ol>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* 📊 API STATUS INFO PANEL */}
+        {isGeoBlocked && (
+          <Card className="border-blue-700/40 bg-blue-900/20">
+            <CardContent className="py-4">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-blue-400" />
+                  <h3 className="text-lg font-bold text-blue-200">Status Połączenia z Bybit API</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* ❌ Nie działa */}
+                  <div className="bg-red-950/40 p-4 rounded-lg border border-red-700/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <XCircle className="h-5 w-5 text-red-400" />
+                      <h4 className="font-semibold text-red-200">❌ Zablokowane przez CloudFront</h4>
+                    </div>
+                    <ul className="space-y-2 text-sm text-red-300">
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-0.5">•</span>
+                        <span>Pobieranie salda konta z giełdy</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-0.5">•</span>
+                        <span>Pobieranie otwartych pozycji live</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-0.5">•</span>
+                        <span>Synchronizacja live PnL</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-0.5">•</span>
+                        <span>Otwieranie nowych pozycji (jeśli bot włączony)</span>
+                      </li>
                     </ul>
+                    <div className="mt-3 text-xs text-red-400">
+                      <p>💡 Region: {process.env.NEXT_PUBLIC_VERCEL_REGION || 'Singapur (domyślnie)'}</p>
+                      <p>🌐 CloudFront blokuje dostęp z tego regionu</p>
+                    </div>
+                  </div>
+                  
+                  {/* ✅ Działa normalnie */}
+                  <div className="bg-green-950/40 p-4 rounded-lg border border-green-700/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                      <h4 className="font-semibold text-green-200">✅ Działa Normalnie</h4>
+                    </div>
+                    <ul className="space-y-2 text-sm text-green-300">
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-0.5">•</span>
+                        <span>Historia zamkniętych pozycji (z bazy danych)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-0.5">•</span>
+                        <span>Statystyki i wykresy (z bazy danych)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-0.5">•</span>
+                        <span>Logi i alerty (z bazy danych)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-0.5">•</span>
+                        <span>SMS alerty (działają niezależnie)</span>
+                      </li>
+                    </ul>
+                    <div className="mt-3 text-xs text-green-400">
+                      <p>💾 Wszystkie dane historyczne są dostępne</p>
+                      <p>📊 Dashboard i analityka działają bez przeszkód</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-orange-950/40 p-3 rounded-lg border border-orange-700/50">
+                  <p className="text-sm font-semibold text-orange-200 mb-2">💡 Co możesz zrobić:</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-orange-300">
+                    <div>
+                      <strong>1. Sprawdź saldo manualnie:</strong>
+                      <br />
+                      <a href="https://www.bybit.com/app/user/assets/home" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-100">
+                        Bybit Dashboard →
+                      </a>
+                    </div>
+                    <div>
+                      <strong>2. Zmień region Vercel:</strong>
+                      <br />
+                      Spróbuj Europe (fra1) lub USA (iad1)
+                    </div>
+                    <div>
+                      <strong>3. Kontakt z Bybit:</strong>
+                      <br />
+                      Poproś o odblokowanie twojego regionu
+                    </div>
+                    <div>
+                      <strong>4. Historia działa:</strong>
+                      <br />
+                      Przejdź do "Historia Pozycji" lub "Statystyki"
+                    </div>
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 🚨 CRITICAL GEO-BLOCK WARNING - Keep existing but make it less prominent */}
+        {isGeoBlocked && (
+          <Alert className="border-red-700 bg-red-900/20 border">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <AlertDescription className="text-red-100">
+              <p className="font-bold text-base">🚨 CloudFront Blokuje Dostęp do API Bybit</p>
+              <p className="text-sm mt-1">
+                Nie można pobrać danych live z giełdy. Zobacz panel powyżej dla szczegółów.
+              </p>
             </AlertDescription>
           </Alert>
         )}
