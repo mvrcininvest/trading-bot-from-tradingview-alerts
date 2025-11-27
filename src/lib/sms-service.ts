@@ -1,4 +1,4 @@
-import twilio from 'twilio';
+const twilio = require('twilio');
 import { db } from '@/db';
 import { botSettings, botLogs } from '@/db/schema';
 import { eq } from 'drizzle-orm';
