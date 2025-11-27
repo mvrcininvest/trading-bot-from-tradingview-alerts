@@ -4,6 +4,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { bybitRateLimiter } from './rate-limiter';
 import { classifyBybitError } from './error-classifier';
 import { cleanupOrphanedOrders, getRealizedPnlFromBybit } from './bybit-helpers';
+import { bybitFetchWithGuard } from './cloudfront-guard';
 import {
   runOkoGuard,
   runAccountOkoGuard,
@@ -37,7 +38,7 @@ function createBybitSignature(
 }
 
 // ============================================
-// 📊 GET CURRENT MARKET PRICE
+// 📊 GET CURRENT MARKET PRICE WITH CLOUDFRONT PROTECTION
 // ============================================
 
 async function getCurrentPrice(
@@ -59,12 +60,18 @@ async function getCurrentPrice(
     "Content-Type": "application/json",
   };
   
-  const response = await fetch(`${BYBIT_API_BASE}/v5/market/tickers?${params}`, {
-    method: "GET",
-    headers,
-  });
+  // ✅ USE CLOUDFRONT GUARD
+  const response = await bybitFetchWithGuard(
+    `${BYBIT_API_BASE}/v5/market/tickers?${params}`,
+    {
+      method: "GET",
+      headers,
+    },
+    `Get Price ${symbol}`
+  );
 
-  const data = await response.json();
+  const text = await response.text();
+  const data = JSON.parse(text);
 
   if (data.retCode !== 0 || !data.result?.list || data.result.list.length === 0) {
     throw new Error(`Failed to get price for ${symbol}`);
@@ -74,7 +81,7 @@ async function getCurrentPrice(
 }
 
 // ============================================
-// 🏦 GET ALGO ORDERS (CHECK EXISTING SL/TP)
+// 🏦 GET ALGO ORDERS WITH CLOUDFRONT PROTECTION
 // ============================================
 
 async function getAlgoOrders(
@@ -95,12 +102,18 @@ async function getAlgoOrders(
     "Content-Type": "application/json",
   };
   
-  const response = await fetch(`${BYBIT_API_BASE}/v5/order/realtime?${params}`, {
-    method: "GET",
-    headers,
-  });
+  // ✅ USE CLOUDFRONT GUARD
+  const response = await bybitFetchWithGuard(
+    `${BYBIT_API_BASE}/v5/order/realtime?${params}`,
+    {
+      method: "GET",
+      headers,
+    },
+    "Get Algo Orders"
+  );
 
-  const data = await response.json();
+  const text = await response.text();
+  const data = JSON.parse(text);
 
   if (data.retCode !== 0) {
     console.error(`Failed to get algo orders: ${data.retMsg}`);
@@ -111,7 +124,7 @@ async function getAlgoOrders(
 }
 
 // ============================================
-// 📊 GET RECENT CLOSED POSITIONS FROM BYBIT (LAST 24H)
+// 📊 GET RECENT CLOSED POSITIONS FROM BYBIT (LAST 24H) WITH CLOUDFRONT PROTECTION
 // ============================================
 
 async function getRecentClosedPositionsFromBybit(
@@ -138,12 +151,18 @@ async function getRecentClosedPositionsFromBybit(
       "Content-Type": "application/json",
     };
     
-    const response = await fetch(`${BYBIT_API_BASE}/v5/position/closed-pnl?${params}`, {
-      method: "GET",
-      headers,
-    });
+    // ✅ USE CLOUDFRONT GUARD
+    const response = await bybitFetchWithGuard(
+      `${BYBIT_API_BASE}/v5/position/closed-pnl?${params}`,
+      {
+        method: "GET",
+        headers,
+      },
+      "Get Recent Closed Positions"
+    );
 
-    const data = await response.json();
+    const text = await response.text();
+    const data = JSON.parse(text);
 
     if (data.retCode !== 0) {
       console.error(`[Sync] Failed to get closed positions: ${data.retMsg}`);
@@ -845,7 +864,7 @@ async function savePositionToHistory(
 }
 
 // ============================================
-// 📊 GET OPEN POSITIONS FROM BYBIT
+// 📊 GET OPEN POSITIONS FROM BYBIT WITH CLOUDFRONT PROTECTION
 // ============================================
 
 async function getBybitPositions(
@@ -866,12 +885,18 @@ async function getBybitPositions(
     "Content-Type": "application/json",
   };
   
-  const response = await fetch(`${BYBIT_API_BASE}/v5/position/list?${params}`, {
-    method: "GET",
-    headers,
-  });
+  // ✅ USE CLOUDFRONT GUARD
+  const response = await bybitFetchWithGuard(
+    `${BYBIT_API_BASE}/v5/position/list?${params}`,
+    {
+      method: "GET",
+      headers,
+    },
+    "Get Bybit Positions"
+  );
 
-  const data = await response.json();
+  const text = await response.text();
+  const data = JSON.parse(text);
 
   if (data.retCode !== 0) {
     return [];
