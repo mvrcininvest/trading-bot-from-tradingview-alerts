@@ -1,9 +1,10 @@
 // ============================================
-// 🔐 BYBIT API - PROXY CONNECTION (FIX GEO-BLOCK)
+// 🔐 BYBIT API - DIRECT CONNECTION (Singapore Region)
 // ============================================
 
-// ✅ RESTORED: Use proxy to bypass CloudFront geo-blocking
-const BYBIT_PROXY_URL = process.env.BYBIT_PROXY_URL || 'https://bybit-proxy-dawn-snowflake-6188.fly.dev';
+// ✅ SINGAPORE FIX: Try direct connection since Vercel is now in Singapore (Asian region)
+// Bybit should NOT block Singapore region
+const BYBIT_BASE_URL = 'https://api.bybit.com';
 
 // ✅ FIX: Enhanced headers to avoid CloudFront blocking
 const ENHANCED_HEADERS = {
@@ -173,7 +174,7 @@ export async function createBybitSignature(
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (WITH PROXY)
+// 🔄 BYBIT API REQUEST HELPER (DIRECT CONNECTION)
 // ============================================
 
 export async function makeBybitRequest(
@@ -187,8 +188,8 @@ export async function makeBybitRequest(
   const timestamp = Date.now().toString();
   const recvWindow = '5000';
   
-  // ✅ RESTORED: Build proxy URL
-  let url = `${BYBIT_PROXY_URL}${endpoint}`;
+  // ✅ SINGAPORE FIX: Use direct Bybit connection (no proxy)
+  let url = `${BYBIT_BASE_URL}${endpoint}`;
   let paramsString = '';
   
   if (method === 'GET' && queryParams && Object.keys(queryParams).length > 0) {
@@ -222,7 +223,7 @@ export async function makeBybitRequest(
     options.body = JSON.stringify(body);
   }
 
-  console.log(`🌐 [PROXY] ${method} ${endpoint}`);
+  console.log(`🌐 [DIRECT] ${method} ${endpoint}`);
 
   const response = await fetch(url, options);
   const responseText = await response.text();
