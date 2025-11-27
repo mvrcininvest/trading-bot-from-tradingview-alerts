@@ -2,13 +2,14 @@
 // 📱 SMS API ENDPOINT - SERVER-SIDE TWILIO
 // ============================================
 // ✅ This endpoint safely imports twilio on the server side
-// ✅ Webpack won't bundle twilio because it's a server-only API route
+// ✅ Webpack won't bundle twilio because serverExternalPackages in next.config.ts
 // ✅ Called by sms-service.ts client-side helper functions
-// ✅ Updated: 2025-01-27 - Export internal function for server-side use
+// ✅ Updated: 2025-01-27 - Fixed ESM import issue (direct import instead of Function constructor)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { botSettings, botLogs } from '@/db/schema';
+import Twilio from 'twilio';
 
 interface SMSAlert {
   phone: string;
@@ -68,17 +69,6 @@ function normalizePhoneNumber(phone: string, countryCode = '48'): string {
   
   return '+' + normalized;
 }
-
-// ✅ CRITICAL: Use Function constructor to completely hide import from Webpack static analysis
-// This prevents Webpack from trying to bundle twilio during build time
-const getTwilioClient = new Function(
-  'accountSid',
-  'authToken',
-  `
-  const twilioModule = require('twilio');
-  return twilioModule(accountSid, authToken);
-  `
-);
 
 /**
  * ✅ EXPORTED: Internal SMS sending function (can be used by other API routes)
@@ -154,8 +144,8 @@ export async function sendSMSInternal(alert: SMSAlert): Promise<{
     message = message.substring(0, 157) + '...';
   }
   
-  // ✅ SAFE: Create Twilio client using Function constructor (hidden from Webpack)
-  const client = getTwilioClient(config.twilioAccountSid, config.twilioAuthToken);
+  // ✅ SAFE: Direct import works because serverExternalPackages: ['twilio'] in next.config.ts
+  const client = Twilio(config.twilioAccountSid, config.twilioAuthToken);
   
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
