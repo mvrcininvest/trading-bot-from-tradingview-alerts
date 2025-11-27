@@ -2,7 +2,8 @@
 // 🔐 BYBIT API - DIRECT CONNECTION (NO PROXY)
 // ============================================
 
-import { sendCloudFrontBlockAlert, sendEmergencyCloseFailureAlert } from './sms-service';
+// ✅ REMOVED: Static import causes webpack to bundle twilio at build time
+// import { sendCloudFrontBlockAlert, sendEmergencyCloseFailureAlert } from './sms-service';
 
 const BYBIT_API_BASE = 'https://api.bybit.com';
 
@@ -106,9 +107,10 @@ async function handleCloudFrontBlock(endpoint: string, responseText: string) {
     });
     console.error(`✅ Logged to Oko Saurona`);
 
-    // 6. 📱 SEND SMS ALERT
+    // 6. 📱 SEND SMS ALERT - ✅ FIX: Use dynamic import to avoid bundling twilio at build time
     console.error(`📱 Sending SMS alert...`);
     try {
+      const { sendCloudFrontBlockAlert } = await import('./sms-service');
       const smsResult = await sendCloudFrontBlockAlert(serverInfo);
       if (smsResult.success) {
         console.error(`✅ SMS alert sent successfully (Message ID: ${smsResult.messageId})`);

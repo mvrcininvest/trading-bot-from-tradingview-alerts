@@ -1,4 +1,3 @@
-const twilio = require('twilio');
 import { db } from '@/db';
 import { botSettings, botLogs } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -71,6 +70,14 @@ function isRetryableError(error: string): boolean {
 }
 
 /**
+ * Lazy load Twilio client to avoid webpack bundling issues
+ */
+function getTwilioClient(accountSid: string, authToken: string) {
+  const twilio = require('twilio');
+  return twilio(accountSid, authToken);
+}
+
+/**
  * Send SMS with retry logic (up to 5 attempts with exponential backoff)
  */
 export async function sendSMS(alert: SMSAlert): Promise<SMSResult> {
@@ -137,8 +144,8 @@ export async function sendSMS(alert: SMSAlert): Promise<SMSResult> {
     alert.message = alert.message.substring(0, 157) + '...';
   }
   
-  // Initialize Twilio client
-  const client = twilio(config.twilioAccountSid, config.twilioAuthToken);
+  // ✅ FIX: Lazy load Twilio client here instead of top-level
+  const client = getTwilioClient(config.twilioAccountSid, config.twilioAuthToken);
   
   // Retry loop with exponential backoff
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
