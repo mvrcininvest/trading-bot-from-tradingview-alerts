@@ -79,11 +79,14 @@ export const botSettings = sqliteTable('bot_settings', {
   
   // Oko Saurona Settings
   okoEnabled: integer('oko_enabled', { mode: 'boolean' }).notNull().default(false),
-  okoAccountDrawdownThreshold: integer('oko_account_drawdown_threshold').notNull().default(50),
-  okoCapitulationThreshold: integer('oko_capitulation_threshold').notNull().default(3),
-  okoBanDurationHours: integer('oko_ban_duration_hours').notNull().default(24),
+  okoCheckFrequencySeconds: integer('oko_check_frequency_seconds').notNull().default(5),
+  okoAccountDrawdownPercent: real('oko_account_drawdown_percent').notNull().default(50.0),
+  okoAccountDrawdownCloseAll: integer('oko_account_drawdown_close_all', { mode: 'boolean' }).notNull().default(true),
+  okoAccountDrawdownChecks: integer('oko_account_drawdown_checks').notNull().default(3),
   okoTimeBasedExitHours: integer('oko_time_based_exit_hours').notNull().default(24),
   okoTimeBasedExitEnabled: integer('oko_time_based_exit_enabled', { mode: 'boolean' }).notNull().default(false),
+  okoCapitulationBanDurationHours: integer('oko_capitulation_ban_duration_hours').notNull().default(6),
+  okoCapitulationChecks: integer('oko_capitulation_checks').notNull().default(1),
   okoCapitulationCounter: integer('oko_capitulation_counter').notNull().default(0),
   okoBannedSymbols: text('oko_banned_symbols'),
   
