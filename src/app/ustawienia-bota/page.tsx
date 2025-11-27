@@ -82,9 +82,85 @@ export default function BotSettingsPage() {
   const [twilioAuthToken, setTwilioAuthToken] = useState("")
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("")
 
+  // ✅ NEW: Phone validation state
+  const [phoneValidationError, setPhoneValidationError] = useState("")
+  const [twilioPhoneValidationError, setTwilioPhoneValidationError] = useState("")
+
   useEffect(() => {
     fetchSettings()
   }, [])
+
+  // ✅ NEW: Validate Polish phone number in real-time
+  const validatePolishPhone = (phone: string): string => {
+    if (!phone || phone.trim() === '') {
+      return ''
+    }
+
+    // Remove all non-digit characters for validation
+    const digitsOnly = phone.replace(/\D/g, '')
+    
+    // Check if starts with +48
+    if (phone.startsWith('+48')) {
+      const afterCountryCode = phone.substring(3).replace(/\D/g, '')
+      if (afterCountryCode.length === 0) {
+        return 'Wprowadź numer telefonu po kodzie kraju'
+      }
+      if (afterCountryCode.length < 9) {
+        return `Za krótki numer (${afterCountryCode.length}/9 cyfr). Polskie numery mają 9 cyfr.`
+      }
+      if (afterCountryCode.length > 9) {
+        return `Za długi numer (${afterCountryCode.length}/9 cyfr). Polskie numery mają 9 cyfr.`
+      }
+      // Valid!
+      return ''
+    }
+    
+    // If starts with 48 (without +)
+    if (digitsOnly.startsWith('48')) {
+      if (digitsOnly.length < 11) {
+        return `Za krótki numer (${digitsOnly.length - 2}/9 cyfr po kodzie kraju)`
+      }
+      if (digitsOnly.length > 11) {
+        return `Za długi numer (${digitsOnly.length - 2}/9 cyfr po kodzie kraju)`
+      }
+      return ''
+    }
+    
+    // If starts with 0 (Polish local format)
+    if (digitsOnly.startsWith('0')) {
+      if (digitsOnly.length < 10) {
+        return `Za krótki numer (${digitsOnly.length - 1}/9 cyfr). Dodaj '+48' na początku.`
+      }
+      if (digitsOnly.length > 10) {
+        return `Za długi numer (${digitsOnly.length - 1}/9 cyfr). Dodaj '+48' na początku.`
+      }
+      return ''
+    }
+    
+    // Local format without country code
+    if (digitsOnly.length < 9) {
+      return `Za krótki numer (${digitsOnly.length}/9 cyfr). Format: +48XXXXXXXXX`
+    }
+    if (digitsOnly.length > 9) {
+      return `Za długi numer (${digitsOnly.length}/9 cyfr). Format: +48XXXXXXXXX`
+    }
+    
+    return ''
+  }
+
+  // ✅ NEW: Handle phone number change with validation
+  const handlePhoneNumberChange = (value: string) => {
+    setAlertPhoneNumber(value)
+    const error = validatePolishPhone(value)
+    setPhoneValidationError(error)
+  }
+
+  // ✅ NEW: Handle Twilio phone number change with validation
+  const handleTwilioPhoneChange = (value: string) => {
+    setTwilioPhoneNumber(value)
+    const error = validatePolishPhone(value)
+    setTwilioPhoneValidationError(error)
+  }
 
   const fetchSettings = async () => {
     try {
@@ -1387,14 +1463,19 @@ export default function BotSettingsPage() {
                     <Input 
                       type="tel" 
                       value={alertPhoneNumber} 
-                      onChange={(e) => setAlertPhoneNumber(e.target.value)}
+                      onChange={(e) => handlePhoneNumberChange(e.target.value)}
                       placeholder="+48123456789"
                       className="text-gray-200 bg-gray-900/60 border-gray-700 font-mono"
                     />
                     <p className="text-xs text-gray-300">
-                      <strong>Format E.164:</strong> +[kod kraju][numer]<br/>
-                      Przykłady: +48123456789 (Polska), +1234567890 (USA)
+                      <strong>Format E.164:</strong> +[kod kraju][dokładnie 9 cyfr]<br/>
+                      ✅ Prawidłowy: <span className="text-green-400">+48781234567</span> (12 znaków: +48 + 9 cyfr)<br/>
+                      ❌ Błędny: <span className="text-red-400">+487816XXX</span> (za krótki), <span className="text-red-400">+48123</span> (za krótki)<br/>
+                      💡 Podaj pełny 9-cyfrowy numer po kodzie +48
                     </p>
+                    {phoneValidationError && (
+                      <p className="text-xs text-red-400">{phoneValidationError}</p>
+                    )}
                   </div>
                 </div>
 
@@ -1458,11 +1539,14 @@ export default function BotSettingsPage() {
                       <Input 
                         type="tel" 
                         value={twilioPhoneNumber} 
-                        onChange={(e) => setTwilioPhoneNumber(e.target.value)}
+                        onChange={(e) => handleTwilioPhoneChange(e.target.value)}
                         placeholder="+1234567890"
                         className="text-gray-200 bg-gray-900/60 border-gray-700 font-mono"
                       />
                       <p className="text-xs text-gray-300">Numer który Twilio przydzieliło - użyj formatu międzynarodowego</p>
+                      {twilioPhoneValidationError && (
+                        <p className="text-xs text-red-400">{twilioPhoneValidationError}</p>
+                      )}
                     </div>
                   </div>
                 </div>
