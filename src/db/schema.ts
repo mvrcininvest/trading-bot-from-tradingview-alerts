@@ -87,6 +87,13 @@ export const botSettings = sqliteTable('bot_settings', {
   okoCapitulationCounter: integer('oko_capitulation_counter').notNull().default(0),
   okoBannedSymbols: text('oko_banned_symbols'),
   
+  // SMS Alert Settings
+  smsAlertsEnabled: integer('sms_alerts_enabled', { mode: 'boolean' }).notNull().default(false),
+  alertPhoneNumber: text('alert_phone_number'),
+  twilioAccountSid: text('twilio_account_sid'),
+  twilioAuthToken: text('twilio_auth_token'),
+  twilioPhoneNumber: text('twilio_phone_number'),
+  
   apiKey: text('api_key'),
   apiSecret: text('api_secret'),
   passphrase: text('passphrase'),

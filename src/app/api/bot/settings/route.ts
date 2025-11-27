@@ -13,6 +13,11 @@ const VALID_EMERGENCY_OVERRIDE_MODES = ['always', 'only_profit', 'profit_above_x
 const VALID_SL_MANAGEMENT_MODES = ['breakeven', 'trailing', 'no_change'];
 const VALID_TP_MODES = ['percent', 'rr'];
 
+// ✅ NEW: Phone number validation helper
+function validateE164Format(phone: string): boolean {
+  return /^\+[1-9]\d{1,14}$/.test(phone);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const settings = await db.select()
@@ -322,69 +327,55 @@ async function updateSettings(request: NextRequest) {
       }
     }
 
-    // Validate Oko Saurona fields
-    if (body.okoCheckFrequencySeconds !== undefined) {
-      const freq = parseInt(body.okoCheckFrequencySeconds);
-      if (isNaN(freq) || freq < 1 || freq > 60) {
+    // ✅ NEW: Validate SMS Alert fields
+    if (body.smsAlertsEnabled === true) {
+      // Check phone number
+      if (!body.alertPhoneNumber || body.alertPhoneNumber.trim() === '') {
         return NextResponse.json({
-          error: 'okoCheckFrequencySeconds must be between 1 and 60',
-          code: 'INVALID_OKO_CHECK_FREQUENCY',
-          field: 'okoCheckFrequencySeconds'
+          error: 'alertPhoneNumber is required when SMS alerts are enabled',
+          code: 'MISSING_ALERT_PHONE',
+          field: 'alertPhoneNumber'
         }, { status: 400 });
       }
-    }
 
-    if (body.okoAccountDrawdownPercent !== undefined) {
-      const drawdown = parseFloat(body.okoAccountDrawdownPercent);
-      if (isNaN(drawdown) || drawdown <= 0 || drawdown > 100) {
+      if (!validateE164Format(body.alertPhoneNumber)) {
         return NextResponse.json({
-          error: 'okoAccountDrawdownPercent must be between 0 and 100',
-          code: 'INVALID_OKO_DRAWDOWN_PERCENT',
-          field: 'okoAccountDrawdownPercent'
+          error: 'alertPhoneNumber must be in E.164 format (e.g., +48123456789)',
+          code: 'INVALID_PHONE_FORMAT',
+          field: 'alertPhoneNumber'
         }, { status: 400 });
       }
-    }
 
-    if (body.okoAccountDrawdownChecks !== undefined) {
-      const checks = parseInt(body.okoAccountDrawdownChecks);
-      if (isNaN(checks) || ![1, 3].includes(checks)) {
+      // Check Twilio credentials
+      if (!body.twilioAccountSid || body.twilioAccountSid.trim() === '') {
         return NextResponse.json({
-          error: 'okoAccountDrawdownChecks must be 1 or 3',
-          code: 'INVALID_OKO_DRAWDOWN_CHECKS',
-          field: 'okoAccountDrawdownChecks'
+          error: 'twilioAccountSid is required when SMS alerts are enabled',
+          code: 'MISSING_TWILIO_SID',
+          field: 'twilioAccountSid'
         }, { status: 400 });
       }
-    }
 
-    if (body.okoTimeBasedExitHours !== undefined) {
-      const hours = parseInt(body.okoTimeBasedExitHours);
-      if (isNaN(hours) || hours < 1 || hours > 168) {
+      if (!body.twilioAuthToken || body.twilioAuthToken.trim() === '') {
         return NextResponse.json({
-          error: 'okoTimeBasedExitHours must be between 1 and 168',
-          code: 'INVALID_OKO_TIME_EXIT_HOURS',
-          field: 'okoTimeBasedExitHours'
+          error: 'twilioAuthToken is required when SMS alerts are enabled',
+          code: 'MISSING_TWILIO_TOKEN',
+          field: 'twilioAuthToken'
         }, { status: 400 });
       }
-    }
 
-    if (body.okoCapitulationBanDurationHours !== undefined) {
-      const hours = parseInt(body.okoCapitulationBanDurationHours);
-      if (isNaN(hours) || hours < 1 || hours > 168) {
+      if (!body.twilioPhoneNumber || body.twilioPhoneNumber.trim() === '') {
         return NextResponse.json({
-          error: 'okoCapitulationBanDurationHours must be between 1 and 168',
-          code: 'INVALID_OKO_BAN_DURATION',
-          field: 'okoCapitulationBanDurationHours'
+          error: 'twilioPhoneNumber is required when SMS alerts are enabled',
+          code: 'MISSING_TWILIO_PHONE',
+          field: 'twilioPhoneNumber'
         }, { status: 400 });
       }
-    }
 
-    if (body.okoCapitulationChecks !== undefined) {
-      const checks = parseInt(body.okoCapitulationChecks);
-      if (isNaN(checks) || ![1, 3].includes(checks)) {
+      if (!validateE164Format(body.twilioPhoneNumber)) {
         return NextResponse.json({
-          error: 'okoCapitulationChecks must be 1 or 3',
-          code: 'INVALID_OKO_CAPITULATION_CHECKS',
-          field: 'okoCapitulationChecks'
+          error: 'twilioPhoneNumber must be in E.164 format (e.g., +1234567890)',
+          code: 'INVALID_TWILIO_PHONE_FORMAT',
+          field: 'twilioPhoneNumber'
         }, { status: 400 });
       }
     }
@@ -420,6 +411,11 @@ async function updateSettings(request: NextRequest) {
     }
     if (body.okoTimeBasedExitEnabled !== undefined) {
       updates.okoTimeBasedExitEnabled = body.okoTimeBasedExitEnabled;
+    }
+
+    // ✅ NEW: SMS Alert boolean field
+    if (body.smsAlertsEnabled !== undefined) {
+      updates.smsAlertsEnabled = body.smsAlertsEnabled;
     }
 
     // Map other fields
@@ -469,6 +465,12 @@ async function updateSettings(request: NextRequest) {
     if (body.okoTimeBasedExitHours !== undefined) updates.okoTimeBasedExitHours = parseInt(body.okoTimeBasedExitHours);
     if (body.okoCapitulationBanDurationHours !== undefined) updates.okoCapitulationBanDurationHours = parseInt(body.okoCapitulationBanDurationHours);
     if (body.okoCapitulationChecks !== undefined) updates.okoCapitulationChecks = parseInt(body.okoCapitulationChecks);
+
+    // ✅ NEW: SMS Alert fields
+    if (body.alertPhoneNumber !== undefined) updates.alertPhoneNumber = body.alertPhoneNumber;
+    if (body.twilioAccountSid !== undefined) updates.twilioAccountSid = body.twilioAccountSid;
+    if (body.twilioAuthToken !== undefined) updates.twilioAuthToken = body.twilioAuthToken;
+    if (body.twilioPhoneNumber !== undefined) updates.twilioPhoneNumber = body.twilioPhoneNumber;
 
     const settingsId = existingSettings[0].id;
     const updated = await db.update(botSettings)

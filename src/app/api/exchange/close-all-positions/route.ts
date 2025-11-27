@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBybitPositions, closeBybitPosition } from "@/lib/bybit-helpers";
+import { sendEmergencyCloseFailureAlert } from "@/lib/sms-service";
 import { db } from "@/db";
 import { botPositions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
       const openPositions = await getBybitPositions(apiKey, apiSecret);
       
       console.log(`   Found ${openPositions.length} open positions`);
+      
+      const totalPositions = openPositions.length;
 
       // Close each position
       for (const position of openPositions) {
@@ -90,6 +93,22 @@ export async function POST(req: NextRequest) {
             error: posError.message
           });
           console.error(`   ❌ Failed to close ${position.symbol}:`, posError);
+        }
+      }
+
+      // ✅ NEW: Send SMS alert if some positions failed to close
+      const failedPositions = totalPositions - results.positionsClosed;
+      if (failedPositions > 0) {
+        console.log(`\n📱 Sending SMS alert for ${failedPositions} failed closes...`);
+        try {
+          const smsResult = await sendEmergencyCloseFailureAlert(failedPositions, totalPositions);
+          if (smsResult.success) {
+            console.log(`   ✅ SMS alert sent successfully (Message ID: ${smsResult.messageId})`);
+          } else {
+            console.log(`   ⚠️ SMS alert failed: ${smsResult.error}`);
+          }
+        } catch (smsError: any) {
+          console.error(`   ❌ SMS alert error: ${smsError.message}`);
         }
       }
 

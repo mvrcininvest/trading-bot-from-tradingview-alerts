@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
-import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent, Zap, DollarSign, RefreshCw, Info } from "lucide-react"
+import { Bot, Power, Eye, Settings, TrendingUp, Shield, Target, Layers, Percent, Zap, DollarSign, RefreshCw, Info, Smartphone } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
@@ -75,6 +75,13 @@ export default function BotSettingsPage() {
   const [okoCapitulationBanDurationHours, setOkoCapitulationBanDurationHours] = useState(6)
   const [okoCapitulationChecks, setOkoCapitulationChecks] = useState(1)
 
+  // SMS Alert Settings
+  const [smsAlertsEnabled, setSmsAlertsEnabled] = useState(false)
+  const [alertPhoneNumber, setAlertPhoneNumber] = useState("")
+  const [twilioAccountSid, setTwilioAccountSid] = useState("")
+  const [twilioAuthToken, setTwilioAuthToken] = useState("")
+  const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("")
+
   useEffect(() => {
     fetchSettings()
   }, [])
@@ -137,6 +144,13 @@ export default function BotSettingsPage() {
         setOkoTimeBasedExitHours(s.okoTimeBasedExitHours || 24)
         setOkoCapitulationBanDurationHours(s.okoCapitulationBanDurationHours || 6)
         setOkoCapitulationChecks(s.okoCapitulationChecks || 1)
+
+        // Load SMS settings
+        setSmsAlertsEnabled(s.smsAlertsEnabled || false)
+        setAlertPhoneNumber(s.alertPhoneNumber || "")
+        setTwilioAccountSid(s.twilioAccountSid || "")
+        setTwilioAuthToken(s.twilioAuthToken || "")
+        setTwilioPhoneNumber(s.twilioPhoneNumber || "")
       }
     } catch (error) {
       toast.error("Błąd ładowania ustawień")
@@ -307,6 +321,12 @@ export default function BotSettingsPage() {
           okoTimeBasedExitHours,
           okoCapitulationBanDurationHours,
           okoCapitulationChecks,
+          // SMS Alerts
+          smsAlertsEnabled,
+          alertPhoneNumber,
+          twilioAccountSid,
+          twilioAuthToken,
+          twilioPhoneNumber,
         })
       })
 
@@ -1312,6 +1332,164 @@ export default function BotSettingsPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </>
+            )}
+          </Card>
+
+          {/* NEW: SMS Alerts Configuration */}
+          <Card className="p-6 space-y-6 border-green-700/40 bg-gradient-to-br from-green-600/10 to-gray-900/80 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-green-500/20 border-2 border-green-500/40 shadow-lg shadow-green-500/20">
+                  <Smartphone className="h-8 w-8 text-green-400" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                    📱 Powiadomienia SMS
+                    <Badge variant="outline" className="text-xs border-green-500 text-green-300">TWILIO</Badge>
+                  </h3>
+                  <p className="text-sm text-gray-200">Otrzymuj krytyczne alerty na telefon w sytuacjach awaryjnych</p>
+                </div>
+              </div>
+              <Switch 
+                checked={smsAlertsEnabled} 
+                onCheckedChange={setSmsAlertsEnabled}
+                className="scale-125"
+              />
+            </div>
+
+            {smsAlertsEnabled && (
+              <>
+                <Separator className="bg-gray-700/50" />
+                
+                <Alert className="border-blue-700 bg-blue-900/20">
+                  <Info className="h-4 w-4 text-blue-400" />
+                  <AlertDescription className="text-sm text-blue-200">
+                    <strong>Kiedy dostaniesz SMS:</strong>
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      <li>CloudFront zablokuje region serwera (bot wyłączony, pozycje zamknięte)</li>
+                      <li>Emergency close nie zamknie wszystkich pozycji</li>
+                      <li>Krytyczne błędy wymagające natychmiastowej interwencji</li>
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+
+                {/* Phone Number Configuration */}
+                <div className="space-y-4 p-4 rounded-lg bg-gray-800/40 border border-gray-700/50">
+                  <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Smartphone className="h-5 w-5 text-green-400" />
+                    Twój Numer Telefonu
+                  </h4>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-gray-200">Numer telefonu (format międzynarodowy)</Label>
+                    <Input 
+                      type="tel" 
+                      value={alertPhoneNumber} 
+                      onChange={(e) => setAlertPhoneNumber(e.target.value)}
+                      placeholder="+48123456789"
+                      className="text-gray-200 bg-gray-900/60 border-gray-700 font-mono"
+                    />
+                    <p className="text-xs text-gray-300">
+                      <strong>Format E.164:</strong> +[kod kraju][numer]<br/>
+                      Przykłady: +48123456789 (Polska), +1234567890 (USA)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Twilio Configuration */}
+                <div className="space-y-4 p-4 rounded-lg bg-green-900/20 border-2 border-green-700/50">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <Shield className="h-5 w-5 text-green-400" />
+                      Konfiguracja Twilio
+                    </h4>
+                    <a 
+                      href="https://console.twilio.com/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-green-300 hover:text-green-200 underline"
+                    >
+                      Otwórz konsolę Twilio →
+                    </a>
+                  </div>
+
+                  <Alert className="border-yellow-700 bg-yellow-900/20">
+                    <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                    <AlertDescription className="text-sm text-yellow-200">
+                      <strong>Jak uzyskać credentials Twilio:</strong>
+                      <ol className="mt-2 space-y-1 list-decimal list-inside text-xs">
+                        <li>Zarejestruj się na <a href="https://www.twilio.com/try-twilio" target="_blank" className="underline text-yellow-100">twilio.com/try-twilio</a> (darmowe $15 trial)</li>
+                        <li>Po zalogowaniu, na Dashboard znajdziesz <strong>Account SID</strong> i <strong>Auth Token</strong></li>
+                        <li>Kliknij "Get a Trial Number" aby otrzymać darmowy numer Twilio</li>
+                        <li>Skopiuj wszystkie dane poniżej</li>
+                      </ol>
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-gray-200">Twilio Account SID</Label>
+                      <Input 
+                        type="text" 
+                        value={twilioAccountSid} 
+                        onChange={(e) => setTwilioAccountSid(e.target.value)}
+                        placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        className="text-gray-200 bg-gray-900/60 border-gray-700 font-mono text-sm"
+                      />
+                      <p className="text-xs text-gray-300">Zaczyna się od "AC", znajdziesz na Dashboard</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-gray-200">Twilio Auth Token</Label>
+                      <Input 
+                        type="password" 
+                        value={twilioAuthToken} 
+                        onChange={(e) => setTwilioAuthToken(e.target.value)}
+                        placeholder="********************************"
+                        className="text-gray-200 bg-gray-900/60 border-gray-700 font-mono text-sm"
+                      />
+                      <p className="text-xs text-gray-300">Kliknij ikonę oka na Dashboard aby pokazać token</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-gray-200">Twilio Phone Number (Twój numer Twilio)</Label>
+                      <Input 
+                        type="tel" 
+                        value={twilioPhoneNumber} 
+                        onChange={(e) => setTwilioPhoneNumber(e.target.value)}
+                        placeholder="+1234567890"
+                        className="text-gray-200 bg-gray-900/60 border-gray-700 font-mono"
+                      />
+                      <p className="text-xs text-gray-300">Numer który Twilio przydzieliło - użyj formatu międzynarodowego</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cost Information */}
+                <div className="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/30 rounded-lg p-4">
+                  <h5 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-blue-400" />
+                    Informacje o kosztach
+                  </h5>
+                  <div className="space-y-2 text-xs text-gray-200">
+                    <p>• <strong>Darmowy trial:</strong> $15 kredytów na start (około 200-300 SMS)</p>
+                    <p>• <strong>Koszt SMS:</strong> ~$0.0075 za SMS do Polski</p>
+                    <p>• <strong>Weryfikacja numeru:</strong> W trial mode możesz wysyłać tylko na zweryfikowane numery</p>
+                    <p>• <strong>Upgrade konta:</strong> Po dodaniu karty płatniczej, możesz wysyłać do dowolnych numerów</p>
+                    <p className="pt-2 text-blue-200">
+                      💡 <strong>Wskazówka:</strong> Alerty są wysyłane tylko w krytycznych sytuacjach (1-2 SMS/miesiąc average)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Test SMS Button */}
+                <div className="bg-green-900/30 border border-green-700/50 rounded-lg p-4">
+                  <p className="text-sm text-green-200 mb-3">
+                    <strong>⚠️ Uwaga:</strong> Upewnij się że wszystkie dane są poprawne przed zapisaniem. 
+                    Po zapisaniu możesz przetestować wysyłkę SMS używając przycisku w sekcji diagnostyki.
+                  </p>
                 </div>
               </>
             )}

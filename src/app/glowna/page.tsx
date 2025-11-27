@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle } from "lucide-react";
+import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle, Smartphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -49,6 +49,7 @@ export default function GlownaPage() {
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
   const [showCloseAllDialog, setShowCloseAllDialog] = useState(false);
+  const [testingSMS, setTestingSMS] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -216,6 +217,32 @@ export default function GlownaPage() {
     }
   };
 
+  const handleTestSMS = async () => {
+    setTestingSMS(true);
+    try {
+      const response = await fetch('/api/bot/test-sms', {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('✅ SMS testowy wysłany pomyślnie!', {
+          description: `Message ID: ${data.messageId}. Sprawdź swój telefon.`
+        });
+      } else {
+        toast.error('❌ Błąd wysyłki SMS', {
+          description: data.error || 'Sprawdź konfigurację Twilio w ustawieniach bota'
+        });
+      }
+    } catch (error) {
+      console.error('Test SMS error:', error);
+      toast.error('Błąd testowania SMS');
+    } finally {
+      setTestingSMS(false);
+    }
+  };
+
   const handleCloseAll = async () => {
     if (positions.length === 0) {
       toast.error("Brak otwartych pozycji do zamknięcia");
@@ -307,14 +334,34 @@ export default function GlownaPage() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={loadAll}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Odśwież
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleTestSMS}
+              disabled={testingSMS}
+              variant="outline"
+              className="border-green-600 text-green-300 hover:bg-green-600/20"
+            >
+              {testingSMS ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Wysyłanie...
+                </>
+              ) : (
+                <>
+                  <Smartphone className="mr-2 h-4 w-4" />
+                  Test SMS
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={loadAll}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Odśwież
+            </Button>
+          </div>
         </div>
 
         {/* Status Cards */}

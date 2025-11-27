@@ -2,6 +2,8 @@
 // 🔐 BYBIT API - DIRECT CONNECTION (NO PROXY)
 // ============================================
 
+import { sendCloudFrontBlockAlert, sendEmergencyCloseFailureAlert } from './sms-service';
+
 const BYBIT_API_BASE = 'https://api.bybit.com';
 
 // ✅ FIX: Enhanced headers to avoid CloudFront blocking
@@ -27,23 +29,26 @@ async function handleCloudFrontBlock(endpoint: string, responseText: string) {
   console.error(`⚠️  Bot CANNOT monitor positions, set SL/TP, or fetch data`);
   console.error(`${'='.repeat(80)}\n`);
 
+  let serverInfo: any = {};
+
   try {
     // 1. Get server IP and region info
-    let serverInfo = 'Unknown';
     try {
       const ipResponse = await fetch('https://api.ipify.org?format=json');
       const ipData = await ipResponse.json();
-      serverInfo = `IP: ${ipData.ip}`;
+      serverInfo.ip = ipData.ip;
       
       // Try to get region info
       const geoResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
       const geoData = await geoResponse.json();
-      serverInfo += ` | Region: ${geoData.country_name || 'Unknown'} (${geoData.country_code || '?'})`;
-      serverInfo += ` | City: ${geoData.city || 'Unknown'}`;
+      serverInfo.region = geoData.country_name || 'Unknown';
+      serverInfo.countryCode = geoData.country_code || '?';
+      serverInfo.city = geoData.city || 'Unknown';
       
-      console.error(`📊 Server Info: ${serverInfo}`);
+      console.error(`📊 Server Info: IP: ${serverInfo.ip} | Region: ${serverInfo.region} (${serverInfo.countryCode}) | City: ${serverInfo.city}`);
     } catch (e) {
       console.error(`⚠️  Could not fetch server info: ${e}`);
+      serverInfo = { ip: 'Unknown', region: 'Unknown', city: 'Unknown' };
     }
 
     // 2. Disable bot
@@ -101,6 +106,19 @@ async function handleCloudFrontBlock(endpoint: string, responseText: string) {
     });
     console.error(`✅ Logged to Oko Saurona`);
 
+    // 6. 📱 SEND SMS ALERT
+    console.error(`📱 Sending SMS alert...`);
+    try {
+      const smsResult = await sendCloudFrontBlockAlert(serverInfo);
+      if (smsResult.success) {
+        console.error(`✅ SMS alert sent successfully (Message ID: ${smsResult.messageId})`);
+      } else {
+        console.error(`⚠️ SMS alert failed: ${smsResult.error}`);
+      }
+    } catch (smsError: any) {
+      console.error(`❌ SMS alert error: ${smsError.message}`);
+    }
+
   } catch (emergencyError: any) {
     console.error(`❌ Emergency shutdown failed: ${emergencyError.message}`);
     console.error(`⚠️  MANUAL INTERVENTION REQUIRED!`);
@@ -113,6 +131,7 @@ async function handleCloudFrontBlock(endpoint: string, responseText: string) {
   console.error(`   2. 🚨 All positions emergency closed (attempted)`);
   console.error(`   3. 📝 Logged to bot logs`);
   console.error(`   4. 👁️  Logged to Oko Saurona`);
+  console.error(`   5. 📱 SMS alert sent (if configured)`);
   console.error(`${'='.repeat(80)}\n`);
 }
 
