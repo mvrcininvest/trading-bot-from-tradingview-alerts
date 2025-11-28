@@ -24,7 +24,6 @@ function extractSlTpFromBybitPositions(
   for (const pos of positions) {
     const bybitSymbol = convertSymbolToBybit(pos.symbol);
     
-    // Find matching Bybit position
     const bybitPos = bybitPositions.find((bp: any) => 
       bp.symbol === bybitSymbol && 
       bp.side === pos.side
@@ -41,7 +40,6 @@ function extractSlTpFromBybitPositions(
       tpslMode: bybitPos.tpslMode
     });
 
-    // Extract SL and TP from position object
     const liveSlPrice = bybitPos.stopLoss && parseFloat(bybitPos.stopLoss) > 0 
       ? parseFloat(bybitPos.stopLoss) 
       : null;
@@ -52,8 +50,8 @@ function extractSlTpFromBybitPositions(
 
     const result = {
       liveSlPrice,
-      liveTp1Price: liveTpPrice, // In Bybit V5, there's typically one TP set
-      liveTp2Price: null,        // Multiple TPs would be in separate orders
+      liveTp1Price: liveTpPrice,
+      liveTp2Price: null,
       liveTp3Price: null,
     };
 
@@ -74,10 +72,8 @@ export async function GET(request: NextRequest) {
     const tier = searchParams.get('tier');
     const status = searchParams.get('status');
 
-    // Build WHERE conditions
     const conditions = [];
 
-    // Default: return 'open' and 'partial_close' positions
     if (status) {
       conditions.push(eq(botPositions.status, status));
     } else {
@@ -89,12 +85,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Add symbol filter (case-insensitive partial match)
     if (symbol) {
       conditions.push(like(botPositions.symbol, `%${symbol}%`));
     }
 
-    // Add side filter (exact match)
     if (side) {
       if (side !== 'Buy' && side !== 'Sell') {
         return NextResponse.json(
@@ -108,12 +102,10 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(botPositions.side, side));
     }
 
-    // Add tier filter (exact match)
     if (tier) {
       conditions.push(eq(botPositions.tier, tier));
     }
 
-    // Execute query with filters and ordering
     const positions = await db
       .select()
       .from(botPositions)
@@ -122,11 +114,6 @@ export async function GET(request: NextRequest) {
 
     console.log(`\n📊 [API /positions] Found ${positions.length} positions in DB`);
 
-    // ============================================
-    // 🔥 FETCH LIVE PNL AND SL/TP FROM BYBIT
-    // ============================================
-    
-    // Get bot settings for API credentials
     const settings = await db.select().from(botSettings).limit(1);
     
     if (settings.length > 0) {
@@ -135,19 +122,16 @@ export async function GET(request: NextRequest) {
       
       console.log(`🔑 [API /positions] Credentials check: apiKey=${!!apiKey}, apiSecret=${!!apiSecret}`);
       
-      // Type-safe check: ensure all credentials exist
       if (apiKey && apiSecret) {
         console.log(`🌐 [API /positions] Environment: Bybit Mainnet`);
         
         try {
           console.log(`\n🚀 [API /positions] Fetching live positions from Bybit...`);
           
-          // Fetch live positions from Bybit
           const bybitPositions = await getBybitPositions(apiKey, apiSecret);
           
           console.log(`📊 [API /positions] Bybit Results: ${bybitPositions.length} positions`);
           
-          // Create map for quick lookup: "SYMBOL_SIDE" -> Bybit position
           const bybitPositionsMap = new Map(
             bybitPositions.map((p: any) => {
               const bybitSymbol = p.symbol;
@@ -158,10 +142,8 @@ export async function GET(request: NextRequest) {
           
           console.log(`🗺️ [API /positions] Created position map with ${bybitPositionsMap.size} entries`);
           
-          // Extract SL/TP directly from Bybit positions
           const positionSlTpMap = extractSlTpFromBybitPositions(bybitPositions, positions);
           
-          // Update each position with live PnL and SL/TP from Bybit
           const updatedPositions = positions.map(pos => {
             const bybitSymbol = convertSymbolToBybit(pos.symbol);
             const posKey = `${bybitSymbol}_${pos.side}`;
@@ -170,7 +152,6 @@ export async function GET(request: NextRequest) {
             
             let updatedPos = { ...pos };
             
-            // Update live PnL
             if (bybitPos) {
               const livePnl = parseFloat(bybitPos.unrealisedPnl || "0");
               updatedPos.unrealisedPnl = livePnl;
@@ -179,7 +160,6 @@ export async function GET(request: NextRequest) {
               console.log(`⚠️ [${pos.symbol}] No Bybit position found for ${posKey}`);
             }
             
-            // Update live SL/TP
             if (slTpData) {
               console.log(`✅ [${pos.symbol} ${pos.side}] Live SL/TP:`, {
                 SL: slTpData.liveSlPrice,
@@ -216,14 +196,12 @@ export async function GET(request: NextRequest) {
           );
         } catch (error) {
           console.error("❌ [API /positions] Failed to fetch live data from Bybit:", error);
-          // If Bybit fetch fails, return positions with DB values
         }
       } else {
         console.log(`⚠️ [API /positions] Missing credentials - returning DB values only`);
       }
     }
     
-    // Fallback: return positions without live data
     console.log(`⚠️ [API /positions] Returning positions without live Bybit data\n`);
     return NextResponse.json(
       {

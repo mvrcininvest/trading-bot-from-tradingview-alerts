@@ -1,4 +1,87 @@
 // ============================================
+// 🔐 BYBIT SIGNATURE HELPER (FIXED)
+// ============================================
+
+export function createBybitSignature(
+  timestamp: string,
+  apiKey: string,
+  apiSecret: string,
+  recvWindow: string,
+  params: string
+): string {
+  const message = timestamp + apiKey + recvWindow + params;
+  return crypto.createHmac('sha256', apiSecret).update(message).digest('hex');
+}
+
+// ============================================
+// 🔄 BYBIT API REQUEST HELPER (FIXED)
+// ============================================
+
+export async function makeBybitRequest(
+  method: string,
+  endpoint: string,
+  apiKey: string,
+  apiSecret: string,
+  queryParams?: Record<string, any>,
+  body?: any
+) {
+  const timestamp = Date.now().toString();
+  const recvWindow = '5000';
+  
+  const baseUrl = BYBIT_MAINNET_URL;
+  let url = `${baseUrl}${endpoint}`;
+  let paramsString = '';
+  
+  if (method === 'GET' && queryParams && Object.keys(queryParams).length > 0) {
+    // For GET requests: use query string
+    const queryString = new URLSearchParams(queryParams as any).toString();
+    paramsString = queryString;
+    url += `?${queryString}`;
+  } else if ((method === 'POST' || method === 'PUT') && body) {
+    // For POST/PUT requests: use body JSON
+    paramsString = JSON.stringify(body);
+  }
+  
+  const signature = createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
+
+  const headers: Record<string, string> = {
+    'X-BAPI-API-KEY': apiKey,
+    'X-BAPI-TIMESTAMP': timestamp,
+    'X-BAPI-SIGN': signature,
+    'X-BAPI-RECV-WINDOW': recvWindow,
+    'X-BAPI-SIGN-TYPE': '2',
+    'Content-Type': 'application/json',
+  };
+
+  const options: RequestInit = {
+    method,
+    headers,
+  };
+
+  if (body && (method === 'POST' || method === 'PUT')) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, options);
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+      throw new Error('CloudFlare/WAF block (403)');
+    }
+    throw new Error(`Bybit API error: ${response.status} - ${responseText}`);
+  }
+
+  const data = JSON.parse(responseText);
+
+  if (data.retCode !== 0) {
+    throw new Error(`Bybit API error: ${data.retMsg}`);
+  }
+
+  return data;
+}
+
+// ============================================
 // 🔄 BYBIT HELPERS - WRAPPER FOR NEW CLIENT
 // ============================================
 
