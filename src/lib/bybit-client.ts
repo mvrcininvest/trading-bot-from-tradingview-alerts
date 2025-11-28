@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 // ============================================
-// 🔥 BYBIT API V5 CLIENT - NOWA IMPLEMENTACJA
+// 🔥 BYBIT API V5 CLIENT - FIXED IMPLEMENTATION
 // ============================================
 
 const BYBIT_API_URL = 'https://api.bybit.com';
@@ -16,16 +16,42 @@ interface BybitRequestParams {
 
 /**
  * Generuje podpis dla Bybit API V5
+ * Format: timestamp + apiKey + recvWindow + payload
  */
 function generateSignature(
   timestamp: string,
   apiKey: string,
   recvWindow: string,
-  queryString: string,
+  payload: string,
   apiSecret: string
 ): string {
-  const paramStr = timestamp + apiKey + recvWindow + queryString;
-  return crypto.createHmac('sha256', apiSecret).update(paramStr).digest('hex');
+  const signatureString = `${timestamp}${apiKey}${recvWindow}${payload}`;
+  console.log(`🔐 [Signature] String: ${signatureString.substring(0, 100)}...`);
+  
+  const signature = crypto.createHmac('sha256', apiSecret).update(signatureString).digest('hex');
+  console.log(`✅ [Signature] HMAC: ${signature.substring(0, 32)}...`);
+  
+  return signature;
+}
+
+/**
+ * Sortuje parametry alfabetycznie i tworzy query string
+ * CRITICAL: Bybit wymaga alfabetycznej kolejności parametrów!
+ */
+function buildQueryString(params: Record<string, any>): string {
+  // Sort keys alphabetically
+  const sortedKeys = Object.keys(params).sort();
+  
+  // Build query string manually with sorted keys
+  const queryParts: string[] = [];
+  for (const key of sortedKeys) {
+    const value = params[key];
+    if (value !== undefined && value !== null) {
+      queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    }
+  }
+  
+  return queryParts.join('&');
 }
 
 /**
@@ -41,19 +67,23 @@ async function bybitRequest({
   const timestamp = Date.now().toString();
   const recvWindow = '5000';
 
-  let queryString = '';
+  let payload = '';
   let url = `${BYBIT_API_URL}${endpoint}`;
+  let body: string | undefined;
 
   if (method === 'GET') {
-    queryString = new URLSearchParams(params).toString();
-    if (queryString) {
-      url += `?${queryString}`;
+    // For GET: use alphabetically sorted query string
+    payload = buildQueryString(params);
+    if (payload) {
+      url += `?${payload}`;
     }
   } else if (method === 'POST') {
-    queryString = JSON.stringify(params);
+    // For POST: use JSON body as payload
+    body = JSON.stringify(params);
+    payload = body;
   }
 
-  const signature = generateSignature(timestamp, apiKey, recvWindow, queryString, apiSecret);
+  const signature = generateSignature(timestamp, apiKey, recvWindow, payload, apiSecret);
 
   const headers: Record<string, string> = {
     'X-BAPI-API-KEY': apiKey,
@@ -62,12 +92,13 @@ async function bybitRequest({
     'X-BAPI-RECV-WINDOW': recvWindow,
   };
 
+  // CRITICAL: Only add Content-Type for POST requests
   if (method === 'POST') {
     headers['Content-Type'] = 'application/json';
   }
 
-  console.log(`\n🌐 [Bybit Client] ${method} ${endpoint}`);
-  console.log(`📝 [Bybit Client] Params:`, params);
+  console.log(`\n🌐 [Bybit Client] ${method} ${url}`);
+  console.log(`📝 [Bybit Client] Payload:`, payload.substring(0, 200));
   console.log(`🔑 [Bybit Client] Headers:`, {
     'X-BAPI-API-KEY': apiKey.substring(0, 8) + '...',
     'X-BAPI-TIMESTAMP': timestamp,
@@ -78,44 +109,49 @@ async function bybitRequest({
   const response = await fetch(url, {
     method,
     headers,
-    body: method === 'POST' ? JSON.stringify(params) : undefined,
+    body,
   });
 
-  console.log(`📡 [Bybit Client] Response Status:`, response.status, response.statusText);
-  console.log(`📋 [Bybit Client] Response Headers:`, Object.fromEntries(response.headers.entries()));
+  console.log(`📡 [Bybit Client] Response:`, response.status, response.statusText);
 
-  // CRITICAL: Check if response is OK before parsing JSON
+  // Check content type before parsing
+  const contentType = response.headers.get('content-type');
+  
   if (!response.ok) {
-    const contentType = response.headers.get('content-type');
     let errorBody = '';
     
     if (contentType?.includes('application/json')) {
       const errorData = await response.json();
       errorBody = JSON.stringify(errorData, null, 2);
+      console.error(`❌ [Bybit API Error]`, errorData);
+      
+      // Return structured error
+      throw new Error(
+        `Bybit API Error (${errorData.retCode}): ${errorData.retMsg}`
+      );
     } else {
-      // HTML or other non-JSON response
+      // HTML or other response
       errorBody = await response.text();
+      console.error(`❌ [HTTP Error] ${response.status}:`, errorBody.substring(0, 500));
+      
+      throw new Error(
+        `Bybit HTTP ${response.status}: ${response.statusText}`
+      );
     }
-    
-    console.error(`❌ [Bybit Client] HTTP ${response.status} Error:`, errorBody.substring(0, 500));
-    
-    throw new Error(
-      `Bybit API HTTP ${response.status}: ${response.statusText}\n` +
-      `Endpoint: ${endpoint}\n` +
-      `Response: ${errorBody.substring(0, 200)}`
-    );
   }
 
+  // Parse JSON response
   const data = await response.json();
 
   console.log(`📊 [Bybit Client] Response:`, {
     retCode: data.retCode,
     retMsg: data.retMsg,
-    resultLength: data.result ? Object.keys(data.result).length : 0,
+    hasResult: !!data.result,
   });
 
   if (data.retCode !== 0) {
-    throw new Error(`Bybit API Error: ${data.retMsg} (Code: ${data.retCode})`);
+    console.error(`❌ [Bybit Error]`, data);
+    throw new Error(`Bybit API Error (${data.retCode}): ${data.retMsg}`);
   }
 
   return data.result;
