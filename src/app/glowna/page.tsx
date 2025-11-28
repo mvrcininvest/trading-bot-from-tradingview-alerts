@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle, Smartphone, Globe, CheckCircle, Lock } from "lucide-react";
+import { Activity, RefreshCw, BarChart3, Power, DollarSign, AlertTriangle, XCircle, Smartphone, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,9 +51,7 @@ export default function GlownaPage() {
   const [closingAll, setClosingAll] = useState(false);
   const [showCloseAllDialog, setShowCloseAllDialog] = useState(false);
   const [testingSMS, setTestingSMS] = useState(false);
-  const [isGeoBlocked, setIsGeoBlocked] = useState(false);
   const [positionsError, setPositionsError] = useState<string | null>(null);
-  const [cloudFrontLockActive, setCloudFrontLockActive] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -86,11 +84,6 @@ export default function GlownaPage() {
         console.log("[Auto-sync] Pozycje zsynchronizowane z giełdą");
       } catch (syncError) {
         console.warn("[Auto-sync] Błąd synchronizacji (kontynuuję):", syncError);
-        const errorMsg = syncError instanceof Error ? syncError.message : String(syncError);
-        if (errorMsg.includes("CloudFront") || errorMsg.includes("403")) {
-          setIsGeoBlocked(true);
-          setPositionsError("CloudFront blokada - nie można pobrać pozycji z giełdy");
-        }
       }
 
       const timestamp = Date.now();
@@ -117,23 +110,12 @@ export default function GlownaPage() {
         setPositions(openPositions);
         setPositionsError(null);
       } else if (data.error) {
-        if (data.error.includes("CloudFront") || data.error.includes("403")) {
-          setIsGeoBlocked(true);
-          setPositionsError("CloudFront blokuje dostęp do API Bybit");
-        } else {
-          setPositionsError(data.error);
-        }
+        setPositionsError(data.error);
       }
     } catch (err) {
       console.error("Load positions error:", err);
       const errorMsg = err instanceof Error ? err.message : "Nieznany błąd";
-      
-      if (errorMsg.includes("CloudFront") || errorMsg.includes("403")) {
-        setIsGeoBlocked(true);
-        setPositionsError("CloudFront blokuje dostęp do API Bybit");
-      } else {
-        setPositionsError(errorMsg);
-      }
+      setPositionsError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -172,14 +154,10 @@ export default function GlownaPage() {
           rawValue === "TRUE"
         );
         
-        const hasCloudFrontLock = data.settings.migrationDate?.includes('CLOUDFRONT_LOCK');
-        setCloudFrontLockActive(hasCloudFrontLock || false);
-        
         console.log("[Glowna] Bot Status Debug:");
         console.log("  Raw Value:", rawValue);
         console.log("  Type:", typeof rawValue);
         console.log("  Converted to Boolean:", isBotEnabled);
-        console.log("  CloudFront Lock Active:", hasCloudFrontLock);
         
         setBotEnabled(isBotEnabled);
       } else {
@@ -237,26 +215,14 @@ export default function GlownaPage() {
       if (data.success && data.balances) {
         setBalance(data.balances);
         setBalanceError(null);
-        setIsGeoBlocked(false);
       } else {
         const errorMessage = data.message || "Nie można pobrać salda";
-        if (errorMessage.includes("CloudFront") || errorMessage.includes("403") || errorMessage.includes("blocked")) {
-          setIsGeoBlocked(true);
-          setBalanceError("CloudFront blokuje dostęp");
-        } else {
-          setBalanceError(errorMessage);
-        }
+        setBalanceError(errorMessage);
       }
     } catch (err) {
       console.error("Load balance error:", err);
       const errorMsg = err instanceof Error ? err.message : "Błąd połączenia";
-      
-      if (errorMsg.includes("CloudFront") || errorMsg.includes("403") || errorMsg.includes("blocked")) {
-        setIsGeoBlocked(true);
-        setBalanceError("CloudFront blokuje dostęp");
-      } else {
-        setBalanceError(errorMsg);
-      }
+      setBalanceError(errorMsg);
     } finally {
       setLoadingBalance(false);
     }
@@ -405,134 +371,6 @@ export default function GlownaPage() {
           </div>
         </div>
 
-        {/* 🔒 CLOUDFRONT LOCK INFO */}
-        {cloudFrontLockActive && (
-          <Alert className="border-orange-700 bg-orange-900/30 border-2">
-            <Lock className="h-6 w-6 text-orange-400" />
-            <AlertDescription className="text-orange-100">
-              <div className="space-y-2">
-                <p className="font-bold text-lg">🔒 CloudFront Lock Aktywny</p>
-                <p className="text-sm">
-                  Bot został automatycznie wyłączony przez system CloudFront Guard po wykryciu blokady API.
-                </p>
-                <p className="text-sm">
-                  <strong>Aby zresetować lock i móc otrzymać kolejny SMS alert:</strong>
-                </p>
-                <ol className="list-decimal list-inside text-sm space-y-1 ml-2">
-                  <li>Przejdź do zakładki "Ustawienia Bota"</li>
-                  <li>Włącz bota ręcznie przełącznikiem</li>
-                  <li>Lock zostanie automatycznie zresetowany</li>
-                  <li>Jeśli CloudFront znowu zablokuje API, otrzymasz kolejny SMS</li>
-                </ol>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* 📊 API STATUS INFO PANEL */}
-        {isGeoBlocked && (
-          <Card className="border-orange-700/40 bg-orange-900/20">
-            <CardContent className="py-4">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-400" />
-                  <h3 className="text-lg font-bold text-orange-200">⚠️ CloudFront Blokada API - Co to znaczy?</h3>
-                </div>
-                
-                {/* GŁÓWNE WYJAŚNIENIE */}
-                <div className="bg-red-950/40 p-4 rounded-lg border border-red-700/50">
-                  <p className="text-sm font-semibold text-red-200 mb-2">
-                    🚫 Bybit CloudFront blokuje połączenia z Vercel
-                  </p>
-                  <ul className="space-y-1 text-xs text-red-300">
-                    <li>• <strong>Nie możesz zobaczyć:</strong> Salda konta, otwartych pozycji live, aktualnego PnL</li>
-                    <li>• <strong>Vercel używa wielu dynamicznych IP</strong> - każdy request może mieć inne IP</li>
-                    <li>• <strong>Whitelist IP NIE ZADZIAŁA</strong> - Vercel nie ma stałego IP do dodania</li>
-                    <li>• <strong>Zmiana regionu NIE POMAGA</strong> - CloudFront blokuje wszystkie regiony Vercel</li>
-                  </ul>
-                </div>
-
-                {/* DLACZEGO WHITELIST NIE DZIAŁA */}
-                <div className="bg-purple-950/40 p-4 rounded-lg border border-purple-700/50">
-                  <p className="text-sm font-bold text-purple-200 mb-2">🔄 Dlaczego whitelist IP nie pomoże:</p>
-                  <ul className="space-y-1 text-xs text-purple-300">
-                    <li>• Vercel Serverless = <strong>losowe IP przy każdym requeście</strong></li>
-                    <li>• Nawet jeśli dodasz 1 IP, następny request użyje innego IP</li>
-                    <li>• Vercel ma setki IP adresów w puli - niemożliwe dodać wszystkie</li>
-                  </ul>
-                </div>
-
-                {/* PRAWDZIWE ROZWIĄZANIA */}
-                <div className="bg-green-950/40 p-4 rounded-lg border border-green-700/50">
-                  <p className="text-sm font-bold text-green-200 mb-3">✅ PRAWDZIWE ROZWIĄZANIA:</p>
-                  <div className="space-y-3 text-sm text-green-300">
-                    <div>
-                      <p className="font-semibold mb-1">Opcja 1: Przejdź na platformę z dedykowanym IP</p>
-                      <ul className="list-disc list-inside text-xs space-y-1 ml-2">
-                        <li><strong>Fly.io</strong> - darmowy tier, 1 dedykowane IP, łatwy deploy</li>
-                        <li><strong>Railway</strong> - proste w użyciu, stałe IP</li>
-                        <li><strong>DigitalOcean App Platform</strong> - dedykowany IP od $5/mc</li>
-                        <li>Po migracji: whitelist tego 1 IP na Bybit i problem rozwiązany ✅</li>
-                      </ul>
-                    </div>
-                    <div>
-                      <p className="font-semibold mb-1">Opcja 2: Zostań na Vercel (ograniczone funkcje)</p>
-                      <ul className="list-disc list-inside text-xs space-y-1 ml-2">
-                        <li>❌ Brak live danych z giełdy (saldo, pozycje, PnL)</li>
-                        <li>✅ Historia pozycji w bazie danych działa</li>
-                        <li>✅ Statystyki i analityka działają</li>
-                        <li>✅ SMS alerty działają</li>
-                        <li>💡 Sprawdzaj saldo ręcznie na Bybit Dashboard</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CO DZIAŁA */}
-                <div className="bg-blue-950/40 p-4 rounded-lg border border-blue-700/50">
-                  <div className="flex items-center gap-2 mb-3">
-                    <CheckCircle className="h-5 w-5 text-blue-400" />
-                    <h4 className="font-semibold text-blue-200">✅ Co działa pomimo blokady:</h4>
-                  </div>
-                  <ul className="space-y-2 text-sm text-blue-300">
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5">•</span>
-                      <span><strong>Historia pozycji</strong> - wszystkie zamknięte transakcje są w bazie danych</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5">•</span>
-                      <span><strong>Statystyki</strong> - wykresy, win ratio, PnL analysis</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5">•</span>
-                      <span><strong>Logi i alerty</strong> - pełna historia działań bota</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5">•</span>
-                      <span><strong>SMS powiadomienia</strong> - działają bez przeszkód</span>
-                    </li>
-                  </ul>
-                </div>
-
-                {/* MANUAL CHECK */}
-                <div className="bg-gray-800/40 p-3 rounded-lg border border-gray-700/50">
-                  <p className="text-sm text-gray-300">
-                    <strong>💡 Tymczasowo:</strong> Sprawdź saldo i pozycje ręcznie na{' '}
-                    <a 
-                      href="https://www.bybit.com/app/user/assets/home" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-orange-300 underline hover:text-orange-200"
-                    >
-                      Bybit Dashboard →
-                    </a>
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Bot Status */}
@@ -559,7 +397,7 @@ export default function GlownaPage() {
           </Card>
 
           {/* Account Balance */}
-          <Card className={`border-2 ${isGeoBlocked ? 'border-red-500/30 bg-red-900/10' : 'border-gray-800 bg-gray-900/60'}`}>
+          <Card className="border-2 border-gray-800 bg-gray-900/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <DollarSign className="h-4 w-4" />
@@ -576,7 +414,7 @@ export default function GlownaPage() {
                 <div className="flex flex-col gap-2">
                   <div className="text-sm font-bold text-red-400 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4" />
-                    {isGeoBlocked ? "Geo-blokada" : "Błąd API"}
+                    Błąd API
                   </div>
                   <div className="text-xs text-gray-400">
                     <a 
@@ -602,7 +440,7 @@ export default function GlownaPage() {
           </Card>
 
           {/* Unrealised PnL */}
-          <Card className={`border-2 ${isGeoBlocked ? 'border-red-500/30 bg-red-900/10' : 'border-gray-800 bg-gray-900/60'}`}>
+          <Card className="border-2 border-gray-800 bg-gray-900/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
@@ -610,21 +448,14 @@ export default function GlownaPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {isGeoBlocked ? (
-                <div className="text-sm text-red-400 font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  Niedostępne
-                </div>
-              ) : (
-                <div className={`text-2xl font-bold ${totalUnrealisedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {totalUnrealisedPnl >= 0 ? '+' : ''}{totalUnrealisedPnl.toFixed(2)} <span className="text-lg">USDT</span>
-                </div>
-              )}
+              <div className={`text-2xl font-bold ${totalUnrealisedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalUnrealisedPnl >= 0 ? '+' : ''}{totalUnrealisedPnl.toFixed(2)} <span className="text-lg">USDT</span>
+              </div>
             </CardContent>
           </Card>
 
           {/* Open Positions Count */}
-          <Card className={`border-2 ${isGeoBlocked ? 'border-red-500/30 bg-red-900/10' : 'border-gray-800 bg-gray-900/60'}`}>
+          <Card className="border-2 border-gray-800 bg-gray-900/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <Activity className="h-4 w-4" />
@@ -632,29 +463,22 @@ export default function GlownaPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {isGeoBlocked ? (
-                <div className="text-sm text-red-400 font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  Niedostępne
+              <div className="flex items-center gap-2">
+                <div className="text-2xl font-bold text-white">
+                  {positions.length}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="text-2xl font-bold text-white">
-                    {positions.length}
-                  </div>
-                  {positions.length === 0 && (
-                    <Badge variant="outline" className="text-xs text-gray-400">
-                      Brak
-                    </Badge>
-                  )}
-                </div>
-              )}
+                {positions.length === 0 && (
+                  <Badge variant="outline" className="text-xs text-gray-400">
+                    Brak
+                  </Badge>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
 
         {/* ERROR INFO WHEN POSITIONS ERROR */}
-        {positionsError && !isGeoBlocked && (
+        {positionsError && (
           <Alert className="border-orange-700/40 bg-orange-900/20">
             <AlertTriangle className="h-5 w-5 text-orange-400" />
             <AlertDescription className="text-orange-200">
@@ -666,8 +490,8 @@ export default function GlownaPage() {
           </Alert>
         )}
 
-        {/* HELPFUL INFO WHEN NO POSITIONS (and NOT geo-blocked) */}
-        {positions.length === 0 && !loading && !isGeoBlocked && !positionsError && (
+        {/* HELPFUL INFO WHEN NO POSITIONS */}
+        {positions.length === 0 && !loading && !positionsError && (
           <Card className="border-blue-700/40 bg-blue-900/20">
             <CardContent className="py-4">
               <div className="flex items-start gap-3">
@@ -691,7 +515,7 @@ export default function GlownaPage() {
         )}
 
         {/* Emergency Close Button */}
-        {positions.length > 0 && !isGeoBlocked && (
+        {positions.length > 0 && (
           <Card className="border-red-700/40 bg-red-900/20">
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
@@ -731,30 +555,10 @@ export default function GlownaPage() {
           <CardContent className="p-6">
             <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
               <Activity className="h-5 w-5" />
-              Obecnie Otwarte Pozycje {!isGeoBlocked && `(${positions.length})`}
+              Obecnie Otwarte Pozycje ({positions.length})
             </h2>
             
-            {isGeoBlocked ? (
-              <div className="text-center py-8">
-                <Globe className="h-12 w-12 mx-auto mb-3 text-red-500" />
-                <p className="text-base font-semibold text-red-300 mb-2">
-                  Nie można pobrać pozycji z giełdy
-                </p>
-                <p className="text-sm text-red-400">
-                  CloudFront blokuje dostęp do API Bybit
-                </p>
-                <div className="mt-4">
-                  <a 
-                    href="https://www.bybit.com/app/user/assets/orders/all/linear-perpetual" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm text-orange-300 hover:text-orange-200 underline"
-                  >
-                    Sprawdź pozycje ręcznie na Bybit <Globe className="h-4 w-4" />
-                  </a>
-                </div>
-              </div>
-            ) : positions.length === 0 ? (
+            {positions.length === 0 ? (
               <div className="text-center py-8">
                 <Activity className="h-12 w-12 mx-auto mb-3 text-gray-600" />
                 <p className="text-sm text-gray-300">Brak otwartych pozycji</p>
