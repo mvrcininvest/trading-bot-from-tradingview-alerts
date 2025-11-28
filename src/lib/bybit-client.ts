@@ -68,12 +68,43 @@ async function bybitRequest({
 
   console.log(`\n🌐 [Bybit Client] ${method} ${endpoint}`);
   console.log(`📝 [Bybit Client] Params:`, params);
+  console.log(`🔑 [Bybit Client] Headers:`, {
+    'X-BAPI-API-KEY': apiKey.substring(0, 8) + '...',
+    'X-BAPI-TIMESTAMP': timestamp,
+    'X-BAPI-SIGN': signature.substring(0, 16) + '...',
+    'X-BAPI-RECV-WINDOW': recvWindow,
+  });
 
   const response = await fetch(url, {
     method,
     headers,
     body: method === 'POST' ? JSON.stringify(params) : undefined,
   });
+
+  console.log(`📡 [Bybit Client] Response Status:`, response.status, response.statusText);
+  console.log(`📋 [Bybit Client] Response Headers:`, Object.fromEntries(response.headers.entries()));
+
+  // CRITICAL: Check if response is OK before parsing JSON
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type');
+    let errorBody = '';
+    
+    if (contentType?.includes('application/json')) {
+      const errorData = await response.json();
+      errorBody = JSON.stringify(errorData, null, 2);
+    } else {
+      // HTML or other non-JSON response
+      errorBody = await response.text();
+    }
+    
+    console.error(`❌ [Bybit Client] HTTP ${response.status} Error:`, errorBody.substring(0, 500));
+    
+    throw new Error(
+      `Bybit API HTTP ${response.status}: ${response.statusText}\n` +
+      `Endpoint: ${endpoint}\n` +
+      `Response: ${errorBody.substring(0, 200)}`
+    );
+  }
 
   const data = await response.json();
 
