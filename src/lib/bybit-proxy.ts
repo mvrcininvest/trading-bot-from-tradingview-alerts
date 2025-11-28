@@ -1,49 +1,35 @@
 /**
- * Bybit Proxy - Routes Bybit API requests server-side to bypass CloudFront geo-blocking
+ * Bybit Proxy - Routes Bybit API requests through external proxy to bypass CloudFront geo-blocking
  */
 
 interface ProxyConfig {
   enabled: boolean;
-  useServerSideProxy: boolean;
-  externalProxyUrl?: string;
+  externalProxyUrl: string;
 }
 
-// Smart proxy detection - auto-enable in production OR manual enable via env var
+// Smart proxy detection - always use proxy in blocked regions
 function getProxyConfig(): ProxyConfig {
-  // Manual override - always check this first
-  const manualEnable = process.env.USE_BYBIT_PROXY === 'true';
+  // Always enabled by default (can be disabled with env var)
+  const enabled = process.env.DISABLE_BYBIT_PROXY !== 'true';
   
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isVercel = !!process.env.VERCEL;
-  const isRender = !!process.env.RENDER;
-  
-  // Auto-enable proxy in deployment environments OR if manually enabled
-  const autoEnableProxy = isProduction && (isVercel || isRender);
-  
-  const enabled = manualEnable || autoEnableProxy;
-  
-  // Use server-side proxy (recommended) or external proxy URL
-  const useServerSideProxy = enabled;
-  const externalProxyUrl = process.env.BYBIT_PROXY_URL || 'https://corsproxy.io/?';
+  // Use AllOrigins proxy - better reliability for API requests
+  const externalProxyUrl = process.env.BYBIT_PROXY_URL || 'https://api.allorigins.win/raw?url=';
   
   return {
     enabled,
-    useServerSideProxy,
     externalProxyUrl
   };
 }
 
 /**
- * Check if we should use server-side proxy (always true when enabled)
+ * Check if we should use proxy
  */
 export function shouldUseInternalProxy(): boolean {
-  const config = getProxyConfig();
-  return config.enabled && config.useServerSideProxy;
+  return getProxyConfig().enabled;
 }
 
 /**
- * Server-side proxy function - makes requests directly from Next.js server
- * This bypasses CloudFront geo-blocking
+ * Server-side proxy function - routes through external proxy to bypass geo-blocking
  */
 export async function proxyBybitRequest(
   url: string,
@@ -51,7 +37,13 @@ export async function proxyBybitRequest(
   headers: Record<string, string>,
   bodyData?: any
 ): Promise<string> {
-  console.log(`🔄 [Server Proxy] ${method} ${url}`);
+  const config = getProxyConfig();
+  
+  // Use external proxy to route through allowed region
+  const proxiedUrl = `${config.externalProxyUrl}${encodeURIComponent(url)}`;
+  
+  console.log(`🔄 [External Proxy] ${method} ${url}`);
+  console.log(`   Via: ${config.externalProxyUrl}`);
 
   const fetchOptions: RequestInit = {
     method,
@@ -67,11 +59,11 @@ export async function proxyBybitRequest(
     fetchOptions.body = JSON.stringify(bodyData);
   }
 
-  const response = await fetch(url, fetchOptions);
+  const response = await fetch(proxiedUrl, fetchOptions);
   const text = await response.text();
 
   if (!response.ok) {
-    console.error(`❌ [Server Proxy] Error ${response.status}: ${text.substring(0, 200)}`);
+    console.error(`❌ [External Proxy] Error ${response.status}: ${text.substring(0, 200)}`);
     throw new Error(`Bybit API error: ${response.status} - ${text}`);
   }
 
@@ -79,30 +71,16 @@ export async function proxyBybitRequest(
 }
 
 /**
- * Wraps Bybit API URL with external proxy if enabled (fallback method - not used)
+ * Wraps Bybit API URL with external proxy (legacy - not used)
  */
 export function wrapBybitUrl(originalUrl: string): string {
   const config = getProxyConfig();
   
-  // If using server-side proxy, don't wrap
-  if (config.useServerSideProxy) {
-    return originalUrl;
-  }
-  
   if (!config.enabled) {
-    console.log('[Bybit Proxy] Disabled - using direct connection');
     return originalUrl;
   }
   
-  if (!config.externalProxyUrl) {
-    console.warn('[Bybit Proxy] Enabled but no proxy URL configured');
-    return originalUrl;
-  }
-  
-  const proxiedUrl = `${config.externalProxyUrl}${encodeURIComponent(originalUrl)}`;
-  console.log(`[Bybit Proxy] Routing through external proxy: ${originalUrl.substring(0, 50)}...`);
-  
-  return proxiedUrl;
+  return `${config.externalProxyUrl}${encodeURIComponent(originalUrl)}`;
 }
 
 /**
@@ -119,10 +97,7 @@ export function getProxyStatus() {
   const config = getProxyConfig();
   return {
     enabled: config.enabled,
-    useServerSideProxy: config.useServerSideProxy,
     externalProxyUrl: config.externalProxyUrl,
-    environment: process.env.NODE_ENV,
-    isVercel: !!process.env.VERCEL,
-    isRender: !!process.env.RENDER
+    environment: process.env.NODE_ENV
   };
 }
