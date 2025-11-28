@@ -1,3 +1,7 @@
+import crypto from 'crypto';
+
+const BYBIT_MAINNET_URL = 'https://api.bybit.com';
+
 // ============================================
 // 🔐 BYBIT SIGNATURE HELPER (FIXED)
 // ============================================
@@ -272,4 +276,223 @@ export async function getRealizedPnlFromBybit(
     console.error('[getRealizedPnlFromBybit] Error:', error);
     return null;
   }
+}
+
+// ============================================
+// 💰 GET WALLET BALANCE (FROM OLD VERSION)
+// ============================================
+
+export async function getBybitWalletBalance(
+  apiKey: string,
+  apiSecret: string
+) {
+  const data = await makeBybitRequest(
+    'GET',
+    '/v5/account/wallet-balance',
+    apiKey,
+    apiSecret,
+    {
+      accountType: 'UNIFIED'
+    }
+  );
+
+  const balances: Array<{ asset: string; free: string; locked: string }> = [];
+
+  if (data.result?.list?.[0]?.coin) {
+    data.result.list[0].coin.forEach((coin: any) => {
+      const free = parseFloat(coin.availableToWithdraw || coin.walletBalance || '0');
+      const locked = parseFloat(coin.locked || '0');
+
+      if (free > 0 || locked > 0) {
+        balances.push({
+          asset: coin.coin,
+          free: free.toFixed(8),
+          locked: locked.toFixed(8),
+        });
+      }
+    });
+  }
+
+  return {
+    success: true,
+    balances,
+    canTrade: true
+  };
+}
+
+// ============================================
+// 📜 GET ALGO ORDERS (SL/TP ORDERS)
+// ============================================
+
+export async function getBybitAlgoOrders(
+  apiKey: string,
+  apiSecret: string
+): Promise<any[]> {
+  try {
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/order/realtime',
+      apiKey,
+      apiSecret,
+      {
+        category: 'linear',
+        settleCoin: 'USDT'
+      }
+    );
+
+    if (!data.result?.list) {
+      return [];
+    }
+
+    // Return all active orders (TP/SL are stored in position, not as separate orders in Bybit V5)
+    // We'll get TP/SL from position data instead
+    return data.result.list || [];
+  } catch (error: any) {
+    console.error('Failed to get Bybit algo orders:', error.message);
+    return [];
+  }
+}
+
+// ============================================
+// 🗑️ CANCEL BYBIT ALGO ORDER
+// ============================================
+
+export async function cancelBybitAlgoOrder(
+  orderId: string,
+  symbol: string,
+  apiKey: string,
+  apiSecret: string
+): Promise<boolean> {
+  try {
+    await makeBybitRequest(
+      'POST',
+      '/v5/order/cancel',
+      apiKey,
+      apiSecret,
+      {},
+      {
+        category: 'linear',
+        symbol: symbol,
+        orderId: orderId
+      }
+    );
+    
+    console.log(`✅ Cancelled algo order: ${orderId}`);
+    return true;
+  } catch (error: any) {
+    console.error(`❌ Failed to cancel algo order ${orderId}:`, error.message);
+    return false;
+  }
+}
+
+// ============================================
+// 🧹 CLEANUP ORPHANED ORDERS
+// ============================================
+
+export async function cleanupOrphanedOrders(
+  symbol: string,
+  apiKey: string,
+  apiSecret: string,
+  maxRetries: number = 3
+): Promise<{
+  success: boolean;
+  cancelledCount: number;
+  failedCount: number;
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  let cancelledCount = 0;
+  let failedCount = 0;
+
+  try {
+    console.log(`🧹 Cleaning up orphaned orders for ${symbol}...`);
+
+    // Get all open orders for this symbol
+    const data = await makeBybitRequest(
+      'GET',
+      '/v5/order/realtime',
+      apiKey,
+      apiSecret,
+      {
+        category: 'linear',
+        symbol: symbol
+      }
+    );
+
+    const orders = data.result?.list || [];
+
+    if (orders.length === 0) {
+      console.log(`✅ No orders to clean up for ${symbol}`);
+      return { success: true, cancelledCount: 0, failedCount: 0, errors: [] };
+    }
+
+    console.log(`📋 Found ${orders.length} order(s) to cancel`);
+
+    // Cancel all orders with retry
+    for (const order of orders) {
+      let cancelled = false;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await makeBybitRequest(
+            'POST',
+            '/v5/order/cancel',
+            apiKey,
+            apiSecret,
+            {},
+            {
+              category: 'linear',
+              symbol: symbol,
+              orderId: order.orderId
+            }
+          );
+
+          console.log(`   ✅ Cancelled order ${order.orderId} (attempt ${attempt})`);
+          cancelledCount++;
+          cancelled = true;
+          break;
+        } catch (error: any) {
+          console.error(`   ❌ Attempt ${attempt}/${maxRetries} failed:`, error.message);
+          
+          if (attempt === maxRetries) {
+            errors.push(`Failed to cancel ${order.orderId}: ${error.message}`);
+            failedCount++;
+          } else {
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          }
+        }
+      }
+    }
+
+    const success = failedCount === 0;
+    console.log(`${success ? '✅' : '⚠️'} Cleanup complete: ${cancelledCount} cancelled, ${failedCount} failed`);
+
+    return {
+      success,
+      cancelledCount,
+      failedCount,
+      errors
+    };
+  } catch (error: any) {
+    const errMsg = `Cleanup failed: ${error.message}`;
+    console.error(`❌ ${errMsg}`);
+    errors.push(errMsg);
+    
+    return {
+      success: false,
+      cancelledCount,
+      failedCount,
+      errors
+    };
+  }
+}
+
+// ============================================
+// 🔐 BYBIT CREDENTIALS TYPE
+// ============================================
+
+export interface BybitCredentials {
+  apiKey: string;
+  apiSecret: string;
 }
