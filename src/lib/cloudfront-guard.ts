@@ -33,7 +33,7 @@ async function isShutdownLockActive(): Promise<boolean> {
     // Check if bot is disabled AND migration_date contains "cloudfront"
     // We use migration_date as a flag field (hacky but works without schema change)
     const isDisabled = !settings[0].botEnabled;
-    const hasCloudFrontFlag = settings[0].migrationDate?.includes('CLOUDFRONT_LOCK');
+    const hasCloudFrontFlag = settings[0].migrationDate?.includes('CLOUDFRONT_LOCK') ?? false;
     
     const lockActive = isDisabled && hasCloudFrontFlag;
     
