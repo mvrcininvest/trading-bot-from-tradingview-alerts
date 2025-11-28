@@ -763,7 +763,7 @@ async function savePositionToHistory(
     let finalClosePrice = currentPrice;
 
     if (closeOrderId) {
-      const pnlData = await getRealizedPnlFromBybit(
+      const pnlData: { realizedPnl: number; fillPrice: number } | null = await getRealizedPnlFromBybit(
         closeOrderId,
         dbPos.symbol,
         apiKey,
