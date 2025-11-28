@@ -98,6 +98,7 @@ interface BybitStatsResponse {
   dataSource: "bybit";
   daysBack: number;
   fetchedAt: string;
+  message?: string;
 }
 
 async function signBybitRequest(
