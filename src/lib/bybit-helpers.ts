@@ -2,8 +2,6 @@
 // 🔐 BYBIT API - DIRECT CONNECTION
 // ============================================
 
-import { bybitFetchWithGuard } from './cloudfront-guard';
-
 // ✅ Direct connection to Bybit API (no proxy needed)
 const BYBIT_BASE_URL = 'https://api.bybit.com';
 
@@ -96,8 +94,8 @@ export async function makeBybitRequest(
 
   console.log(`🌐 ${method} ${endpoint}`);
 
-  // ✅ USE CLOUDFRONT GUARD FOR ALL BYBIT API CALLS
-  const response = await bybitFetchWithGuard(url, options, `${method} ${endpoint}`);
+  // ✅ USE NORMAL FETCH - NO CLOUDFRONT GUARD
+  const response = await fetch(url, options);
   const responseText = await response.text();
 
   if (!response.ok) {
