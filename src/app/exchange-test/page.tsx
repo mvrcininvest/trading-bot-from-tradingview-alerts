@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, XCircle, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, TrendingUp, AlertTriangle, Lock, Unlock } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 
@@ -18,6 +18,13 @@ interface ConnectionResult {
   };
 }
 
+interface CloudFrontLockStatus {
+  lockActive: boolean;
+  botEnabled: boolean;
+  lockSetAt: string | null;
+  message: string;
+}
+
 export default function ExchangeTestPage() {
   const router = useRouter();
   const [apiKey, setApiKey] = useState("");
@@ -25,6 +32,60 @@ export default function ExchangeTestPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [savedWithoutTest, setSavedWithoutTest] = useState(false);
+  const [lockStatus, setLockStatus] = useState<CloudFrontLockStatus | null>(null);
+  const [checkingLock, setCheckingLock] = useState(true);
+  const [resettingLock, setResettingLock] = useState(false);
+
+  // Check CloudFront lock status on mount
+  useEffect(() => {
+    checkLockStatus();
+  }, []);
+
+  const checkLockStatus = async () => {
+    setCheckingLock(true);
+    try {
+      const response = await fetch("/api/bot/cloudfront-lock-status");
+      const data = await response.json();
+      if (data.success) {
+        setLockStatus(data);
+      }
+    } catch (error) {
+      console.error("Failed to check lock status:", error);
+    } finally {
+      setCheckingLock(false);
+    }
+  };
+
+  const resetLock = async () => {
+    setResettingLock(true);
+    try {
+      const response = await fetch("/api/bot/reset-cloudfront-lock", {
+        method: "POST",
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        // Refresh lock status
+        await checkLockStatus();
+        setResult({
+          success: true,
+          message: "✅ CloudFront lock został zresetowany! Możesz teraz przetestować połączenie.",
+        });
+      } else {
+        setResult({
+          success: false,
+          message: `❌ Nie udało się zresetować lock-a: ${data.message}`,
+        });
+      }
+    } catch (error) {
+      setResult({
+        success: false,
+        message: `❌ Błąd podczas resetowania: ${error instanceof Error ? error.message : "Nieznany błąd"}`,
+      });
+    } finally {
+      setResettingLock(false);
+    }
+  };
 
   // Auto-load saved credentials on mount
   useEffect(() => {
@@ -195,13 +256,76 @@ export default function ExchangeTestPage() {
           </div>
         </div>
 
+        {/* CloudFront Lock Warning */}
+        {checkingLock ? (
+          <Card className="border-gray-700 bg-gray-800/50">
+            <CardContent className="py-6">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                <span className="text-gray-300">Sprawdzam status CloudFront lock...</span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : lockStatus?.lockActive ? (
+          <Alert className="border-red-500 bg-red-500/10">
+            <Lock className="h-5 w-5 text-red-500" />
+            <AlertTitle className="text-red-500 font-bold">🔒 CloudFront Lock Aktywny!</AlertTitle>
+            <AlertDescription className="text-sm text-gray-300 space-y-3">
+              <p>
+                <strong className="text-red-400">Bot został automatycznie wyłączony</strong> z powodu wcześniejszej blokady CloudFront.
+              </p>
+              <p className="text-xs text-gray-400">
+                Lock ustawiony: {lockStatus.lockSetAt ? new Date(lockStatus.lockSetAt.replace('CLOUDFRONT_LOCK_', '')).toLocaleString('pl-PL') : 'Nieznana data'}
+              </p>
+              <div className="flex gap-3 mt-3">
+                <Button
+                  onClick={resetLock}
+                  disabled={resettingLock}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {resettingLock ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Resetuję...
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="mr-2 h-4 w-4" />
+                      Zresetuj Lock i Testuj Ponownie
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={checkLockStatus}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Odśwież Status
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-3">
+                💡 <strong>Co to oznacza?</strong> Serwer na Render wykrył blokadę CloudFront od Bybit (geo-restriction). 
+                Po zresetowaniu lock-a możesz przetestować połączenie ponownie.
+              </p>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert className="border-green-500 bg-green-500/10">
+            <Unlock className="h-5 w-5 text-green-500" />
+            <AlertTitle className="text-green-500">✅ CloudFront Lock NIE jest aktywny</AlertTitle>
+            <AlertDescription className="text-sm text-gray-300">
+              Bot może normalnie łączyć się z Bybit API. Możesz przetestować połączenie.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Alert className="border-blue-500 bg-blue-500/10">
           <AlertTriangle className="h-5 w-5 text-blue-500" />
-          <AlertTitle className="text-blue-500">🌐 Używam proxy serwera dla połączeń Bybit</AlertTitle>
+          <AlertTitle className="text-blue-500">🌐 Używam bezpośredniego połączenia z Bybit</AlertTitle>
           <AlertDescription className="text-sm text-gray-300">
-            Wszystkie zapytania do Bybit API przechodzą przez proxy serwer w Singapurze, aby ominąć blokady geo.
+            Wszystkie zapytania idą bezpośrednio do <code className="text-xs bg-gray-800 px-1 py-0.5 rounded">https://api.bybit.com</code>
             <br />
-            <strong className="text-blue-300">Proxy URL:</strong> <code className="text-xs bg-gray-800 px-1 py-0.5 rounded">https://bybit-proxy-dawn-snowflake-6188.fly.dev</code>
+            <strong className="text-blue-300">Region Render:</strong> {process.env.VERCEL_REGION || 'Frankfurt (automatyczny)'}
           </AlertDescription>
         </Alert>
 
