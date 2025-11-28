@@ -2,7 +2,7 @@
 // 🔐 BYBIT API - WITH CLOUDFRONT PROXY BYPASS
 // ============================================
 
-import { wrapBybitUrl, getProxyStatus } from './bybit-proxy';
+import { wrapBybitUrl, getProxyStatus, shouldUseInternalProxy, proxyBybitRequest } from './bybit-proxy';
 
 // ✅ Base URL will be wrapped by proxy if enabled
 const BYBIT_BASE_URL = 'https://api.bybit.com';
@@ -50,7 +50,7 @@ export async function createBybitSignature(
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (WITH PROXY SUPPORT)
+// 🔄 BYBIT API REQUEST HELPER (WITH SERVER-SIDE PROXY SUPPORT)
 // ============================================
 
 export async function makeBybitRequest(
@@ -86,6 +86,23 @@ export async function makeBybitRequest(
     'X-BAPI-SIGN-TYPE': '2',
   };
 
+  console.log(`🌐 ${method} ${endpoint}`);
+
+  // ✅ USE SERVER-SIDE PROXY IF ENABLED
+  if (shouldUseInternalProxy()) {
+    console.log(`[Bybit Proxy] Using server-side proxy`);
+    
+    const responseText = await proxyBybitRequest(url, method, headers, body);
+    const data = JSON.parse(responseText);
+
+    if (data.retCode !== 0) {
+      throw new Error(`Bybit API error (${data.retCode}): ${data.retMsg}`);
+    }
+
+    return data;
+  }
+
+  // ✅ DIRECT CONNECTION (no proxy)
   const options: RequestInit = {
     method,
     headers,
@@ -95,11 +112,7 @@ export async function makeBybitRequest(
     options.body = JSON.stringify(body);
   }
 
-  console.log(`🌐 ${method} ${endpoint}`);
-
-  // ✅ WRAP URL WITH PROXY IF ENABLED (CloudFront bypass)
   const finalUrl = wrapBybitUrl(url);
-
   const response = await fetch(finalUrl, options);
   const responseText = await response.text();
 
