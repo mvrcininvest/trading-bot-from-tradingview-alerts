@@ -250,7 +250,7 @@ export async function getRealizedPnlFromBybit(
   symbol: string,
   apiKey: string,
   apiSecret: string
-): Promise<{ realizedPnl: number } | null> {
+): Promise<{ realizedPnl: number; fillPrice: number } | null> {
   try {
     const bybitSymbol = convertSymbolToBybit(symbol);
     
@@ -268,6 +268,7 @@ export async function getRealizedPnlFromBybit(
     if (match) {
       return {
         realizedPnl: parseFloat(match.closedPnl || '0'),
+        fillPrice: parseFloat(match.avgExitPrice || match.exitPrice || '0'),
       };
     }
     
