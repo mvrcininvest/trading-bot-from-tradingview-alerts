@@ -1,671 +1,26 @@
 // ============================================
-// 🔐 BYBIT API - WITH CLOUDFRONT PROXY BYPASS
+// 🔄 BYBIT HELPERS - WRAPPER FOR NEW CLIENT
 // ============================================
 
-import { wrapBybitUrl, getProxyStatus, shouldUseInternalProxy, proxyBybitRequest } from './bybit-proxy';
+import * as BybitClient from './bybit-client';
 
-// ✅ Base URL will be wrapped by proxy if enabled
-const BYBIT_BASE_URL = 'https://api.bybit.com';
-
-console.log(`🔧 [BYBIT CONFIG] Base URL: ${BYBIT_BASE_URL}`);
-console.log(`🔧 [BYBIT PROXY] Status:`, getProxyStatus());
-
-// ✅ Standard headers for Bybit API
-const ENHANCED_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-  'Accept': 'application/json',
-  'Content-Type': 'application/json',
-};
+// Re-export utility functions
+export const convertSymbolToBybit = BybitClient.convertSymbolToBybit;
+export const convertSymbolFromBybit = BybitClient.convertSymbolFromBybit;
 
 // ============================================
-// 🔐 BYBIT SIGNATURE HELPER (Web Crypto API for Edge compatibility)
-// ============================================
-
-export async function createBybitSignature(
-  timestamp: string,
-  apiKey: string,
-  apiSecret: string,
-  recvWindow: string,
-  params: string
-): Promise<string> {
-  const message = timestamp + apiKey + recvWindow + params;
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(apiSecret);
-  const messageData = encoder.encode(message);
-  
-  // Use Web Crypto API (Edge Runtime compatible)
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-  const hashArray = Array.from(new Uint8Array(signature));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  return hashHex;
-}
-
-// ============================================
-// 🔄 BYBIT API REQUEST HELPER (WITH SERVER-SIDE PROXY SUPPORT)
-// ============================================
-
-export async function makeBybitRequest(
-  method: string,
-  endpoint: string,
-  apiKey: string,
-  apiSecret: string,
-  queryParams?: Record<string, any>,
-  body?: any
-) {
-  const timestamp = Date.now().toString();
-  const recvWindow = '5000';
-  
-  let url = `${BYBIT_BASE_URL}${endpoint}`;
-  let paramsString = '';
-  
-  if (method === 'GET' && queryParams && Object.keys(queryParams).length > 0) {
-    const queryString = new URLSearchParams(queryParams as any).toString();
-    paramsString = queryString;
-    url += `?${queryString}`;
-  } else if ((method === 'POST' || method === 'PUT') && body) {
-    paramsString = JSON.stringify(body);
-  }
-  
-  const signature = await createBybitSignature(timestamp, apiKey, apiSecret, recvWindow, paramsString);
-
-  const headers: Record<string, string> = {
-    ...ENHANCED_HEADERS,
-    'X-BAPI-API-KEY': apiKey,
-    'X-BAPI-TIMESTAMP': timestamp,
-    'X-BAPI-SIGN': signature,
-    'X-BAPI-RECV-WINDOW': recvWindow,
-    'X-BAPI-SIGN-TYPE': '2',
-  };
-
-  console.log(`🌐 ${method} ${endpoint}`);
-
-  // ✅ USE SERVER-SIDE PROXY IF ENABLED
-  if (shouldUseInternalProxy()) {
-    console.log(`[Bybit Proxy] Using server-side proxy`);
-    
-    const responseText = await proxyBybitRequest(url, method, headers, body);
-    const data = JSON.parse(responseText);
-
-    if (data.retCode !== 0) {
-      throw new Error(`Bybit API error (${data.retCode}): ${data.retMsg}`);
-    }
-
-    return data;
-  }
-
-  // ✅ DIRECT CONNECTION (no proxy)
-  const options: RequestInit = {
-    method,
-    headers,
-  };
-
-  if (body && (method === 'POST' || method === 'PUT')) {
-    options.body = JSON.stringify(body);
-  }
-
-  const finalUrl = wrapBybitUrl(url);
-  const response = await fetch(finalUrl, options);
-  const responseText = await response.text();
-
-  if (!response.ok) {
-    console.error(`❌ Bybit API error: ${response.status} - ${responseText.substring(0, 500)}`);
-    throw new Error(`Bybit API error: ${response.status} - ${responseText}`);
-  }
-
-  const data = JSON.parse(responseText);
-
-  if (data.retCode !== 0) {
-    throw new Error(`Bybit API error (${data.retCode}): ${data.retMsg}`);
-  }
-
-  return data;
-}
-
-// ============================================
-// 🔄 SYMBOL CONVERSION HELPERS
-// ============================================
-
-export function convertSymbolToBybit(symbol: string): string {
-  // Remove any existing suffixes and ensure uppercase
-  const cleaned = symbol.replace(/\.P$/i, '').replace(/-USDT-SWAP$/i, '').toUpperCase();
-  
-  // Bybit uses format like: BTCUSDT, ETHUSDT
-  if (!cleaned.endsWith('USDT')) {
-    return `${cleaned}USDT`;
-  }
-  
-  return cleaned;
-}
-
-export function convertSymbolFromBybit(bybitSymbol: string): string {
-  // Convert from BTCUSDT to BTC format
-  return bybitSymbol.replace('USDT', '');
-}
-
-// ============================================
-// 📊 GET CURRENT MARKET PRICE
-// ============================================
-
-export async function getCurrentMarketPrice(
-  symbol: string,
-  apiKey: string,
-  apiSecret: string
-): Promise<number> {
-  const data = await makeBybitRequest(
-    'GET',
-    '/v5/market/tickers',
-    apiKey,
-    apiSecret,
-    {
-      category: 'linear',
-      symbol: symbol
-    }
-  );
-
-  if (data.result?.list?.[0]?.lastPrice) {
-    return parseFloat(data.result.list[0].lastPrice);
-  }
-
-  throw new Error(`Failed to get market price for ${symbol}`);
-}
-
-// ============================================
-// 📈 OPEN BYBIT POSITION (WITH SL/TP GUARANTEE)
-// ============================================
-
-export async function openBybitPosition(
-  symbol: string,
-  side: string,
-  quantity: number,
-  leverage: number,
-  apiKey: string,
-  apiSecret: string,
-  takeProfit?: number,
-  stopLoss?: number
-) {
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`🚀 OPENING BYBIT POSITION - START`);
-  console.log(`${'='.repeat(60)}`);
-  console.log(`📊 Input:`);
-  console.log(`   Symbol: ${symbol}`);
-  console.log(`   Side: ${side}`);
-  console.log(`   Quantity: ${quantity}`);
-  console.log(`   Leverage: ${leverage}x`);
-  console.log(`   Take Profit: ${takeProfit || 'N/A'}`);
-  console.log(`   Stop Loss: ${stopLoss || 'N/A'}`);
-
-  // ✅ FIX: Round quantity to 3 decimal places to prevent signing errors
-  const roundedQuantity = Math.floor(quantity * 1000) / 1000;
-  
-  console.log(`\n🔧 Quantity adjustment:`);
-  console.log(`   Original: ${quantity}`);
-  console.log(`   Rounded (3 decimals): ${roundedQuantity}`);
-
-  // ✅ REMOVED: No more forced minimum distances - use exact values from settings
-  console.log(`\n🎯 Using EXACT SL/TP values from bot settings (no auto-adjustments):`);
-  console.log(`   Take Profit: ${takeProfit?.toFixed(4) || 'N/A'}`);
-  console.log(`   Stop Loss: ${stopLoss?.toFixed(4) || 'N/A'}`);
-
-  // Step 1: Set leverage
-  console.log(`\n📏 Setting leverage to ${leverage}x...`);
-  try {
-    await makeBybitRequest(
-      'POST',
-      '/v5/position/set-leverage',
-      apiKey,
-      apiSecret,
-      {},
-      {
-        category: 'linear',
-        symbol: symbol,
-        buyLeverage: leverage.toString(),
-        sellLeverage: leverage.toString()
-      }
-    );
-    console.log(`✅ Leverage set: ${leverage}x`);
-  } catch (error: any) {
-    console.warn(`⚠️ Leverage setting: ${error.message}`);
-  }
-
-  // Step 2: Place order WITHOUT TP/SL (we'll set them separately for guarantee)
-  console.log(`\n📈 Placing market order (without TP/SL in payload)...`);
-  console.log(`   ⚠️ NOTE: TP/SL will be set SEPARATELY to guarantee they are applied`);
-  
-  const orderPayload: any = {
-    category: 'linear',
-    symbol: symbol,
-    side: side === 'BUY' ? 'Buy' : 'Sell',
-    orderType: 'Market',
-    qty: roundedQuantity.toFixed(3),
-    timeInForce: 'GTC',
-    positionIdx: 0
-  };
-
-  console.log(`📤 Order payload (NO TP/SL):`, JSON.stringify(orderPayload, null, 2));
-
-  const data = await makeBybitRequest(
-    'POST',
-    '/v5/order/create',
-    apiKey,
-    apiSecret,
-    {},
-    orderPayload
-  );
-
-  const orderId = data.result?.orderId || 'unknown';
-
-  console.log(`\n✅ ORDER PLACED - Order ID: ${orderId}`);
-
-  // 🚨 CRITICAL: IMMEDIATE VERIFICATION & SL/TP SETUP
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`🛡️ CRITICAL SAFETY CHECK - SETTING SL/TP`);
-  console.log(`${'='.repeat(60)}`);
-
-  // Wait for position to open (Bybit needs ~500ms)
-  console.log(`⏳ Waiting 1.5s for position to settle...`);
-  await new Promise(resolve => setTimeout(resolve, 1500));
-
-  let slTpSetSuccess = false;
-  const maxAttempts = 3;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    console.log(`\n🔄 Attempt ${attempt}/${maxAttempts} to set SL/TP...`);
-
-    try {
-      // Get actual position to check entry price
-      const positions = await getBybitPositions(apiKey, apiSecret, symbol);
-      const actualPosition = positions.find((p: any) => 
-        p.symbol === symbol && parseFloat(p.size) > 0
-      );
-
-      if (!actualPosition) {
-        console.error(`   ❌ Position not found on exchange!`);
-        if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          continue;
-        }
-        throw new Error('Position not found on exchange after opening');
-      }
-
-      const actualEntry = parseFloat(actualPosition.avgPrice);
-      const actualSide = actualPosition.side;
-
-      console.log(`   📊 Actual position data:`);
-      console.log(`      Entry: ${actualEntry}`);
-      console.log(`      Side: ${actualSide}`);
-      console.log(`      Size: ${actualPosition.size}`);
-
-      // ✅ REMOVED: No more recalculation - use EXACT values from settings
-      let finalTP = takeProfit;
-      let finalSL = stopLoss;
-
-      console.log(`   🎯 Using EXACT TP/SL from settings (no adjustments):`);
-      console.log(`      TP: ${finalTP?.toFixed(4) || 'N/A'}`);
-      console.log(`      SL: ${finalSL?.toFixed(4) || 'N/A'}`);
-
-      // Set TP/SL using trading-stop endpoint
-      const tpslPayload: any = {
-        category: 'linear',
-        symbol: symbol,
-        positionIdx: 0
-      };
-
-      if (finalTP) tpslPayload.takeProfit = finalTP.toString();
-      if (finalSL) tpslPayload.stopLoss = finalSL.toString();
-
-      console.log(`   📤 Setting TP/SL via trading-stop...`);
-      
-      await makeBybitRequest(
-        'POST',
-        '/v5/position/trading-stop',
-        apiKey,
-        apiSecret,
-        {},
-        tpslPayload
-      );
-
-      console.log(`   ✅ TP/SL SET SUCCESSFULLY`);
-
-      // VERIFY they were actually set
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const verifyPositions = await getBybitPositions(apiKey, apiSecret, symbol);
-      const verifyPosition = verifyPositions.find((p: any) => 
-        p.symbol === symbol && parseFloat(p.size) > 0
-      );
-
-      if (verifyPosition) {
-        const hasSL = verifyPosition.stopLoss && parseFloat(verifyPosition.stopLoss) > 0;
-        const hasTP = verifyPosition.takeProfit && parseFloat(verifyPosition.takeProfit) > 0;
-
-        console.log(`\n   🔍 VERIFICATION:`);
-        console.log(`      SL on exchange: ${hasSL ? verifyPosition.stopLoss : 'NOT SET'}`);
-        console.log(`      TP on exchange: ${hasTP ? verifyPosition.takeProfit : 'NOT SET'}`);
-
-        if (finalSL && !hasSL) {
-          throw new Error('SL was not set on exchange!');
-        }
-        if (finalTP && !hasTP) {
-          throw new Error('TP was not set on exchange!');
-        }
-
-        console.log(`   ✅✅✅ VERIFIED - SL/TP ARE SET ON EXCHANGE!`);
-        slTpSetSuccess = true;
-        break;
-      }
-
-    } catch (error: any) {
-      console.error(`   ❌ Attempt ${attempt} failed: ${error.message}`);
-      
-      if (attempt < maxAttempts) {
-        console.log(`   ⏳ Waiting ${1500 * attempt}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
-      }
-    }
-  }
-
-  if (!slTpSetSuccess) {
-    console.error(`\n🚨🚨🚨 CRITICAL FAILURE: COULD NOT SET SL/TP AFTER ${maxAttempts} ATTEMPTS!`);
-    console.error(`   This position is UNPROTECTED - EMERGENCY CLOSE REQUIRED!`);
-    
-    // ✅ IMPROVED: Emergency close with multiple retries
-    let closeSuccess = false;
-    const maxCloseAttempts = 5;
-    
-    for (let closeAttempt = 1; closeAttempt <= maxCloseAttempts; closeAttempt++) {
-      try {
-        console.log(`   🚨 Emergency close attempt ${closeAttempt}/${maxCloseAttempts}...`);
-        
-        await closeBybitPosition(symbol, side, apiKey, apiSecret);
-        
-        // Verify position was closed
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const checkPositions = await getBybitPositions(apiKey, apiSecret, symbol);
-        const stillOpen = checkPositions.find((p: any) => 
-          p.symbol === symbol && parseFloat(p.size) > 0
-        );
-        
-        if (!stillOpen) {
-          console.error(`   ✅ Position emergency closed successfully - funds protected`);
-          closeSuccess = true;
-          break;
-        } else {
-          console.error(`   ⚠️ Position still open after close attempt ${closeAttempt}`);
-          if (closeAttempt < maxCloseAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 2000 * closeAttempt));
-          }
-        }
-      } catch (closeError: any) {
-        console.error(`   ❌ Close attempt ${closeAttempt} failed: ${closeError.message}`);
-        if (closeAttempt < maxCloseAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * closeAttempt));
-        }
-      }
-    }
-    
-    if (closeSuccess) {
-      throw new Error(`EMERGENCY: Position opened but SL/TP could not be set - position was closed for safety`);
-    } else {
-      console.error(`   ❌❌❌ ALL ${maxCloseAttempts} EMERGENCY CLOSE ATTEMPTS FAILED!`);
-      console.error(`   🚨 MANUAL INTERVENTION REQUIRED - POSITION WITHOUT SL/TP!`);
-      throw new Error(`CRITICAL: Position opened without SL/TP and emergency close failed after ${maxCloseAttempts} attempts - manual intervention required!`);
-    }
-  }
-
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`✅ POSITION OPENED SUCCESSFULLY WITH SL/TP GUARANTEE`);
-  console.log(`   Order ID: ${orderId}`);
-  console.log(`   Symbol: ${symbol}`);
-  console.log(`   Side: ${side}`);
-  console.log(`   Quantity: ${roundedQuantity.toFixed(3)}`);
-  console.log(`   SL/TP: VERIFIED AND SET`);
-  console.log(`${'='.repeat(60)}\n`);
-
-  return {
-    orderId,
-    symbol,
-    side,
-    quantity: roundedQuantity
-  };
-}
-
-// ============================================
-// 🔄 CLOSE BYBIT POSITION
-// ============================================
-
-export async function closeBybitPosition(
-  symbol: string,
-  side: string,
-  apiKey: string,
-  apiSecret: string
-) {
-  console.log(`🔄 Closing Bybit position: ${symbol} ${side}`);
-
-  const orderPayload = {
-    category: 'linear',
-    symbol: symbol,
-    side: side === 'BUY' ? 'Sell' : 'Buy',
-    orderType: 'Market',
-    qty: '0', // Close entire position
-    reduceOnly: true,
-    closeOnTrigger: false,
-    timeInForce: 'GTC',
-    positionIdx: 0
-  };
-
-  const data = await makeBybitRequest(
-    'POST',
-    '/v5/order/create',
-    apiKey,
-    apiSecret,
-    {},
-    orderPayload
-  );
-
-  const orderId = data.result?.orderId || 'unknown';
-  console.log('✅ Bybit position closed:', orderId);
-
-  return orderId;
-}
-
-// ============================================
-// 🎯 MODIFY TP/SL
-// ============================================
-
-export async function modifyBybitTpSl(
-  symbol: string,
-  apiKey: string,
-  apiSecret: string,
-  takeProfit?: number,
-  stopLoss?: number
-) {
-  console.log(`🎯 Modifying TP/SL for ${symbol}`);
-
-  const payload: any = {
-    category: 'linear',
-    symbol: symbol,
-    positionIdx: 0
-  };
-
-  if (takeProfit) {
-    payload.takeProfit = takeProfit.toString();
-  }
-  if (stopLoss) {
-    payload.stopLoss = stopLoss.toString();
-  }
-
-  await makeBybitRequest(
-    'POST',
-    '/v5/position/trading-stop',
-    apiKey,
-    apiSecret,
-    {},
-    payload
-  );
-
-  console.log('✅ TP/SL modified successfully');
-}
-
-// ============================================
-// 📊 GET POSITIONS
+// 📊 GET POSITIONS (Compatible with old code)
 // ============================================
 
 export async function getBybitPositions(
   apiKey: string,
   apiSecret: string,
   symbol?: string
-) {
-  console.log(`\n📊 [GET POSITIONS] Fetching open positions...`);
-  console.log(`   Symbol filter: ${symbol || 'ALL (settleCoin=USDT)'}`);
-  
-  // ✅ CRITICAL FIX: According to Bybit V5 API docs:
-  // - Using settleCoin=USDT WITHOUT symbol = returns ONLY positions with size > 0 (automatic filtering)
-  // - Using symbol parameter = returns ALL positions including size=0 (no automatic filtering)
-  // 
-  // For monitoring open positions, we should use settleCoin approach
-  
-  const params: any = {
-    category: 'linear',
-  };
-
-  if (symbol) {
-    // If specific symbol requested, use symbol parameter
-    params.symbol = symbol;
-    console.log(`   ⚠️ Using symbol parameter - will return position even if size=0`);
-  } else {
-    // If no symbol, use settleCoin for automatic size>0 filtering
-    params.settleCoin = 'USDT';
-    console.log(`   ✅ Using settleCoin=USDT - automatic size>0 filtering`);
-  }
-
-  try {
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/position/list',
-      apiKey,
-      apiSecret,
-      params
-    );
-
-    console.log(`   📊 API Response retCode: ${data.retCode}, retMsg: ${data.retMsg}`);
-
-    if (!data.result?.list) {
-      console.warn(`   ⚠️ No result.list in response`);
-      return [];
-    }
-
-    console.log(`   📊 Total positions in response: ${data.result.list.length}`);
-
-    // Log each position for debugging
-    data.result.list.forEach((p: any, index: number) => {
-      console.log(`   [${index + 1}] ${p.symbol} ${p.side}: size=${p.size}, entry=${p.avgPrice}, unrealisedPnl=${p.unrealisedPnl}`);
-    });
-
-    // Filter only open positions (size > 0)
-    const openPositions = data.result.list.filter((p: any) => {
-      const size = parseFloat(p.size);
-      return size > 0;
-    });
-
-    console.log(`   ✅ Open positions (size > 0): ${openPositions.length}`);
-
-    if (openPositions.length === 0 && data.result.list.length > 0) {
-      console.warn(`   ⚠️ API returned ${data.result.list.length} positions but all have size=0`);
-      console.warn(`   💡 This means positions are closed on exchange but API returned them anyway`);
-    }
-
-    return openPositions;
-  } catch (error: any) {
-    console.error(`   ❌ Failed to get positions: ${error.message}`);
-    
-    // Check for common errors
-    if (error.message.includes('10001')) {
-      console.error(`   ⚠️ Error 10001: Missing parameters - check if settleCoin or symbol is required`);
-    } else if (error.message.includes('10003')) {
-      console.error(`   ⚠️ Error 10003: Invalid API key`);
-    } else if (error.message.includes('10004')) {
-      console.error(`   ⚠️ Error 10004: Invalid signature - check API secret`);
-    } else if (error.message.includes('10005')) {
-      console.error(`   ⚠️ Error 10005: Permission denied - API key needs "Position" permission`);
-      console.error(`   💡 Solution: Go to Bybit → API Management → Enable "Contract Trade" → "Position" permission`);
-    }
-    
-    throw error;
-  }
-}
-
-// ============================================
-// 📜 GET ALGO ORDERS (SL/TP ORDERS)
-// ============================================
-
-export async function getBybitAlgoOrders(
-  apiKey: string,
-  apiSecret: string
 ): Promise<any[]> {
-  try {
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/order/realtime',
-      apiKey,
-      apiSecret,
-      {
-        category: 'linear',
-        settleCoin: 'USDT'
-      }
-    );
-
-    if (!data.result?.list) {
-      return [];
-    }
-
-    // Return all active orders (TP/SL are stored in position, not as separate orders in Bybit V5)
-    // We'll get TP/SL from position data instead
-    return data.result.list || [];
-  } catch (error: any) {
-    console.error('Failed to get Bybit algo orders:', error.message);
-    return [];
-  }
-}
-
-// ============================================
-// 🗑️ CANCEL BYBIT ALGO ORDER
-// ============================================
-
-export async function cancelBybitAlgoOrder(
-  orderId: string,
-  symbol: string,
-  apiKey: string,
-  apiSecret: string
-): Promise<boolean> {
-  try {
-    await makeBybitRequest(
-      'POST',
-      '/v5/order/cancel',
-      apiKey,
-      apiSecret,
-      {},
-      {
-        category: 'linear',
-        symbol: symbol,
-        orderId: orderId
-      }
-    );
-    
-    console.log(`✅ Cancelled algo order: ${orderId}`);
-    return true;
-  } catch (error: any) {
-    console.error(`❌ Failed to cancel algo order ${orderId}:`, error.message);
-    return false;
-  }
+  const result = await BybitClient.getPositions(apiKey, apiSecret, symbol);
+  
+  // V5 API returns list in result.list
+  return result.list || [];
 }
 
 // ============================================
@@ -677,152 +32,130 @@ export async function getBybitPositionsHistory(
   apiSecret: string,
   limit: number = 100
 ): Promise<any[]> {
-  try {
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/position/closed-pnl',
-      apiKey,
-      apiSecret,
-      {
-        category: 'linear',
-        limit: limit.toString()
-      }
-    );
-
-    if (!data.result?.list) {
-      return [];
-    }
-
-    return data.result.list;
-  } catch (error: any) {
-    console.error('Failed to get Bybit positions history:', error.message);
-    return [];
-  }
+  const result = await BybitClient.getClosedPnL(apiKey, apiSecret, {
+    limit,
+  });
+  
+  // V5 API returns list in result.list
+  return result.list || [];
 }
 
 // ============================================
-// 💰 GET WALLET BALANCE
+// 🚀 OPEN POSITION
 // ============================================
 
-export async function getBybitWalletBalance(
+export async function openBybitPosition(
+  symbol: string,
+  side: string,
+  quantity: number,
+  leverage: number,
+  apiKey: string,
+  apiSecret: string,
+  tpPrice?: number,
+  slPrice?: number
+): Promise<{ orderId: string }> {
+  const bybitSymbol = convertSymbolToBybit(symbol);
+  const bybitSide = side === 'BUY' ? 'Buy' : 'Sell';
+  
+  const result = await BybitClient.placeOrder(apiKey, apiSecret, {
+    symbol: bybitSymbol,
+    side: bybitSide,
+    orderType: 'Market',
+    qty: quantity.toString(),
+    leverage,
+    ...(tpPrice && { takeProfit: tpPrice.toString() }),
+    ...(slPrice && { stopLoss: slPrice.toString() }),
+  });
+  
+  return {
+    orderId: result.orderId,
+  };
+}
+
+// ============================================
+// 🛑 CLOSE POSITION
+// ============================================
+
+export async function closeBybitPosition(
+  symbol: string,
+  side: string,
+  apiKey: string,
+  apiSecret: string,
+  quantity?: number
+): Promise<string> {
+  const bybitSymbol = convertSymbolToBybit(symbol);
+  const bybitSide = side === 'BUY' ? 'Buy' : 'Sell';
+  
+  // If no quantity provided, get current position size
+  let qty = quantity?.toString();
+  
+  if (!qty) {
+    const positions = await getBybitPositions(apiKey, apiSecret, bybitSymbol);
+    const position = positions.find((p: any) => p.symbol === bybitSymbol && p.side === bybitSide);
+    
+    if (!position) {
+      throw new Error(`No position found for ${symbol} ${side}`);
+    }
+    
+    qty = Math.abs(parseFloat(position.size)).toString();
+  }
+  
+  const result = await BybitClient.closePosition(apiKey, apiSecret, bybitSymbol, bybitSide, qty);
+  
+  return result.orderId;
+}
+
+// ============================================
+// 🔧 MODIFY SL/TP
+// ============================================
+
+export async function modifyBybitTpSl(
+  symbol: string,
+  apiKey: string,
+  apiSecret: string,
+  slPrice?: number,
+  tpPrice?: number
+): Promise<void> {
+  const bybitSymbol = convertSymbolToBybit(symbol);
+  
+  await BybitClient.setTradingStop(apiKey, apiSecret, {
+    symbol: bybitSymbol,
+    ...(slPrice && { stopLoss: slPrice.toString() }),
+    ...(tpPrice && { takeProfit: tpPrice.toString() }),
+  });
+}
+
+// ============================================
+// 💰 GET CURRENT MARKET PRICE
+// ============================================
+
+export async function getCurrentMarketPrice(
+  symbol: string,
   apiKey: string,
   apiSecret: string
-) {
-  console.log(`\n💰 [GET BALANCE] Fetching wallet balance...`);
+): Promise<number> {
+  const bybitSymbol = convertSymbolToBybit(symbol);
   
-  // ✅ FIX: Try UNIFIED first, then CONTRACT as fallback
-  // Users may have either UTA 2.0 (UNIFIED) or Classic Account (CONTRACT)
+  // Get current position to extract market price
+  const positions = await getBybitPositions(apiKey, apiSecret, bybitSymbol);
   
-  let lastError: any = null;
-  
-  // Try UNIFIED account type first (UTA 2.0)
-  try {
-    console.log(`   🔄 Trying accountType: UNIFIED (UTA 2.0)...`);
-    
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/account/wallet-balance',
-      apiKey,
-      apiSecret,
-      {
-        accountType: 'UNIFIED'
-      }
-    );
-
-    console.log(`   📊 UNIFIED Response:`, JSON.stringify(data, null, 2));
-
-    const balances: Array<{ asset: string; free: string; locked: string }> = [];
-
-    if (data.result?.list?.[0]?.coin) {
-      data.result.list[0].coin.forEach((coin: any) => {
-        const walletBalance = parseFloat(coin.walletBalance || '0');
-        const availableToWithdraw = parseFloat(coin.availableToWithdraw || '0');
-        const locked = parseFloat(coin.locked || '0');
-
-        console.log(`      [${coin.coin}] Wallet: ${walletBalance}, Available: ${availableToWithdraw}, Locked: ${locked}`);
-
-        if (walletBalance > 0 || locked > 0) {
-          balances.push({
-            asset: coin.coin,
-            free: availableToWithdraw.toFixed(8),
-            locked: locked.toFixed(8),
-          });
-        }
-      });
-    }
-
-    console.log(`   ✅ UNIFIED account - Found ${balances.length} coins with balance`);
-
-    return {
-      success: true,
-      balances,
-      canTrade: true,
-      accountType: 'UNIFIED'
-    };
-  } catch (unifiedError: any) {
-    console.warn(`   ⚠️ UNIFIED failed: ${unifiedError.message}`);
-    lastError = unifiedError;
+  if (positions.length > 0 && positions[0].markPrice) {
+    return parseFloat(positions[0].markPrice);
   }
-
-  // Fallback: Try CONTRACT account type (Classic Derivatives Account)
-  try {
-    console.log(`   🔄 Trying accountType: CONTRACT (Classic Account)...`);
-    
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/account/wallet-balance',
-      apiKey,
-      apiSecret,
-      {
-        accountType: 'CONTRACT'
-      }
-    );
-
-    console.log(`   📊 CONTRACT Response:`, JSON.stringify(data, null, 2));
-
-    const balances: Array<{ asset: string; free: string; locked: string }> = [];
-
-    if (data.result?.list?.[0]?.coin) {
-      data.result.list[0].coin.forEach((coin: any) => {
-        const walletBalance = parseFloat(coin.walletBalance || '0');
-        const availableToWithdraw = parseFloat(coin.availableToWithdraw || '0');
-        const locked = parseFloat(coin.locked || '0');
-
-        console.log(`      [${coin.coin}] Wallet: ${walletBalance}, Available: ${availableToWithdraw}, Locked: ${locked}`);
-
-        if (walletBalance > 0 || locked > 0) {
-          balances.push({
-            asset: coin.coin,
-            free: availableToWithdraw.toFixed(8),
-            locked: locked.toFixed(8),
-          });
-        }
-      });
-    }
-
-    console.log(`   ✅ CONTRACT account - Found ${balances.length} coins with balance`);
-
-    return {
-      success: true,
-      balances,
-      canTrade: true,
-      accountType: 'CONTRACT'
-    };
-  } catch (contractError: any) {
-    console.error(`   ❌ CONTRACT also failed: ${contractError.message}`);
-    
-    // Both failed - throw detailed error
-    throw new Error(
-      `Failed to fetch balance from both UNIFIED and CONTRACT accounts. ` +
-      `Last error: ${contractError.message}. ` +
-      `Please check: 1) API key permissions include "Wallet" permission, ` +
-      `2) API key and secret are correct, 3) Account type is either UTA 2.0 or Classic`
-    );
+  
+  // Fallback: fetch ticker
+  const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${bybitSymbol}`);
+  const data = await response.json();
+  
+  if (data.retCode !== 0 || !data.result?.list?.[0]) {
+    throw new Error(`Failed to get market price for ${symbol}`);
   }
+  
+  return parseFloat(data.result.list[0].lastPrice);
 }
 
 // ============================================
-// 💰 GET REALIZED PNL FROM BYBIT
+// 💵 GET REALIZED PNL FROM BYBIT
 // ============================================
 
 export async function getRealizedPnlFromBybit(
@@ -830,187 +163,30 @@ export async function getRealizedPnlFromBybit(
   symbol: string,
   apiKey: string,
   apiSecret: string
-): Promise<{ realizedPnl: number; fillPrice: number } | null> {
+): Promise<{ realizedPnl: number } | null> {
   try {
-    console.log(`💰 Getting realized PnL for order ${orderId}...`);
-
-    // Get order details
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/order/history',
-      apiKey,
-      apiSecret,
-      {
-        category: 'linear',
-        symbol: symbol,
-        orderId: orderId,
-        limit: '1'
-      }
-    );
-
-    if (!data.result?.list?.[0]) {
-      console.warn(`⚠️ Order ${orderId} not found in history`);
-      return null;
-    }
-
-    const order = data.result.list[0];
-    const avgPrice = parseFloat(order.avgPrice || '0');
+    const bybitSymbol = convertSymbolToBybit(symbol);
     
-    if (avgPrice === 0) {
-      console.warn(`⚠️ Order ${orderId} has no fill price`);
-      return null;
-    }
-
-    // Get closed PnL data
-    const pnlData = await makeBybitRequest(
-      'GET',
-      '/v5/position/closed-pnl',
-      apiKey,
-      apiSecret,
-      {
-        category: 'linear',
-        symbol: symbol,
-        limit: '50'
-      }
-    );
-
-    if (!pnlData.result?.list) {
-      console.warn(`⚠️ No closed PnL data found`);
-      return null;
-    }
-
-    // Find matching PnL entry by order ID
-    const pnlEntry = pnlData.result.list.find((entry: any) => 
-      entry.orderId === orderId
-    );
-
-    if (!pnlEntry) {
-      console.warn(`⚠️ No PnL entry found for order ${orderId}`);
-      return null;
-    }
-
-    const realizedPnl = parseFloat(pnlEntry.closedPnl || '0');
+    // Get recent closed PnL
+    const result = await BybitClient.getClosedPnL(apiKey, apiSecret, {
+      symbol: bybitSymbol,
+      limit: 50,
+    });
     
-    console.log(`✅ Realized PnL: ${realizedPnl.toFixed(2)} USD, Fill Price: ${avgPrice}`);
-
-    return {
-      realizedPnl,
-      fillPrice: avgPrice
-    };
-  } catch (error: any) {
-    console.error(`❌ Failed to get realized PnL:`, error.message);
+    const pnlList = result.list || [];
+    
+    // Find matching order by symbol and recent time
+    const match = pnlList.find((item: any) => item.symbol === bybitSymbol);
+    
+    if (match) {
+      return {
+        realizedPnl: parseFloat(match.closedPnl || '0'),
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[getRealizedPnlFromBybit] Error:', error);
     return null;
   }
-}
-
-// ============================================
-// 🧹 CLEANUP ORPHANED ORDERS
-// ============================================
-
-export async function cleanupOrphanedOrders(
-  symbol: string,
-  apiKey: string,
-  apiSecret: string,
-  maxRetries: number = 3
-): Promise<{
-  success: boolean;
-  cancelledCount: number;
-  failedCount: number;
-  errors: string[];
-}> {
-  const errors: string[] = [];
-  let cancelledCount = 0;
-  let failedCount = 0;
-
-  try {
-    console.log(`🧹 Cleaning up orphaned orders for ${symbol}...`);
-
-    // Get all open orders for this symbol
-    const data = await makeBybitRequest(
-      'GET',
-      '/v5/order/realtime',
-      apiKey,
-      apiSecret,
-      {
-        category: 'linear',
-        symbol: symbol
-      }
-    );
-
-    const orders = data.result?.list || [];
-
-    if (orders.length === 0) {
-      console.log(`✅ No orders to clean up for ${symbol}`);
-      return { success: true, cancelledCount: 0, failedCount: 0, errors: [] };
-    }
-
-    console.log(`📋 Found ${orders.length} order(s) to cancel`);
-
-    // Cancel all orders with retry
-    for (const order of orders) {
-      let cancelled = false;
-
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          await makeBybitRequest(
-            'POST',
-            '/v5/order/cancel',
-            apiKey,
-            apiSecret,
-            {},
-            {
-              category: 'linear',
-              symbol: symbol,
-              orderId: order.orderId
-            }
-          );
-
-          console.log(`   ✅ Cancelled order ${order.orderId} (attempt ${attempt})`);
-          cancelledCount++;
-          cancelled = true;
-          break;
-        } catch (error: any) {
-          console.error(`   ❌ Attempt ${attempt}/${maxRetries} failed:`, error.message);
-          
-          if (attempt === maxRetries) {
-            errors.push(`Failed to cancel ${order.orderId}: ${error.message}`);
-            failedCount++;
-          } else {
-            // Wait before retry
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          }
-        }
-      }
-    }
-
-    const success = failedCount === 0;
-    console.log(`${success ? '✅' : '⚠️'} Cleanup complete: ${cancelledCount} cancelled, ${failedCount} failed`);
-
-    return {
-      success,
-      cancelledCount,
-      failedCount,
-      errors
-    };
-  } catch (error: any) {
-    const errMsg = `Cleanup failed: ${error.message}`;
-    console.error(`❌ ${errMsg}`);
-    errors.push(errMsg);
-    
-    return {
-      success: false,
-      cancelledCount,
-      failedCount,
-      errors
-    };
-  }
-}
-
-// ============================================
-// 🔐 BYBIT CREDENTIALS TYPE
-// ============================================
-
-export interface BybitCredentials {
-  apiKey: string;
-  apiSecret: string;
 }

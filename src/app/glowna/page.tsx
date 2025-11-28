@@ -194,15 +194,12 @@ export default function GlownaPage() {
       const { apiKey, apiSecret } = settingsData.settings;
 
       const balanceTimestamp = Date.now();
-      const response = await fetch(`/api/exchange/get-balance?_t=${balanceTimestamp}`, {
+      const response = await fetch(`/api/exchange/balance`, {
         method: "POST",
-        cache: "no-store",
         headers: { 
           "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate"
         },
         body: JSON.stringify({
-          exchange: "bybit",
           apiKey,
           apiSecret,
         }),
