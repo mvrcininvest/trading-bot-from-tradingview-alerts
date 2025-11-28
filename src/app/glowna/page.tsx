@@ -490,30 +490,6 @@ export default function GlownaPage() {
           </Alert>
         )}
 
-        {/* HELPFUL INFO WHEN NO POSITIONS */}
-        {positions.length === 0 && !loading && !positionsError && (
-          <Card className="border-blue-700/40 bg-blue-900/20">
-            <CardContent className="py-4">
-              <div className="flex items-start gap-3">
-                <Activity className="h-5 w-5 text-blue-400 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-blue-200 mb-2">
-                    Obecnie brak otwartych pozycji
-                  </p>
-                  <div className="space-y-1 text-xs text-blue-300">
-                    <p>✅ To jest normalny stan - bot nie ma aktywnych pozycji</p>
-                    <p>📊 Sprawdź zakładkę "Historia Pozycji" aby zobaczyć zamknięte transakcje</p>
-                    <p>📈 Statystyki są dostępne w zakładce "Statystyki"</p>
-                    {botEnabled === false && (
-                      <p className="text-orange-300">⚠️ Bot jest obecnie <strong>WYŁĄCZONY</strong> - nie będzie otwierał nowych pozycji</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Emergency Close Button */}
         {positions.length > 0 && (
           <Card className="border-red-700/40 bg-red-900/20">
