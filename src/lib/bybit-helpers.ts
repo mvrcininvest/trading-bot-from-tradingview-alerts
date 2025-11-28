@@ -1,11 +1,14 @@
 // ============================================
-// 🔐 BYBIT API - DIRECT CONNECTION
+// 🔐 BYBIT API - WITH CLOUDFRONT PROXY BYPASS
 // ============================================
 
-// ✅ Direct connection to Bybit API (no proxy needed)
+import { wrapBybitUrl, getProxyStatus } from './bybit-proxy';
+
+// ✅ Base URL will be wrapped by proxy if enabled
 const BYBIT_BASE_URL = 'https://api.bybit.com';
 
-console.log(`🔧 [BYBIT CONFIG] Using direct connection: ${BYBIT_BASE_URL}`);
+console.log(`🔧 [BYBIT CONFIG] Base URL: ${BYBIT_BASE_URL}`);
+console.log(`🔧 [BYBIT PROXY] Status:`, getProxyStatus());
 
 // ✅ Standard headers for Bybit API
 const ENHANCED_HEADERS = {
@@ -47,7 +50,7 @@ export async function createBybitSignature(
 }
 
 // ============================================
-// 🔄 BYBIT API REQUEST HELPER (DIRECT CONNECTION)
+// 🔄 BYBIT API REQUEST HELPER (WITH PROXY SUPPORT)
 // ============================================
 
 export async function makeBybitRequest(
@@ -94,8 +97,10 @@ export async function makeBybitRequest(
 
   console.log(`🌐 ${method} ${endpoint}`);
 
-  // ✅ USE NORMAL FETCH - NO CLOUDFRONT GUARD
-  const response = await fetch(url, options);
+  // ✅ WRAP URL WITH PROXY IF ENABLED (CloudFront bypass)
+  const finalUrl = wrapBybitUrl(url);
+
+  const response = await fetch(finalUrl, options);
   const responseText = await response.text();
 
   if (!response.ok) {
