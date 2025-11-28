@@ -412,20 +412,22 @@ export default function GlownaPage() {
                 </div>
               ) : balanceError ? (
                 <div className="flex flex-col gap-2">
-                  <div className="text-sm font-bold text-red-400 flex items-center gap-2">
+                  <div className="text-sm font-semibold text-orange-400 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4" />
-                    Błąd API
+                    Geo-blocking
                   </div>
-                  <div className="text-xs text-gray-400">
-                    <a 
-                      href="https://www.bybit.com/app/user/assets/home" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="underline hover:text-red-300 flex items-center gap-1"
-                    >
-                      Sprawdź na Bybit <Globe className="h-3 w-3" />
-                    </a>
+                  <div className="text-xs text-gray-400 leading-relaxed">
+                    Bybit blokuje API z Twojego regionu
                   </div>
+                  <a 
+                    href="https://www.bybit.com/app/user/assets/home" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:text-blue-300 underline flex items-center gap-1 mt-1"
+                  >
+                    <Globe className="h-3 w-3" />
+                    Sprawdź na Bybit
+                  </a>
                 </div>
               ) : totalBalance > 0 ? (
                 <div className="text-2xl font-bold text-white">
