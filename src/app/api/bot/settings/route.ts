@@ -56,12 +56,6 @@ async function updateSettings(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // ✅ RESET CLOUDFRONT LOCK when user enables bot
-    if (body.botEnabled === true) {
-      console.log('[Bot Settings] User is enabling bot - checking CloudFront lock...');
-      await resetCloudFrontLock();
-    }
-
     // Validate positionSizeMode
     if (body.positionSizeMode !== undefined && !VALID_POSITION_SIZE_MODES.includes(body.positionSizeMode)) {
       return NextResponse.json({ 
