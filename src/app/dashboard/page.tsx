@@ -101,21 +101,6 @@ interface BybitStatsResponse {
   message?: string;
 }
 
-async function signBybitRequest(
-  apiKey: string,
-  apiSecret: string,
-  timestamp: number,
-  params: Record<string, any>
-): Promise<string> {
-  const recvWindow = "5000";
-  const sortedKeys = Object.keys(params).sort();
-  const queryString = sortedKeys.map(key => `${key}=${params[key]}`).join("&");
-  const signaturePayload = timestamp + apiKey + recvWindow + queryString;
-  const crypto = require('crypto');
-  const signature = crypto.createHmac('sha256', apiSecret).update(signaturePayload).digest('hex');
-  return signature;
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const [credentials, setCredentials] = useState<ExchangeCredentials | null>(null);
@@ -182,69 +167,27 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const fetchBalance = async (creds?: ExchangeCredentials) => {
-    const credsToUse = creds || credentials;
-    if (!credsToUse) return;
-
+  const fetchBalance = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const timestamp = Date.now();
-      const params: Record<string, any> = {
-        accountType: "UNIFIED"
-      };
+      console.log("[Dashboard] Fetching balance from backend API...");
       
-      const signature = await signBybitRequest(
-        credsToUse.apiKey,
-        credsToUse.apiSecret,
-        timestamp,
-        params
-      );
-      
-      const baseUrl = "https://api.bybit.com";
-      
-      const queryString = Object.keys(params)
-        .sort()
-        .map(key => `${key}=${params[key]}`)
-        .join("&");
-      
-      const url = `${baseUrl}/v5/account/wallet-balance?${queryString}`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-BAPI-API-KEY": credsToUse.apiKey,
-          "X-BAPI-TIMESTAMP": timestamp.toString(),
-          "X-BAPI-SIGN": signature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-      });
-
+      const response = await fetch("/api/exchange/balance");
       const data = await response.json();
 
-      if (data.retCode === 0 && data.result?.list) {
-        const walletData = data.result.list[0];
-        if (walletData?.coin) {
-          const filteredBalances = walletData.coin
-            .filter((c: any) => parseFloat(c.walletBalance || 0) > 0)
-            .map((c: any) => ({
-              asset: c.coin,
-              free: c.availableToWithdraw || "0",
-              locked: (parseFloat(c.walletBalance || 0) - parseFloat(c.availableToWithdraw || 0)).toFixed(8),
-              total: c.walletBalance || "0"
-            }));
-          
-          setBalances(filteredBalances);
-          setError(null);
-        } else {
-          setError("Brak danych o saldzie w odpowiedzi API");
-        }
+      if (data.success && data.balances) {
+        setBalances(data.balances);
+        setError(null);
+        console.log("[Dashboard] ✅ Balance loaded:", data.balances);
       } else {
-        setError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
+        setError(data.message || "Failed to fetch balance");
+        console.error("[Dashboard] ❌ Balance error:", data.message);
       }
     } catch (err) {
       setError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+      console.error("[Dashboard] ❌ Balance fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -278,76 +221,31 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchPositions = useCallback(async (creds?: ExchangeCredentials, silent = false) => {
-    const credsToUse = creds || credentials;
-    if (!credsToUse) return;
-
+  const fetchPositions = useCallback(async (silent = false) => {
     if (!silent) setLoadingPositions(true);
     setPositionsError(null);
 
     try {
-      const timestamp = Date.now();
-      const params: Record<string, any> = {
-        category: "linear",
-        settleCoin: "USDT"
-      };
+      console.log("[Dashboard] Fetching positions from backend API...");
       
-      const signature = await signBybitRequest(
-        credsToUse.apiKey,
-        credsToUse.apiSecret,
-        timestamp,
-        params
-      );
-      
-      const baseUrl = "https://api.bybit.com";
-      
-      const queryString = Object.keys(params)
-        .sort()
-        .map(key => `${key}=${params[key]}`)
-        .join("&");
-      
-      const url = `${baseUrl}/v5/position/list?${queryString}`;
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-BAPI-API-KEY": credsToUse.apiKey,
-          "X-BAPI-TIMESTAMP": timestamp.toString(),
-          "X-BAPI-SIGN": signature,
-          "X-BAPI-RECV-WINDOW": "5000",
-        },
-      });
-
+      const response = await fetch("/api/exchange/positions");
       const data = await response.json();
 
-      if (data.retCode === 0 && data.result?.list) {
-        const openPositions = data.result.list
-          .filter((p: any) => parseFloat(p.size) > 0)
-          .map((p: any) => ({
-            symbol: p.symbol,
-            side: p.side,
-            size: p.size,
-            entryPrice: p.avgPrice,
-            markPrice: p.markPrice,
-            leverage: p.leverage,
-            unrealisedPnl: p.unrealisedPnl,
-            takeProfit: p.takeProfit || "0",
-            stopLoss: p.stopLoss || "0",
-            positionValue: p.positionValue,
-            liqPrice: p.liqPrice || "0",
-          }));
-        
-        setPositions(openPositions);
+      if (data.success && data.positions) {
+        setPositions(data.positions);
         setPositionsError(null);
+        console.log("[Dashboard] ✅ Positions loaded:", data.positions.length);
       } else {
-        setPositionsError(`Bybit API error: ${data.retMsg || "Nieznany błąd"}`);
+        setPositionsError(data.message || "Failed to fetch positions");
+        console.error("[Dashboard] ❌ Positions error:", data.message);
       }
     } catch (err) {
       setPositionsError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+      console.error("[Dashboard] ❌ Positions fetch error:", err);
     } finally {
       if (!silent) setLoadingPositions(false);
     }
-  }, [credentials]);
+  }, []);
 
   const fetchBybitStats = useCallback(async () => {
     if (!credentials) return;
@@ -373,27 +271,9 @@ export default function DashboardPage() {
     const checkCredentials = async () => {
       setIsCheckingCredentials(true);
       
-      const stored = localStorage.getItem("exchange_credentials");
-      
-      if (stored) {
-        const creds = JSON.parse(stored);
-        creds.exchange = "bybit";
-        creds.environment = "mainnet";
-        setCredentials(creds);
-        
-        fetchBalance(creds);
-        fetchPositions(creds);
-        fetchBotPositions();
-        fetchBotStatus();
-        fetchSymbolLocks();
-        autoMatchAlertsToOpen();
-        fetchBybitStats();
-        
-        setIsCheckingCredentials(false);
-        return;
-      }
-      
       try {
+        console.log("[Dashboard] Checking credentials from database...");
+        
         const response = await fetch("/api/bot/credentials");
         const data = await response.json();
         
@@ -406,19 +286,24 @@ export default function DashboardPage() {
             savedAt: data.credentials.savedAt || new Date().toISOString()
           };
           
-          localStorage.setItem("exchange_credentials", JSON.stringify(creds));
-          
+          console.log("[Dashboard] ✅ Credentials found in database");
           setCredentials(creds);
-          fetchBalance(creds);
-          fetchPositions(creds);
+          
+          // Fetch all data using backend API routes
+          fetchBalance();
+          fetchPositions();
           fetchBotPositions();
           fetchBotStatus();
           fetchSymbolLocks();
           autoMatchAlertsToOpen();
           fetchBybitStats();
+        } else {
+          console.log("[Dashboard] ⚠️ No credentials found in database");
+          setCredentials(null);
         }
       } catch (err) {
-        console.error("[Dashboard] Błąd pobierania credentials z bazy:", err);
+        console.error("[Dashboard] ❌ Error checking credentials:", err);
+        setCredentials(null);
       } finally {
         setIsCheckingCredentials(false);
       }
@@ -432,7 +317,7 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       fetchBotPositions(true);
-      fetchPositions(credentials, true);
+      fetchPositions(true);
       fetchBotStatus(true);
     }, 2000);
 
@@ -459,7 +344,7 @@ export default function DashboardPage() {
 
       if (data.success) {
         await fetchBotPositions();
-        await fetchPositions(credentials || undefined);
+        await fetchPositions();
         toast.success(`✅ Synchronizacja: Sprawdzono ${data.results.checked}, Zamknięto ${data.results.closed}`);
       } else {
         toast.error(`❌ Błąd: ${data.message}`);
@@ -497,7 +382,7 @@ export default function DashboardPage() {
           description: `PnL: ${data.data.pnl >= 0 ? '+' : ''}${data.data.pnl.toFixed(2)} USDT`
         })
         
-        await fetchPositions(credentials || undefined)
+        await fetchPositions()
         await fetchBotPositions()
       } else {
         toast.error(`❌ Błąd: ${data.message}`)
@@ -571,7 +456,7 @@ export default function DashboardPage() {
               <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-500" />
               <p className="text-lg font-medium text-white mb-2">Sprawdzanie konfiguracji...</p>
               <p className="text-sm text-gray-400">
-                Wczytuję klucze API z localStorage i bazy danych
+                Wczytuję klucze API z bazy danych
               </p>
             </div>
           </CardContent>

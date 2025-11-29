@@ -1,29 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWalletBalance } from '@/lib/bybit-client';
+import { db } from '@/db';
+import { botSettings } from '@/db/schema';
 
 /**
  * GET /api/exchange/balance
- * Pobiera saldo z giełdy Bybit
+ * Pobiera saldo z giełdy Bybit (używa credentials z bazy)
  */
 export async function GET(request: NextRequest) {
   try {
-    const apiKey = request.nextUrl.searchParams.get('apiKey');
-    const apiSecret = request.nextUrl.searchParams.get('apiSecret');
+    console.log('\n💰 [Balance API] Fetching wallet balance from Bybit...');
 
-    if (!apiKey || !apiSecret) {
+    // Get credentials from database
+    const settings = await db.select()
+      .from(botSettings)
+      .limit(1);
+
+    if (settings.length === 0 || !settings[0].apiKey || !settings[0].apiSecret) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Missing API credentials',
+          message: 'Missing API credentials in database',
         },
         { status: 400 }
       );
     }
 
-    console.log('\n💰 [Balance API] Fetching wallet balance from Bybit...');
-    console.log(`   API Key: ${apiKey.substring(0, 8)}...`);
+    const { apiKey, apiSecret } = settings[0];
 
-    const result = await getWalletBalance(apiKey, apiSecret);
+    console.log(`   API Key: ${apiKey!.substring(0, 8)}...`);
+
+    const result = await getWalletBalance(apiKey!, apiSecret!);
 
     console.log('   ✅ Balance fetched successfully');
 
@@ -83,7 +90,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/exchange/balance
- * Pobiera saldo z giełdy Bybit (z body)
+ * Pobiera saldo z giełdy Bybit (z body) - legacy support
  */
 export async function POST(request: NextRequest) {
   try {
