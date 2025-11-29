@@ -109,6 +109,7 @@ export default function DashboardPage() {
   const [loadingAlertMatch, setLoadingAlertMatch] = useState(false);
   const [bybitStats, setBybitStats] = useState<BybitStats | null>(null);
   const [loadingBybitStats, setLoadingBybitStats] = useState(false);
+  const [cloudfrontBlocked, setCloudfrontBlocked] = useState(false);
 
   const fetchBotPositions = useCallback(async (silent = false) => {
     if (!silent) setLoadingPositions(true);
@@ -141,13 +142,21 @@ export default function DashboardPage() {
       if (data.success && data.balances) {
         setBalances(data.balances);
         setError(null);
+        setCloudfrontBlocked(false);
         console.log("[Dashboard] ✅ Balance loaded:", data.balances);
       } else {
-        setError(data.message || "Failed to fetch balance");
+        // Check if CloudFront blocked
+        if (data.message?.includes('403') || data.message?.includes('Forbidden')) {
+          setCloudfrontBlocked(true);
+          setError("⚠️ Bybit API zablokowane przez CloudFront (403). Sprawdź IP/VPN.");
+        } else {
+          setError(data.message || "Failed to fetch balance");
+        }
         console.error("[Dashboard] ❌ Balance error:", data.message);
       }
     } catch (err) {
-      setError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+      const errMsg = err instanceof Error ? err.message : "Nieznany błąd";
+      setError(`Błąd połączenia: ${errMsg}`);
       console.error("[Dashboard] ❌ Balance fetch error:", err);
     } finally {
       setLoading(false);
@@ -195,13 +204,21 @@ export default function DashboardPage() {
       if (data.success && data.positions) {
         setPositions(data.positions);
         setPositionsError(null);
+        setCloudfrontBlocked(false);
         console.log("[Dashboard] ✅ Positions loaded:", data.positions.length);
       } else {
-        setPositionsError(data.message || "Failed to fetch positions");
+        // Check if CloudFront blocked
+        if (data.message?.includes('403') || data.message?.includes('Forbidden')) {
+          setCloudfrontBlocked(true);
+          setPositionsError("⚠️ Bybit API zablokowane przez CloudFront");
+        } else {
+          setPositionsError(data.message || "Failed to fetch positions");
+        }
         console.error("[Dashboard] ❌ Positions error:", data.message);
       }
     } catch (err) {
-      setPositionsError(`Błąd połączenia: ${err instanceof Error ? err.message : "Nieznany błąd"}`);
+      const errMsg = err instanceof Error ? err.message : "Nieznany błąd";
+      setPositionsError(`Błąd połączenia: ${errMsg}`);
       console.error("[Dashboard] ❌ Positions fetch error:", err);
     } finally {
       if (!silent) setLoadingPositions(false);
@@ -433,6 +450,26 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
         
+        {cloudfrontBlocked && (
+          <Alert className="border-red-800 bg-red-900/30 text-red-200">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-sm font-bold">🚫 Bybit API zablokowane przez CloudFront (403)</span>
+                </div>
+                <p className="text-xs text-red-300">
+                  CloudFront blokuje dostęp z Twojego IP/kraju. Bot może nadal działać na poziomie backendu, ale dashboard nie może pobrać live danych.
+                </p>
+                <p className="text-xs text-red-300 font-semibold">
+                  💡 Możliwe rozwiązania: Użyj VPN, zmień IP, lub sprawdź ustawienia Bybit API.
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {symbolLocks.length > 0 && (
           <Alert className="border-red-800 bg-red-900/30 text-red-200">
             <AlertCircle className="h-4 w-4" />
@@ -452,9 +489,12 @@ export default function DashboardPage() {
               <Wallet className="h-4 w-4 text-green-400" />
             </div>
             <p className="text-2xl font-bold text-green-100">
-              {totalBalance.toFixed(2)}
+              {loading ? '...' : totalBalance.toFixed(2)}
             </p>
             <p className="text-xs text-green-400">USDT</p>
+            {error && (
+              <p className="text-xs text-red-400 mt-1">Błąd API</p>
+            )}
           </div>
 
           <div className="p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-blue-800/50 border border-blue-800/30 backdrop-blur-sm">
@@ -463,7 +503,7 @@ export default function DashboardPage() {
               <TrendingUp className="h-4 w-4 text-blue-400" />
             </div>
             <p className={`text-2xl font-bold ${unrealisedPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
-              {unrealisedPnL >= 0 ? '+' : ''}{unrealisedPnL.toFixed(2)}
+              {loadingPositions ? '...' : `${unrealisedPnL >= 0 ? '+' : ''}${unrealisedPnL.toFixed(2)}`}
             </p>
             <p className="text-xs text-blue-400">USDT (otwarte)</p>
           </div>
@@ -474,7 +514,7 @@ export default function DashboardPage() {
               <TrendingUp className="h-4 w-4 text-amber-400" />
             </div>
             <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-100' : 'text-red-100'}`}>
-              {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
+              {loadingBybitStats ? '...' : `${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}`}
             </p>
             <p className="text-xs text-amber-400">USDT (Bybit live)</p>
           </div>
@@ -485,11 +525,11 @@ export default function DashboardPage() {
               <Bot className="h-4 w-4 text-purple-400" />
             </div>
             <p className={`text-2xl font-bold ${botEnabled ? 'text-green-100' : 'text-red-100'}`}>
-              {botEnabled ? 'Aktywny' : 'Wyłączony'}
+              {botEnabled === null ? '...' : (botEnabled ? 'Aktywny' : 'Wyłączony')}
             </p>
             <p className="text-xs text-purple-400">
               <span className={`inline-block h-2 w-2 rounded-full mr-1 ${botEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
-              {botEnabled ? 'Działa' : 'Zatrzymany'}
+              {botEnabled === null ? 'Sprawdzanie...' : (botEnabled ? 'Działa' : 'Zatrzymany')}
             </p>
           </div>
         </div>
@@ -532,6 +572,15 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {positionsError && (
+              <Alert className="mb-4 border-red-800 bg-red-900/30">
+                <AlertCircle className="h-4 w-4 text-red-400" />
+                <AlertDescription className="text-red-200 text-sm">
+                  {positionsError}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {loadingPositions && (
               <div className="text-center py-8">
                 <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-500" />
